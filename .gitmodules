@@ -1,0 +1,4 @@
+[submodule "upstream/diskann-cpp-main"]
+	path = upstream/diskann-cpp-main
+	url = https://github.com/microsoft/DiskANN.git
+	branch = cpp_main
