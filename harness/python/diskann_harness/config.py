@@ -113,17 +113,16 @@ def normalize_run_request(
         raise ConfigurationError("workspace.root must be a non-empty string")
     memory_budget = workspace.get("memory_budget_bytes")
     thread_budget = workspace.get("thread_budget")
-    normalized["workspace"] = {
-        **normalize_workspace(root),
-        "memory_budget_bytes": memory_budget,
-        "thread_budget": thread_budget,
-    }
-
     root_path = (
         Path(repository_root)
         if repository_root is not None
         else Path(__file__).resolve().parents[3]
     )
+    normalized["workspace"] = {
+        **normalize_workspace(root, repository_root=root_path),
+        "memory_budget_bytes": memory_budget,
+        "thread_budget": thread_budget,
+    }
     schema_root = root_path / "contracts" / "v1" / "schemas"
     try:
         _schema_validator(schema_root).validate(normalized)

@@ -90,6 +90,29 @@ ArtifactRef materialize_fake_dataset(const WorkspaceRef& workspace);
 ImplementationDescriptor fake_partition_descriptor();
 ImplementationDescriptor fake_local_graph_descriptor();
 ImplementationDescriptor fake_merge_descriptor();
+std::unique_ptr<PartitionStrategy> make_fake_partition();
+std::unique_ptr<LocalGraphBuilder> make_fake_local_graph();
+std::unique_ptr<GraphMerger> make_fake_merge();
+std::unique_ptr<LocalGraphBuilder> make_invalid_fake_local_graph();
+std::unique_ptr<GraphMerger> make_invalid_fake_merge();
+std::unique_ptr<PartitionStrategy> make_empty_fake_partition();
+std::unique_ptr<LocalGraphBuilder> make_empty_fake_local_graph();
+std::unique_ptr<GraphMerger> make_empty_fake_merge();
+
+struct NegativeCaseObservation {
+  ErrorCategory category{ErrorCategory::kInternal};
+  std::string gate;
+  StageStatus status{StageStatus::kFailed};
+  StageInvocationCounts invocations;
+  std::size_t evaluation_invocations{0};
+  std::size_t reuse_invocations{0};
+  std::size_t aggregation_invocations{0};
+  bool quarantined{false};
+  bool normal_artifact_published{false};
+  bool immutable_reuse_preserved{true};
+};
+
+NegativeCaseObservation execute_negative_case(const std::string& case_id);
 void register_fake_implementations(ImplementationRegistry& registry);
 
 PipelineExecutionRequest canonical_execution_request(

@@ -5,6 +5,8 @@
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/stores.hpp"
 #include "diskann_pipeline/workspace.hpp"
+#include "core/json_codec.hpp"
+#include "validation/parameter_validator.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -52,6 +54,9 @@
 #ifndef DISKANN_PIPELINE_BINARY_DIR
 #define DISKANN_PIPELINE_BINARY_DIR ""
 #endif
+#ifndef DISKANN_PIPELINE_PROJECT_ROOT
+#define DISKANN_PIPELINE_PROJECT_ROOT ""
+#endif
 
 namespace diskann_pipeline {
 namespace {
@@ -64,12 +69,148 @@ Json read_json(const std::filesystem::path& path) {
     throw PipelineError(ErrorCategory::kSchemaInvalid,
                         "runner request cannot be read");
   }
-  try {
-    return Json::parse(input);
-  } catch (const std::exception& error) {
+  std::ostringstream bytes;
+  bytes << input.rdbuf();
+  return detail::parse_json_strict(bytes.str());
+}
+
+void validate_workspace_shape(const Json& workspace) {
+  detail::require_object_shape(
+      workspace,
+      {"root", "normal_root", "temporary_root", "manifest_root",
+       "report_root", "quarantine_root", "memory_budget_bytes",
+       "thread_budget"});
+  for (const auto* field : {"root", "normal_root", "temporary_root",
+                            "manifest_root", "report_root",
+                            "quarantine_root"}) {
+    if (!workspace.at(field).is_string() ||
+        workspace.at(field).get_ref<const std::string&>().empty()) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "runner workspace path is not a string");
+    }
+  }
+  if ((!workspace.at("memory_budget_bytes").is_number_unsigned() &&
+       !workspace.at("memory_budget_bytes").is_number_integer()) ||
+      (!workspace.at("thread_budget").is_number_unsigned() &&
+       !workspace.at("thread_budget").is_number_integer())) {
     throw PipelineError(ErrorCategory::kSchemaInvalid,
-                        std::string("runner request is invalid JSON: ") +
-                            error.what());
+                        "runner workspace budgets are not integers");
+  }
+  if ((workspace.at("memory_budget_bytes").is_number_integer() &&
+       workspace.at("memory_budget_bytes").get<std::int64_t>() <= 0) ||
+      (workspace.at("thread_budget").is_number_integer() &&
+       workspace.at("thread_budget").get<std::int64_t>() <= 0)) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "runner workspace budgets must be positive");
+  }
+  const auto root = std::filesystem::path(workspace.at("root").get<std::string>())
+                        .lexically_normal();
+  if (root.empty() || !root.is_absolute() ||
+      workspace.at("memory_budget_bytes").get<std::uint64_t>() == 0 ||
+      workspace.at("thread_budget").get<std::uint32_t>() == 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "runner workspace is not normalized");
+  }
+  for (const auto& item : {
+           std::pair<const char*, const char*>{"normal_root", "normal"},
+           {"temporary_root", "temporary"}, {"manifest_root", "manifests"},
+           {"report_root", "reports"}, {"quarantine_root", "quarantine"}}) {
+    const auto observed =
+        std::filesystem::path(workspace.at(item.first).get<std::string>())
+            .lexically_normal();
+    if (observed != (root / item.second).lexically_normal()) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "runner workspace lifecycle roots are inconsistent");
+    }
+  }
+}
+
+void validate_request_shape(const Json& request) {
+  detail::require_object_shape(
+      request,
+      {"request_version", "request_id", "operation", "study_class",
+       "workspace"},
+      {"dataset", "implementations", "stage_parameters",
+       "repetition_policy", "reuse_artifact", "target_artifact",
+       "expected_contract", "evaluator", "source_config"});
+  if (!request.at("request_id").is_string() ||
+      request.at("request_id").get_ref<const std::string&>().empty() ||
+      !request.at("operation").is_string() ||
+      !request.at("request_version").is_string() ||
+      !request.at("study_class").is_string() ||
+      request.at("request_version") != "1.0.0" ||
+      request.at("study_class") != "infrastructure_validation") {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "runner request governance fields are invalid");
+  }
+  const auto operation = request.at("operation").get<std::string>();
+  if (operation != "preflight" && operation != "execute" &&
+      operation != "validate" && operation != "evaluate") {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "unknown runner operation");
+  }
+  validate_workspace_shape(request.at("workspace"));
+  if (operation == "preflight" || operation == "execute") {
+    for (const auto* field : {"dataset", "implementations",
+                              "stage_parameters", "repetition_policy"}) {
+      if (!request.contains(field)) {
+        throw PipelineError(ErrorCategory::kSchemaInvalid,
+                            std::string("runner request is missing ") + field);
+      }
+    }
+    detail::require_object_shape(
+        request.at("implementations"), {"partition", "local_build", "merge"});
+    detail::require_object_shape(
+        request.at("stage_parameters"), {"partition", "local_build", "merge"});
+    for (const auto* stage : {"partition", "local_build", "merge"}) {
+      if (!request.at("stage_parameters").at(stage).is_object()) {
+        throw PipelineError(ErrorCategory::kSchemaInvalid,
+                            "stage parameters must be JSON objects");
+      }
+    }
+    detail::require_object_shape(request.at("repetition_policy"),
+                                 {"count", "aggregation"});
+    if (request.at("repetition_policy").at("count") != 2 ||
+        request.at("repetition_policy").at("aggregation") != "retain_all") {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "runner requires two retained runs");
+    }
+    const auto dataset = parse_artifact_ref(request.at("dataset").dump());
+    if (dataset.artifact_type != ArtifactType::kDataset ||
+        dataset.format_version != "fake-dataset-json/v1" ||
+        dataset.aggregate_checksum !=
+            "4cfb7bdb7ce50e3b9f07abe72b918a2666d35ef07211d675c708c0e1d0ecf12d") {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "Feature 001 runner accepts only the canonical Fake dataset");
+    }
+    if (request.contains("reuse_artifact")) {
+      static_cast<void>(
+          parse_artifact_ref(request.at("reuse_artifact").dump()));
+    }
+  } else if (operation == "validate") {
+    if (!request.contains("target_artifact") ||
+        !request.contains("expected_contract")) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "validate request is incomplete");
+    }
+    static_cast<void>(parse_artifact_ref(request.at("target_artifact").dump()));
+    detail::require_object_shape(
+        request.at("expected_contract"),
+        {"artifact_type", "accepted_format_versions", "id_space",
+         "capabilities"});
+  } else if (!request.contains("target_artifact") ||
+             !request.contains("evaluator")) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "evaluate request is incomplete");
+  } else {
+    static_cast<void>(parse_artifact_ref(request.at("target_artifact").dump()));
+    detail::require_object_shape(request.at("evaluator"),
+                                 {"implementation_id", "parameters"});
+  }
+  if (request.contains("source_config")) {
+    detail::require_object_shape(
+        request.at("source_config"),
+        {"yaml_sha256", "normalized_json_sha256"});
   }
 }
 
@@ -143,46 +284,25 @@ SourceIdentity configured_source() {
 }
 
 ToolchainIdentity configured_toolchain() {
-  std::vector<std::string> compile_commands;
-  std::vector<std::string> link_commands;
   const std::filesystem::path binary_root = DISKANN_PIPELINE_BINARY_DIR;
-  const auto compile_database = binary_root / "compile_commands.json";
-  if (std::filesystem::is_regular_file(compile_database)) {
+  const auto harness_manifest = binary_root / "build-manifest.json";
+  if (std::filesystem::is_regular_file(harness_manifest)) {
     try {
-      for (const auto& entry : read_json(compile_database)) {
-        const auto file = entry.at("file").get<std::string>();
-        if (file.find("/src/") != std::string::npos ||
-            file.find("/tests/cpp/fakes/") != std::string::npos) {
-          compile_commands.push_back(entry.at("command").get<std::string>());
-        }
-      }
+      const auto toolchain = read_json(harness_manifest).at("toolchain");
+      return {toolchain.at("os").get<std::string>(),
+              toolchain.at("compiler_path").get<std::string>(),
+              toolchain.at("compiler_version").get<std::string>(),
+              toolchain.at("cmake_version").get<std::string>(),
+              toolchain.at("generator").get<std::string>(),
+              toolchain.at("build_type").get<std::string>(),
+              toolchain.at("cmake_definitions")
+                  .get<std::vector<std::string>>(),
+              toolchain.at("compile_commands")
+                  .get<std::vector<std::string>>(),
+              toolchain.at("link_commands").get<std::vector<std::string>>()};
     } catch (const std::exception&) {
-      compile_commands.clear();
+      // Fall through to configured facts when no Harness manifest is usable.
     }
-  }
-  for (const auto& relative : {
-           std::filesystem::path(
-               "tests/cpp/fakes/CMakeFiles/diskann_pipeline_fake_runner.dir/link.txt"),
-           std::filesystem::path(
-               "src/cli/CMakeFiles/diskann_pipeline_runner.dir/link.txt")}) {
-    const auto path = binary_root / relative;
-    if (!std::filesystem::is_regular_file(path)) continue;
-    std::ifstream input(path);
-    std::ostringstream command;
-    command << input.rdbuf();
-    auto value = command.str();
-    while (!value.empty() &&
-           (value.back() == '\n' || value.back() == '\r')) {
-      value.pop_back();
-    }
-    if (!value.empty()) link_commands.push_back(std::move(value));
-  }
-  if (compile_commands.empty()) {
-    compile_commands.push_back(
-        std::string(DISKANN_PIPELINE_CXX_COMPILER) + " -std=c++17");
-  }
-  if (link_commands.empty()) {
-    link_commands.push_back("cmake target_link_libraries");
   }
   return {DISKANN_PIPELINE_SYSTEM_NAME,
           DISKANN_PIPELINE_CXX_COMPILER,
@@ -193,8 +313,8 @@ ToolchainIdentity configured_toolchain() {
           {"CMAKE_CXX_STANDARD=17", "CMAKE_CXX_STANDARD_REQUIRED=ON",
            "CMAKE_CXX_EXTENSIONS=OFF",
            std::string("CMAKE_BUILD_TYPE=") + DISKANN_PIPELINE_BUILD_TYPE,
-           "warnings=-Wall -Wextra -Wpedantic"},
-          std::move(compile_commands), std::move(link_commands)};
+           "PROJECT_COMPILE_OPTIONS=-Wall;-Wextra;-Wpedantic"},
+          {}, {}};
 }
 
 RuntimeServiceCapabilities services(const StageContext& context) {
@@ -228,6 +348,23 @@ CompatibilityResult request_preflight(const Json& request,
       {{dataset.reference().artifact_type, dataset.reference().format_version,
         dataset.id_space(), dataset.capabilities()}},
       services(context));
+}
+
+void validate_request_parameters(const Json& request,
+                                 ImplementationRegistry& registry) {
+  const auto& ids = request.at("implementations");
+  const auto& parameters = request.at("stage_parameters");
+  for (const auto& selection : {
+           std::pair<const char*, StageKind>{"partition", StageKind::kPartition},
+           {"local_build", StageKind::kLocalBuild},
+           {"merge", StageKind::kMerge}}) {
+    const auto& descriptor = registry.resolve_descriptor(
+        ids.at(selection.first).get<std::string>(), "1.0.0",
+        selection.second);
+    detail::validate_implementation_parameters(
+        descriptor, parameters.at(selection.first).dump(),
+        DISKANN_PIPELINE_PROJECT_ROOT);
+  }
 }
 
 std::vector<ArtifactRef> catalog_artifacts(const WorkspaceRef& workspace) {
@@ -356,7 +493,8 @@ RunnerDispatchResult dispatch_validation(const Json& request,
     const auto& expected = request.at("expected_contract");
     const ImplementationDescriptor consumer{
         "runner_validation_consumer", "1.0.0", StageKind::kMerge,
-        {{{target.artifact_type,
+        {{{artifact_type_from_string(
+               expected.at("artifact_type").get<std::string>()),
            expected.at("accepted_format_versions")
                .get<std::vector<std::string>>(),
            id_space_from_string(expected.at("id_space").get<std::string>())}},
@@ -393,7 +531,7 @@ RunnerDispatchResult dispatch_evaluation(const Json& request,
         "evaluation input failed fresh validation", std::nullopt};
     result["outcome"] = "FAILED";
     result["failure"] = failure_json(failure);
-    return encoded(std::move(result), RunnerExitCode::kValidationFailed);
+    return encoded(std::move(result), RunnerExitCode::kEvaluationFailed);
   }
   const auto evidence_path = persist_validation_evidence(
       workspace, request.at("request_id").get<std::string>() + "-evaluate",
@@ -413,17 +551,54 @@ RunnerDispatchResult dispatch_evaluation(const Json& request,
 
 }  // namespace
 
+RunnerRequestPrelude inspect_runner_request(
+    const std::filesystem::path& request_path,
+    std::string_view expected_operation) {
+  const auto request = read_json(request_path);
+  validate_request_shape(request);
+  const auto operation = request.at("operation").get<std::string>();
+  if (!expected_operation.empty() && expected_operation != operation) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "runner command differs from request operation");
+  }
+  const auto root =
+      request.at("workspace").at("root").get<std::string>();
+  reject_runner_write_target(root);
+  RunnerRequestPrelude prelude{
+      request.at("request_id").get<std::string>(), operation, root,
+      std::nullopt};
+  if (request.contains("reuse_artifact")) {
+    prelude.reuse_artifact =
+        parse_artifact_ref(request.at("reuse_artifact").dump());
+  }
+  return prelude;
+}
+
 RunnerDispatchResult dispatch_runner_request(
     const std::filesystem::path& request_path,
+    ImplementationRegistry& registry, StageContext& context) {
+  return dispatch_runner_request(request_path, {}, registry, context);
+}
+
+RunnerDispatchResult dispatch_runner_request(
+    const std::filesystem::path& request_path,
+    std::string_view expected_operation,
     ImplementationRegistry& registry, StageContext& context) {
   Json request;
   Json result = base_result("invalid-request", "execute");
   try {
     request = read_json(request_path);
+    validate_request_shape(request);
     const auto request_id = request.at("request_id").get<std::string>();
     const auto operation = request.at("operation").get<std::string>();
+    if (!expected_operation.empty() && expected_operation != operation) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "runner command differs from request operation");
+    }
     result = base_result(request_id, operation);
     const auto& workspace_json = request.at("workspace");
+    reject_runner_write_target(
+        workspace_json.at("root").get<std::string>());
     const auto workspace = create_workspace(
         workspace_json.at("root").get<std::string>());
     context.workspace = workspace;
@@ -460,6 +635,7 @@ RunnerDispatchResult dispatch_runner_request(
       result["failure"] = failure_json(*compatibility.failure);
       return encoded(std::move(result), RunnerExitCode::kRejected);
     }
+    validate_request_parameters(request, registry);
     if (operation == "preflight") {
       result["outcome"] = "SUCCEEDED";
       return encoded(std::move(result), RunnerExitCode::kSuccess);
@@ -479,6 +655,9 @@ RunnerDispatchResult dispatch_runner_request(
     execution.partition_parameters_json = parameters.at("partition").dump();
     execution.local_parameters_json = parameters.at("local_build").dump();
     execution.merge_parameters_json = parameters.at("merge").dump();
+    execution.source_config_json =
+        request.contains("source_config") ? request.at("source_config").dump()
+                                          : "{}";
     if (request.contains("reuse_artifact")) {
       execution.reused_partition =
           parse_artifact_ref(request.at("reuse_artifact").dump());
@@ -547,8 +726,26 @@ RunnerDispatchResult dispatch_runner_request(
   }
 }
 
+RunnerDispatchResult dispatch_registry_request(
+    const ImplementationRegistry& registry) {
+  Json result = base_result("registry", "registry");
+  Json descriptors = Json::array();
+  for (const auto& descriptor : registry.enumerate()) {
+    descriptors.push_back(
+        Json::parse(serialize_implementation_descriptor(descriptor)));
+  }
+  result["outcome"] = "SUCCEEDED";
+  result["registered_implementations"] = std::move(descriptors);
+  return encoded(std::move(result), RunnerExitCode::kSuccess);
+}
+
+void reject_runner_write_target(const std::filesystem::path& target) {
+  reject_upstream_write_target(target, DISKANN_PIPELINE_PROJECT_ROOT);
+}
+
 void write_runner_result(const std::filesystem::path& result_path,
                          const std::string& json_text) {
+  reject_runner_write_target(result_path);
   write_immutable_text(result_path, json_text);
 }
 

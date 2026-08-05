@@ -9,22 +9,6 @@
 
 namespace dp = diskann_pipeline;
 
-namespace {
-
-dp::PipelineExecutionResult cancelled_at(std::size_t observation,
-                                         const std::string& identity) {
-  dp::test::FakeStageEnvironment environment(identity);
-  const auto dataset = dp::test::materialize_fake_dataset(environment.workspace());
-  dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kTest);
-  dp::test::register_fake_implementations(registry);
-  environment.cancellation().cancel_on_observation(observation);
-  auto context = environment.make_context(identity + "-context");
-  return dp::PipelineExecutor(registry, environment.workspace())
-      .execute(dp::test::canonical_execution_request(identity, dataset), context);
-}
-
-}  // namespace
-
 int main() {
   std::ifstream inventory(std::filesystem::path(DISKANN_PIPELINE_TEST_SOURCE_DIR) /
                           "fixtures/fake_pipeline/negative/cases.json");
@@ -32,54 +16,44 @@ int main() {
   DP_EXPECT_EQ(matrix.at("cases").size(), std::size_t{29});
   std::set<std::string> identities;
   for (const auto& item : matrix.at("cases")) {
-    identities.insert(item.at("id").get<std::string>());
-    DP_EXPECT_TRUE(!item.at("category").get<std::string>().empty());
-    DP_EXPECT_TRUE(!item.at("gate").get<std::string>().empty());
-  }
-  DP_EXPECT_EQ(identities.size(), std::size_t{29});
+    const auto id = item.at("id").get<std::string>();
+    const auto expected_gate = item.at("gate").get<std::string>();
+    const auto expected_category = dp::error_category_from_string(
+        item.at("category").get<std::string>());
+    identities.insert(id);
+    const auto observed = dp::test::execute_negative_case(id);
+    DP_EXPECT_EQ(observed.category, expected_category);
+    DP_EXPECT_EQ(observed.gate, expected_gate);
+    DP_EXPECT_TRUE(!observed.normal_artifact_published);
+    DP_EXPECT_EQ(observed.evaluation_invocations, std::size_t{0});
+    DP_EXPECT_EQ(observed.reuse_invocations, std::size_t{0});
+    DP_EXPECT_EQ(observed.aggregation_invocations, std::size_t{0});
 
-  const std::vector<std::size_t> cancellation_checkpoints{1, 2, 3, 4, 5,
-                                                          6, 10, 11, 12};
-  for (const auto checkpoint : cancellation_checkpoints) {
-    const auto result =
-        cancelled_at(checkpoint, "matrix-cancel-" + std::to_string(checkpoint));
-    DP_EXPECT_EQ(result.status, dp::StageStatus::kCancelled);
-    DP_EXPECT_TRUE(!result.artifact.has_value());
-    DP_EXPECT_TRUE(!result.quarantine_id.has_value());
-    if (checkpoint <= 3) {
-      DP_EXPECT_EQ(result.invocations.local_build, std::size_t{0});
-      DP_EXPECT_EQ(result.invocations.merge, std::size_t{0});
-    } else if (checkpoint <= 6) {
-      DP_EXPECT_EQ(result.invocations.merge, std::size_t{0});
+    const bool artifact_gate = expected_gate == "artifact_validation" ||
+                               expected_gate == "local_input";
+    DP_EXPECT_EQ(observed.quarantined, artifact_gate);
+    if (expected_gate == "preflight" || expected_gate == "registry" ||
+        expected_gate == "reuse" || artifact_gate) {
+      DP_EXPECT_EQ(observed.invocations.partition, std::size_t{0});
+      DP_EXPECT_EQ(observed.invocations.local_build, std::size_t{0});
+      DP_EXPECT_EQ(observed.invocations.merge, std::size_t{0});
+    }
+    if (expected_category == dp::ErrorCategory::kCancelled) {
+      DP_EXPECT_EQ(observed.status, dp::StageStatus::kCancelled);
+      DP_EXPECT_TRUE(!observed.quarantined);
+      if (expected_gate.find("partition") != std::string::npos ||
+          expected_gate == "stage_start") {
+        DP_EXPECT_EQ(observed.invocations.local_build, std::size_t{0});
+        DP_EXPECT_EQ(observed.invocations.merge, std::size_t{0});
+      } else if (expected_gate.find("local") != std::string::npos ||
+                 expected_gate == "next_stage_start") {
+        DP_EXPECT_EQ(observed.invocations.merge, std::size_t{0});
+      }
+    }
+    if (expected_gate == "reuse") {
+      DP_EXPECT_TRUE(observed.immutable_reuse_preserved);
     }
   }
-
-  dp::test::FakeStageEnvironment invalid_environment("matrix-invalid");
-  const auto dataset =
-      dp::test::materialize_fake_dataset(invalid_environment.workspace());
-  dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kTest);
-  dp::test::register_fake_implementations(registry);
-  auto invalid_request =
-      dp::test::canonical_execution_request("matrix-invalid", dataset);
-  invalid_request.merge_parameters_json = "{\"mode\":\"invalid_output\"}";
-  auto context = invalid_environment.make_context("matrix-invalid-context");
-  const auto invalid =
-      dp::PipelineExecutor(registry, invalid_environment.workspace())
-          .execute(invalid_request, context);
-  DP_EXPECT_EQ(invalid.status, dp::StageStatus::kInvalidOutput);
-  DP_EXPECT_TRUE(invalid.quarantine_id.has_value());
-  DP_EXPECT_TRUE(!invalid.artifact.has_value());
-  DP_EXPECT_TRUE(!std::filesystem::exists(
-      invalid_environment.workspace().normal_root / "matrix-invalid/merge"));
-
-  auto incompatible =
-      dp::test::canonical_execution_request("matrix-incompatible", dataset);
-  incompatible.local_implementation_id = "not_registered";
-  const auto rejected =
-      dp::PipelineExecutor(registry, invalid_environment.workspace())
-          .execute(incompatible, context);
-  DP_EXPECT_EQ(rejected.invocations.partition, std::size_t{0});
-  DP_EXPECT_EQ(rejected.invocations.local_build, std::size_t{0});
-  DP_EXPECT_EQ(rejected.invocations.merge, std::size_t{0});
+  DP_EXPECT_EQ(identities.size(), std::size_t{29});
   return dp::test::finish();
 }

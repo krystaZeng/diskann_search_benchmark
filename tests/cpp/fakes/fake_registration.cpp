@@ -2,10 +2,6 @@
 
 namespace diskann_pipeline::test {
 
-std::unique_ptr<PartitionStrategy> make_fake_partition();
-std::unique_ptr<LocalGraphBuilder> make_fake_local_graph();
-std::unique_ptr<GraphMerger> make_fake_merge();
-
 namespace {
 
 const std::filesystem::path kParameterSchema =

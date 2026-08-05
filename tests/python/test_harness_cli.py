@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+import diskann_harness.runner as runner_module
 
 from diskann_harness.cli import main
 from diskann_harness.cli import build_parser
@@ -45,10 +46,10 @@ def test_all_harness_lifecycles_have_stable_argument_shapes() -> None:
         0: "success",
         2: "usage_or_request_invalid",
         3: "preflight_rejected",
-        4: "stage_failed",
+        4: "stage_failed_or_cancelled",
         5: "invalid_output",
-        6: "cancelled",
-        7: "validation_or_evaluation_failed",
+        6: "validation_rejected",
+        7: "evaluation_failed",
         10: "internal_error",
     }
 
@@ -68,3 +69,54 @@ def test_cli_propagates_configuration_error(tmp_path: Path) -> None:
     config.write_text("workspace: &w\n  root: .\nworkspace: *w\n", encoding="utf-8")
     assert main(["execute", "--config", str(config), "--workspace", str(tmp_path),
                  "--runner", str(tmp_path / "missing")]) == 2
+
+
+@pytest.mark.parametrize("requires_force", [False, True])
+def test_harness_interrupt_records_cancelled_without_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, requires_force: bool
+) -> None:
+    class InterruptedProcess:
+        returncode: int | None = None
+        terminated = False
+        killed = False
+        observations = 0
+
+        def communicate(self, timeout: int | None = None) -> tuple[str, str]:
+            self.observations += 1
+            if self.observations == 1:
+                raise KeyboardInterrupt
+            if requires_force and self.observations == 2:
+                raise runner_module.subprocess.TimeoutExpired("runner", timeout)
+            self.returncode = -9 if requires_force else -15
+            return "", "terminated by Harness"
+
+        def terminate(self) -> None:
+            self.terminated = True
+
+        def kill(self) -> None:
+            self.killed = True
+
+    process = InterruptedProcess()
+    monkeypatch.setattr(runner_module.subprocess, "Popen", lambda *a, **k: process)
+    request = tmp_path / "request.json"
+    request.write_text(
+        json.dumps({"request_id": "interrupt-test", "operation": "execute"}),
+        encoding="utf-8",
+    )
+    result_path = tmp_path / "result.json"
+    result = run_runner(
+        tmp_path / "runner", request, result_path,
+        repository_root=Path(__file__).resolve().parents[2],
+    )
+    assert result["outcome"] == "CANCELLED"
+    assert result["exit_code"] == 4
+    assert result["stage_invocations"] == {
+        "partition": 0,
+        "local_build": 0,
+        "merge": 0,
+    }
+    assert "artifact" not in result
+    assert "quarantine_id" not in result
+    assert process.terminated is True
+    assert process.killed is requires_force
+    assert f"forced={str(requires_force).lower()}" in result["failure"]["reason"]

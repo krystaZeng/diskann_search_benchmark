@@ -12,8 +12,8 @@
   --runner build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner
 ```
 
-Result: exit **0**. Summary:
-`build/feature-001/fake-workspace/reports/summaries/fake-six-node-two-run-v1.json`.
+Result: exit **0** in a fresh convergence workspace. Summary:
+`/private/tmp/diskann-feature001-quickstart.BJiKlF/canonical-after-build/reports/summaries/fake-six-node-two-run-v1.json`.
 
 Both retained runs report invocation counts `{partition: 1, local_build: 2, merge: 1}` and final
 aggregate checksum
@@ -46,9 +46,16 @@ Representative paths for run 1:
   --runner build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner
 ```
 
-Result: exit **0**. Both retained runs report invocation counts
+Result: exit **0** in
+`/private/tmp/diskann-feature001-quickstart.BJiKlF/reuse-after-build/`. Both retained runs report invocation counts
 `{partition: 0, local_build: 2, merge: 1}`, the same final checksum/adjacency as the canonical run,
 fresh validation evidence for the reused Partition, and a terminal `REUSED` Partition manifest.
 
 No real DiskANN executable or dataset was invoked by either command.
 
+## Convergence checks
+
+The Phase 5 full suite passed **23/23 CTests** and **49/49 pytest tests**. The negative matrix now
+executes all 29 cases through case-specific materializers, rather than checking only the inventory.
+The Harness build lifecycle produced `build/feature-001/build-manifest.json` with actual
+configure/build commands and without per-translation-unit or linker command capture.

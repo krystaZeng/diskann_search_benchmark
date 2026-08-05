@@ -3,21 +3,10 @@
 #include "diskann_pipeline/runner_protocol.hpp"
 #include "diskann_pipeline/document_codec.hpp"
 
-#include <nlohmann/json.hpp>
-
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 
 namespace {
-
-nlohmann::json read_request(const std::filesystem::path& path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input) {
-    throw std::runtime_error("Fake runner request is missing");
-  }
-  return nlohmann::json::parse(input);
-}
 
 void materialize_reuse_fixture(
     const diskann_pipeline::WorkspaceRef& workspace,
@@ -46,34 +35,53 @@ void materialize_reuse_fixture(
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6 || std::string(argv[2]) != "--request" ||
-      std::string(argv[4]) != "--result") {
+  const bool registry_command =
+      argc == 4 && std::string(argv[1]) == "registry" &&
+      std::string(argv[2]) == "--result";
+  const bool request_command =
+      argc == 6 && std::string(argv[2]) == "--request" &&
+      std::string(argv[4]) == "--result";
+  if (!registry_command && !request_command) {
     std::cerr << "usage: diskann_pipeline_fake_runner OPERATION --request FILE --result FILE\n";
     return static_cast<int>(diskann_pipeline::RunnerExitCode::kUsage);
   }
   try {
-    const auto request = read_request(argv[3]);
-    if (request.at("operation").get<std::string>() != argv[1]) {
-      throw std::runtime_error("runner operation differs from request operation");
-    }
-    const auto root = request.at("workspace").at("root").get<std::string>();
-    diskann_pipeline::test::FakeStageEnvironment environment("runner", root);
-    const auto dataset =
-        diskann_pipeline::test::materialize_fake_dataset(environment.workspace());
-    if (request.contains("reuse_artifact")) {
-      materialize_reuse_fixture(
-          environment.workspace(), dataset,
-          diskann_pipeline::parse_artifact_ref(
-              request.at("reuse_artifact").dump()));
+    if (registry_command) {
+      diskann_pipeline::ImplementationRegistry registry(
+          diskann_pipeline::RegistryAdmissionPolicy::kTest);
+      diskann_pipeline::test::register_fake_implementations(registry);
+      registry.seal();
+      const auto result = diskann_pipeline::dispatch_registry_request(registry);
+      diskann_pipeline::write_runner_result(argv[3], result.result_json);
+      return result.exit_code;
     }
     diskann_pipeline::ImplementationRegistry registry(
         diskann_pipeline::RegistryAdmissionPolicy::kTest);
     diskann_pipeline::test::register_fake_implementations(registry);
     registry.seal();
+    diskann_pipeline::RunnerRequestPrelude prelude;
+    try {
+      prelude = diskann_pipeline::inspect_runner_request(argv[3], argv[1]);
+    } catch (const std::exception&) {
+      diskann_pipeline::StageContext empty_context;
+      const auto result = diskann_pipeline::dispatch_runner_request(
+          argv[3], argv[1], registry, empty_context);
+      diskann_pipeline::write_runner_result(argv[5], result.result_json);
+      return result.exit_code;
+    }
+    const auto root = prelude.workspace_root;
+    diskann_pipeline::reject_runner_write_target(argv[5]);
+    diskann_pipeline::test::FakeStageEnvironment environment("runner", root);
+    const auto dataset =
+        diskann_pipeline::test::materialize_fake_dataset(environment.workspace());
+    if (prelude.reuse_artifact) {
+      materialize_reuse_fixture(
+          environment.workspace(), dataset, *prelude.reuse_artifact);
+    }
     auto context = environment.make_context(
-        request.at("request_id").get<std::string>() + "-dispatch");
+        prelude.request_id + "-dispatch");
     const auto result = diskann_pipeline::dispatch_runner_request(
-        argv[3], registry, context);
+        argv[3], argv[1], registry, context);
     diskann_pipeline::write_runner_result(argv[5], result.result_json);
     return result.exit_code;
   } catch (const std::exception& error) {

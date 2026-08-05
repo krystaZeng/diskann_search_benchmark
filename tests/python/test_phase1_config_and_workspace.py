@@ -10,7 +10,12 @@ from diskann_harness.config import (
     write_normalized_request,
 )
 from diskann_harness.manifests import ImmutableWriteError
-from diskann_harness.workspace import WorkspaceError, resolve_confined_path
+from diskann_harness.runner import build_project
+from diskann_harness.workspace import (
+    WorkspaceError,
+    normalize_workspace,
+    resolve_confined_path,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -49,3 +54,23 @@ def test_immutable_normalized_request_and_path_escape_rejection(tmp_path: Path) 
     with pytest.raises(WorkspaceError):
         resolve_confined_path(tmp_path, "../escape.json")
 
+
+def test_upstream_writable_targets_are_rejected_before_mutation(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    upstream = repository / "upstream" / "diskann-cpp-main"
+    upstream.mkdir(parents=True)
+    workspace = upstream / "generated-workspace"
+    build = upstream / "generated-build"
+
+    with pytest.raises(WorkspaceError, match="outside upstream"):
+        normalize_workspace(workspace, repository_root=repository)
+    with pytest.raises(WorkspaceError, match="outside upstream"):
+        build_project(repository, build, repository_root=repository)
+    with pytest.raises(WorkspaceError, match="outside upstream"):
+        build_project(upstream, tmp_path / "outside-build", repository_root=repository)
+
+    assert not workspace.exists()
+    assert not build.exists()
+    assert not (tmp_path / "outside-build").exists()

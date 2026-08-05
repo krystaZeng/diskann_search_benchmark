@@ -77,6 +77,19 @@ WorkspaceRef create_workspace(const std::filesystem::path& root) {
   return workspace;
 }
 
+void reject_upstream_write_target(
+    const std::filesystem::path& target,
+    const std::filesystem::path& repository_root) {
+  const auto normalized_target = normalized_absolute(target);
+  const auto upstream = normalized_absolute(
+      repository_root / "upstream" / "diskann-cpp-main");
+  if (is_path_prefix(upstream, normalized_target)) {
+    throw PipelineError(
+        ErrorCategory::kPathEscape,
+        "writable target must remain outside upstream/diskann-cpp-main");
+  }
+}
+
 TemporaryStorageRef create_temporary_storage(const WorkspaceRef& workspace,
                                              std::string_view stage_identity) {
   if (stage_identity.empty()) {
@@ -150,4 +163,3 @@ void validate_stage_context(const StageContext& context) {
 }
 
 }  // namespace diskann_pipeline
-

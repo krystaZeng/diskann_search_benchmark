@@ -1,4 +1,5 @@
 #include "diskann_pipeline/registry.hpp"
+#include "cli/production_registry.hpp"
 
 #include "support/test_assert.hpp"
 
@@ -11,6 +12,7 @@ int main() {
   static_assert(std::is_constructible_v<dp::ImplementationRegistry,
                                         dp::RegistryAdmissionPolicy>);
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
+  dp::register_production_implementations(registry);
   registry.seal();
   const auto descriptors = registry.enumerate();
   DP_EXPECT_TRUE(descriptors.empty());

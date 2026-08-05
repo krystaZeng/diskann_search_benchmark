@@ -110,10 +110,14 @@ std::string deterministic_evaluation_projection(
   return Json{{"degree_bound",
                report.findings.observed_max_degree <=
                    report.findings.declared_max_degree},
+              {"declared_max_degree",
+               report.findings.declared_max_degree},
               {"graph_integrity", report.findings.graph_integrity},
               {"invalid_neighbor_count",
                report.findings.invalid_neighbor_count},
               {"logical_node_count", report.findings.logical_node_count},
+              {"observed_max_degree",
+               report.findings.observed_max_degree},
               {"passed", report.findings.passed}}
       .dump();
 }

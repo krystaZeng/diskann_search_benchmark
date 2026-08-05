@@ -108,10 +108,22 @@ add_diskann_pipeline_phase4_test(
 add_diskann_pipeline_phase4_test(
   negative_matrix_e2e
   integration/test_negative_matrix_e2e.cpp)
+add_diskann_pipeline_phase4_test(
+  parameter_schema_gate
+  integration/test_parameter_schema_gate.cpp)
+set_tests_properties(parameter_schema_gate PROPERTIES LABELS "phase5")
+add_diskann_pipeline_phase4_test(
+  terminal_output_contract
+  integration/test_terminal_output_contract.cpp)
+set_tests_properties(terminal_output_contract PROPERTIES LABELS "phase5")
 
 add_executable(production_surface contract/test_production_surface.cpp)
+target_sources(
+  production_surface PRIVATE "${PROJECT_SOURCE_DIR}/src/cli/production_registry.cpp")
 target_link_libraries(production_surface PRIVATE diskann_pipeline::core)
-target_include_directories(production_surface PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_include_directories(
+  production_surface
+  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/src")
 diskann_pipeline_apply_cxx17(production_surface)
 add_test(NAME production_surface COMMAND production_surface)
 set_tests_properties(production_surface PROPERTIES LABELS "phase4;assembly")

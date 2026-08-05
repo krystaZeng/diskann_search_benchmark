@@ -1,4 +1,4 @@
-#include "diskann_pipeline/registry.hpp"
+#include "production_registry.hpp"
 
 namespace diskann_pipeline {
 

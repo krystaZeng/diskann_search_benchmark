@@ -77,6 +77,12 @@ int main() {
   DP_EXPECT_TRUE(first.report.findings.observed_max_degree <=
                  first.report.findings.declared_max_degree);
   DP_EXPECT_TRUE(first.report.findings.passed);
+  const auto projection = nlohmann::json::parse(
+      dp::deterministic_evaluation_projection(first.report));
+  DP_EXPECT_EQ(projection.at("declared_max_degree").get<std::uint32_t>(),
+               first.report.findings.declared_max_degree);
+  DP_EXPECT_EQ(projection.at("observed_max_degree").get<std::uint32_t>(),
+               first.report.findings.observed_max_degree);
   for (const auto partition_id : {0U, 1U}) {
     const auto local_root = first_environment.workspace().normal_root /
                             "retained-run-1" /
@@ -109,6 +115,16 @@ int main() {
   }
   DP_EXPECT_EQ(dp::deterministic_evaluation_projection(first.report),
                dp::deterministic_evaluation_projection(second.report));
+  auto identity_only_change = first.report;
+  identity_only_change.report_id = "different-report-id";
+  identity_only_change.generated_at = "2030-01-01T00:00:00Z";
+  DP_EXPECT_EQ(dp::deterministic_evaluation_projection(first.report),
+               dp::deterministic_evaluation_projection(identity_only_change));
+  auto deterministic_mismatch = first.report;
+  ++deterministic_mismatch.findings.observed_max_degree;
+  DP_EXPECT_TRUE(dp::deterministic_evaluation_projection(first.report) !=
+                 dp::deterministic_evaluation_projection(
+                     deterministic_mismatch));
   DP_EXPECT_TRUE(first.report.report_id != second.report.report_id);
   DP_EXPECT_TRUE(first.report.generated_at != second.report.generated_at);
   DP_EXPECT_TRUE(first.result.evaluation_report_path !=

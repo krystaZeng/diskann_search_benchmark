@@ -23,6 +23,7 @@ add_library(
   validation/graph_validator.cpp
   validation/validator.cpp
   validation/adapter_policy.cpp)
+target_sources(diskann_pipeline_core PRIVATE validation/parameter_validator.cpp)
 add_library(diskann_pipeline::core ALIAS diskann_pipeline_core)
 
 target_link_libraries(
@@ -46,7 +47,9 @@ target_compile_definitions(
     DISKANN_PIPELINE_BUILD_TYPE="${DISKANN_PIPELINE_RECORDED_BUILD_TYPE}")
 target_compile_definitions(
   diskann_pipeline_core
-  PRIVATE DISKANN_PIPELINE_BINARY_DIR="${CMAKE_BINARY_DIR}")
+  PRIVATE
+    DISKANN_PIPELINE_BINARY_DIR="${CMAKE_BINARY_DIR}"
+    DISKANN_PIPELINE_PROJECT_ROOT="${CMAKE_SOURCE_DIR}")
 diskann_pipeline_apply_cxx17(diskann_pipeline_core)
 
 add_subdirectory(cli)

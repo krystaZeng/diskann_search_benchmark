@@ -58,6 +58,14 @@ int main() {
   DP_EXPECT_THROW(dp::resolve_confined_path(workspace.root,
                                              std::filesystem::path("/tmp/escape")));
 
+  const auto repository = root / "repository";
+  const auto upstream = repository / "upstream" / "diskann-cpp-main";
+  std::filesystem::create_directories(upstream);
+  const auto forbidden = upstream / "generated";
+  DP_EXPECT_THROW(dp::reject_upstream_write_target(forbidden, repository));
+  DP_EXPECT_TRUE(!std::filesystem::exists(forbidden));
+  dp::reject_upstream_write_target(root / "outside-upstream", repository);
+
   const auto temporary = dp::create_temporary_storage(workspace, "partition-0");
   DP_EXPECT_TRUE(std::filesystem::exists(temporary.stage_root));
   const auto target = workspace.manifest_root / "atomic.json";

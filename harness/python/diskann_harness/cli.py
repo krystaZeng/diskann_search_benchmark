@@ -13,6 +13,33 @@ from .runner import RunnerError, build_project, execute_configuration, run_singl
 from .workspace import WorkspaceError
 
 
+CANONICAL_ARTIFACT_CONTRACTS: dict[str, dict[str, object]] = {
+    "dataset": {
+        "format_version": "fake-dataset-json/v1",
+        "id_space": "none",
+        "capabilities": ["dataset.vector_access/v1"],
+    },
+    "partition": {
+        "format_version": "partition-artifact/v1",
+        "id_space": "local",
+        "capabilities": [
+            "partition.complete_local_to_global_map/v1",
+            "partition.overlap/v1",
+        ],
+    },
+    "local_graph": {
+        "format_version": "local-graph-artifact/v1",
+        "id_space": "local",
+        "capabilities": ["graph.local_adjacency/v1"],
+    },
+    "global_graph": {
+        "format_version": "global-graph-artifact/v1",
+        "id_space": "global",
+        "capabilities": ["graph.global_adjacency/v1"],
+    },
+}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="diskann-harness")
     parser.add_argument(
@@ -41,7 +68,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.operation == "build":
             if not args.build_dir:
                 raise RunnerError("build requires --build-dir")
-            output = build_project(args.source_dir, args.build_dir, build_type=args.build_type)
+            output = build_project(
+                args.source_dir,
+                args.build_dir,
+                build_type=args.build_type,
+                config_path=args.config,
+            )
             print(output)
             return 0
         if not args.workspace or not args.runner:
@@ -58,9 +90,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.artifact_ref:
             raise RunnerError(f"{args.operation} requires --artifact-ref")
         artifact = json.loads(Path(args.artifact_ref).read_text(encoding="utf-8"))
+        artifact_type = artifact.get("artifact_type")
+        if artifact_type not in CANONICAL_ARTIFACT_CONTRACTS:
+            raise RunnerError("unsupported Artifact type for Feature 001 lifecycle")
+        contract = CANONICAL_ARTIFACT_CONTRACTS[artifact_type]
         request: dict[str, object] = {
             "request_version": "1.0.0",
-            "request_id": f"harness-{args.operation}",
+            "request_id": (
+                f"harness-{args.operation}-{artifact_type}-"
+                f"{artifact['aggregate_checksum'][:12]}"
+            ),
             "operation": args.operation,
             "study_class": "infrastructure_validation",
             "workspace": {"root": str(Path(args.workspace).resolve())},
@@ -68,14 +107,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         if args.operation == "validate":
             request["expected_contract"] = {
-                "artifact_type": artifact["artifact_type"],
-                "accepted_format_versions": [artifact["format_version"]],
-                "id_space": "global" if artifact["artifact_type"] == "global_graph" else "none",
-                "capabilities": (
-                    ["graph.global_adjacency/v1"]
-                    if artifact["artifact_type"] == "global_graph"
-                    else ["dataset.vector_access/v1"]
-                ),
+                "artifact_type": artifact_type,
+                "accepted_format_versions": [contract["format_version"]],
+                "id_space": contract["id_space"],
+                "capabilities": contract["capabilities"],
             }
         else:
             request["evaluator"] = {

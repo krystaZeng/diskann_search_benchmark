@@ -89,9 +89,10 @@ publishes or quarantines each candidate before continuing.
 | `7` | evaluation refused or failed | Artifact remains unchanged |
 | `10` | internal Harness/runner error | No success claim; inspect result/evidence if present |
 
-Signal termination or inability to write the result is treated as an internal failure by Python;
-the Harness records the subprocess command, exit status, and available stderr without fabricating a
-runner result.
+Unrequested signal termination or inability to write a result is treated as an internal failure by
+Python. When the Harness itself receives an interruption while waiting for the runner, it follows
+the explicit cancellation lifecycle in Section 6 and publishes Harness-owned cancellation evidence;
+it does not fabricate an Artifact or claim that the runner completed normally.
 
 ## 5. RunRequest Operations
 
@@ -125,12 +126,14 @@ The complete Feature-local YAML example is
 
 ## 6. Cancellation
 
-Python forwards cancellation by requesting the runner's cooperative token first. Fake Partition,
-Local Build, and Merge each observe the token at stage start, after input resolution/validation,
-and before output publication. After a bounded grace period the Harness may terminate the
-subprocess, recording external termination as failure/cancellation evidence. Cancellation starts no
-later stage, produces no normal or fabricated Artifact, and never maps to `INVALID_OUTPUT` unless a
-separately completed candidate genuinely fails validation.
+Fake Partition, Local Build, and Merge each observe their in-process cooperative token at stage
+start, after input resolution/validation, and before output publication. The Harness has no IPC for
+remotely mutating that token. If the Harness itself is interrupted while waiting, it requests normal
+termination of the runner subprocess, waits for a bounded grace period, and forces termination only
+when necessary. It records whether forced termination was required, reports `CANCELLED` with exit
+code `4`, publishes neither a normal nor an `INVALID_OUTPUT` Artifact, and cannot start a later
+stage after the subprocess has terminated. Unrequested runner termination remains an internal
+failure.
 
 ## 7. Security and Isolation Rules
 

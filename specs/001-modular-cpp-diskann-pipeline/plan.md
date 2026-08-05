@@ -21,6 +21,21 @@ without linking or executing the real DiskANN Baseline.
 under `tests/cpp/fakes`. The Python entry point is `diskann-harness` / `python -m
 diskann_harness.cli` with `build`, `execute`, `validate`, and `evaluate` lifecycles.
 
+## Delivery Status
+
+Feature 001 is frozen as an **infrastructure prototype / contract MVP**. It establishes and has
+validated the public ID model, immutable Artifact references, Registry admission and resolution,
+Artifact validation, the test-only Fake Pipeline, and the minimum Harness lifecycle needed to
+exercise those contracts.
+
+This delivery does not integrate or execute the real `cpp_main` Baseline. The installed production
+runner currently has no formal Partition, Local Build, or Merge implementation registered, and
+Feature 001 must not be described as a production-ready scientific pipeline. It produces neither a
+Baseline result nor a paper-reproduction result. The deferred hardening items are recorded in
+[deferred-hardening.md](deferred-hardening.md); they are not prerequisites for starting Feature B.
+Whether any public contract should be adjusted will be decided from evidence obtained while
+integrating the real Baseline, rather than by extending the Fake-only infrastructure in advance.
+
 ## Technical Context
 
 **Language/Version**: Public core and module contracts: ISO C++17; Python Harness: Python 3.10+.
@@ -80,8 +95,10 @@ development uses AppleClang/Clang with complete C++17 support. CMake sets
 `CMAKE_CXX_STANDARD=17`, `CMAKE_CXX_STANDARD_REQUIRED=ON`, `CMAKE_CXX_EXTENSIONS=OFF`, and
 `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. Project targets use `-Wall -Wextra -Wpedantic` on GCC/Clang;
 Debug uses `-O0 -g`, and Release uses `-O3 -DNDEBUG`. The Harness records the actual compiler
-path/version, generator, build type, definitions, and fully expanded compile/link commands in each
-BuildManifest rather than treating these defaults as sufficient provenance.
+path/version, CMake version, generator, build type, actual configure/build commands, effective
+CMake definitions, and project compile options in each BuildManifest rather than treating these
+defaults as sufficient provenance. Feature 001 does not require per-translation-unit compile-command
+or linker-command capture.
 
 **Dataset Identity**: `fake-six-node-v1`: six fixed two-dimensional vectors whose logical vector
 type is `float32`, from FR-045, with exact L2, no query set or ground truth, two fixed overlapping
@@ -157,6 +174,7 @@ specs/001-modular-cpp-diskann-pipeline/
 ├── research.md
 ├── data-model.md
 ├── quickstart.md
+├── deferred-hardening.md     # frozen T092–T098 gaps and reassessment triggers
 ├── contracts/
 │   ├── README.md
 │   ├── adapter-policy.md

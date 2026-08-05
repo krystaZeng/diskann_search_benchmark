@@ -9,10 +9,34 @@ class WorkspaceError(ValueError):
     """Raised when a workspace path escapes its declared root."""
 
 
-def normalize_workspace(root: str | Path) -> dict[str, str]:
+def reject_upstream_target(
+    target: str | Path, repository_root: str | Path
+) -> Path:
+    """Resolve a writable target and reject the fixed upstream Baseline tree."""
+
+    normalized = Path(target).expanduser().resolve(strict=False)
+    upstream = (
+        Path(repository_root).expanduser().resolve(strict=False)
+        / "upstream"
+        / "diskann-cpp-main"
+    )
+    try:
+        normalized.relative_to(upstream)
+    except ValueError:
+        return normalized
+    raise WorkspaceError(
+        "writable target must remain outside upstream/diskann-cpp-main"
+    )
+
+
+def normalize_workspace(
+    root: str | Path, *, repository_root: str | Path | None = None
+) -> dict[str, str]:
     normalized = Path(root).expanduser().resolve(strict=False)
     if not str(normalized):
         raise WorkspaceError("workspace root is empty")
+    if repository_root is not None:
+        normalized = reject_upstream_target(normalized, repository_root)
     return {
         "root": str(normalized),
         "normal_root": str(normalized / "normal"),
@@ -38,8 +62,12 @@ def resolve_confined_path(root: str | Path, relative_path: str | Path) -> Path:
     return candidate
 
 
-def create_workspace(roots: dict[str, str]) -> None:
+def create_workspace(
+    roots: dict[str, str], *, repository_root: str | Path | None = None
+) -> None:
     root = Path(roots["root"])
+    if repository_root is not None:
+        reject_upstream_target(root, repository_root)
     for key in (
         "normal_root",
         "temporary_root",
@@ -53,4 +81,3 @@ def create_workspace(roots: dict[str, str]) -> None:
         except ValueError as error:
             raise WorkspaceError(f"{key} escapes workspace root") from error
         path.mkdir(parents=True, exist_ok=True)
-

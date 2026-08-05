@@ -2,7 +2,7 @@
 
 **Date**: 2026-08-05
 
-Before Phase 3/4 implementation and after the complete build/test/quickstart sequence:
+Before convergence and after the complete Phase 5 build/test/quickstart sequence:
 
 ```text
 git submodule status -- upstream/diskann-cpp-main
@@ -12,7 +12,8 @@ git status --short -- upstream/diskann-cpp-main
 <empty>
 ```
 
-All CMake output is below `build/feature-001/`; Fake workspaces are below that build directory or
-pytest temporary directories. No command configured, built, formatted, tested, or generated a file
-inside `upstream/diskann-cpp-main`. The pinned Baseline remains `not-executed`.
-
+All CMake output is below `build/feature-001/`; convergence Fake workspaces are below
+`/private/tmp/diskann-feature001-quickstart.BJiKlF/` or pytest temporary directories. Harness and
+direct-runner regression tests also proved that source/build/workspace/result targets inside the
+upstream tree are rejected before mutation. No command configured, built, formatted, tested, or
+generated a file inside `upstream/diskann-cpp-main`. The pinned Baseline remains `not-executed`.

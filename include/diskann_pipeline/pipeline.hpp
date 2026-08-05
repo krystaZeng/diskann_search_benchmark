@@ -31,6 +31,7 @@ struct PipelineExecutionRequest {
   std::string partition_parameters_json{"{}"};
   std::string local_parameters_json{"{}"};
   std::string merge_parameters_json{"{}"};
+  std::string source_config_json{"{}"};
   std::optional<ArtifactRef> reused_partition;
   SourceIdentity source;
   ToolchainIdentity toolchain;

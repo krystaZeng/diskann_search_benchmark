@@ -6,7 +6,10 @@ import copy
 import hashlib
 import json
 import os
+import platform
+import shlex
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +18,12 @@ from referencing import Registry, Resource
 
 from .config import load_yaml_file, normalize_run_request, write_normalized_request
 from .manifests import ImmutableWriteError, write_immutable_json
-from .workspace import create_workspace, normalize_workspace, resolve_confined_path
+from .workspace import (
+    create_workspace,
+    normalize_workspace,
+    reject_upstream_target,
+    resolve_confined_path,
+)
 
 
 class RunnerError(RuntimeError):
@@ -26,10 +34,10 @@ EXIT_MEANINGS = {
     0: "success",
     2: "usage_or_request_invalid",
     3: "preflight_rejected",
-    4: "stage_failed",
+    4: "stage_failed_or_cancelled",
     5: "invalid_output",
-    6: "cancelled",
-    7: "validation_or_evaluation_failed",
+    6: "validation_rejected",
+    7: "evaluation_failed",
     10: "internal_error",
 }
 
@@ -72,10 +80,18 @@ def run_runner(
     repository_root: str | Path | None = None,
 ) -> dict[str, Any]:
     try:
-        operation = json.loads(Path(request).read_text(encoding="utf-8"))["operation"]
+        request_document = json.loads(Path(request).read_text(encoding="utf-8"))
+        operation = request_document["operation"]
+        request_id = request_document.get("request_id", "invalid-request")
     except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as error:
         raise RunnerError("cannot determine runner operation from request") from error
     command = build_runner_command(runner, operation, request, result)
+    repository = (
+        Path(repository_root).resolve()
+        if repository_root is not None
+        else Path(__file__).resolve().parents[3]
+    )
+    reject_upstream_target(result, repository)
     try:
         process = subprocess.Popen(
             command,
@@ -90,12 +106,46 @@ def run_runner(
         stdout, stderr = process.communicate()
     except KeyboardInterrupt:
         process.terminate()
+        forced = False
         try:
-            process.communicate(timeout=5)
+            _, stderr = process.communicate(timeout=5)
         except subprocess.TimeoutExpired:
+            forced = True
             process.kill()
-            process.communicate()
-        raise RunnerError("runner cancelled by caller") from None
+            _, stderr = process.communicate()
+        result_path = Path(result)
+        if result_path.exists():
+            raise RunnerError(
+                "runner published a conflicting terminal result during Harness cancellation"
+            ) from None
+        cancellation = {
+            "result_version": "1.0.0",
+            "request_id": request_id,
+            "operation": operation,
+            "outcome": "CANCELLED",
+            "exit_code": 4,
+            "stage_invocations": {
+                "partition": 0,
+                "local_build": 0,
+                "merge": 0,
+            },
+            "failure": {
+                "category": "cancelled",
+                "reason": (
+                    "Harness interruption requested subprocess termination; "
+                    f"forced={str(forced).lower()}"
+                ),
+                "exit_code": int(process.returncode if process.returncode is not None else -1),
+            },
+        }
+        write_immutable_json(result_path, cancellation)
+        root = (
+            Path(repository_root).resolve()
+            if repository_root is not None
+            else Path(__file__).resolve().parents[3]
+        )
+        _schema_validator("runner-result.schema.json", root).validate(cancellation)
+        return cancellation
 
     result_path = Path(result)
     if not result_path.is_file():
@@ -108,13 +158,8 @@ def run_runner(
         document = json.loads(result_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise RunnerError("runner result is not valid UTF-8 JSON") from error
-    root = (
-        Path(repository_root)
-        if repository_root is not None
-        else Path(__file__).resolve().parents[3]
-    )
     try:
-        _schema_validator("runner-result.schema.json", root).validate(document)
+        _schema_validator("runner-result.schema.json", repository).validate(document)
     except (ValidationError, KeyError, OSError, json.JSONDecodeError) as error:
         raise RunnerError(f"runner result schema validation failed: {error}") from error
     if document.get("exit_code") != process.returncode:
@@ -130,12 +175,36 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _canonical_json_sha256(document: Any) -> str:
+    return _sha256_bytes(
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    )
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
+        "+00:00", "Z"
+    )
+
+
 def _evaluation_projection(report: dict[str, Any]) -> dict[str, Any]:
     findings = report["findings"]
     return {
         "graph_integrity": findings["graph_integrity"],
         "logical_node_count": findings["logical_node_count"],
         "invalid_neighbor_count": findings["invalid_neighbor_count"],
+        "declared_max_degree": findings["declared_max_degree"],
+        "observed_max_degree": findings["observed_max_degree"],
         "degree_bound": (
             findings["observed_max_degree"] <= findings["declared_max_degree"]
         ),
@@ -174,8 +243,13 @@ def execute_configuration(
     configuration = load_yaml_file(config_file)
     configuration["workspace"]["root"] = str(Path(workspace_root).resolve())
     normalized = normalize_run_request(configuration, repository_root=repository)
+    normalized_digest = _canonical_json_sha256(normalized)
+    normalized["source_config"] = {
+        "yaml_sha256": _sha256(config_file),
+        "normalized_json_sha256": normalized_digest,
+    }
     roots = normalized["workspace"]
-    create_workspace(roots)
+    create_workspace(roots, repository_root=repository)
     count = normalized["repetition_policy"]["count"]
     if count != 2 or normalized["repetition_policy"]["aggregation"] != "retain_all":
         raise RunnerError("Feature 001 requires two retained deterministic runs")
@@ -231,6 +305,12 @@ def execute_configuration(
     )
     write_immutable_json(summary_path, summary)
     summary["summary_path"] = str(summary_path)
+    if len(identities) == 2 and (
+        not deterministic_equal or not distinct_provenance
+    ):
+        raise RunnerError(
+            "two-run determinism/provenance contract failed; both runs were retained"
+        )
     return summary
 
 
@@ -248,13 +328,13 @@ def run_single_request(
     )
     request = copy.deepcopy(request)
     request["workspace"] = {
-        **normalize_workspace(workspace_root),
+        **normalize_workspace(workspace_root, repository_root=repository),
         "memory_budget_bytes": 1048576,
         "thread_budget": 1,
     }
     normalized = normalize_run_request(request, repository_root=repository)
     roots = normalized["workspace"]
-    create_workspace(roots)
+    create_workspace(roots, repository_root=repository)
     request_path = resolve_confined_path(
         roots["manifest_root"], f"requests/{normalized['request_id']}.json"
     )
@@ -270,9 +350,17 @@ def build_project(
     build_dir: str | Path,
     *,
     build_type: str = "Debug",
+    repository_root: str | Path | None = None,
+    config_path: str | Path | None = None,
 ) -> Path:
-    source = Path(source_dir).resolve()
-    build = Path(build_dir).resolve()
+    repository = (
+        Path(repository_root).resolve()
+        if repository_root is not None
+        else Path(__file__).resolve().parents[3]
+    )
+    source = reject_upstream_target(source_dir, repository)
+    build = reject_upstream_target(build_dir, repository)
+    configure_started_at = _utc_now()
     configure = [
         "cmake",
         "-S",
@@ -288,19 +376,201 @@ def build_project(
             raise RunnerError(
                 f"build command failed ({completed.returncode}): {completed.stderr.strip()}"
             )
+    build_ended_at = _utc_now()
     cache = build / "CMakeCache.txt"
-    provenance = {
-        "source_dir": str(source),
-        "build_dir": str(build),
-        "build_type": build_type,
-        "commands": [configure, compile_command],
-        "cmake_cache_sha256": _sha256(cache),
-    }
-    target = build / "build-provenance.json"
+    cache_entries: dict[str, str] = {}
+    for line in cache.read_text(encoding="utf-8", errors="strict").splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line:
+            continue
+        key_type, value = line.split("=", 1)
+        if ":" not in key_type:
+            continue
+        key, entry_type = key_type.split(":", 1)
+        if entry_type != "STATIC":
+            cache_entries[key] = value
+
+    compiler_path = cache_entries.get("CMAKE_CXX_COMPILER", "unavailable")
     try:
-        write_immutable_json(target, provenance)
+        compiler_version = subprocess.run(
+            [compiler_path, "--version"],
+            capture_output=True,
+            text=True,
+            shell=False,
+            check=True,
+        ).stdout.splitlines()[0]
+    except (OSError, subprocess.CalledProcessError, IndexError):
+        compiler_version = cache_entries.get(
+            "CMAKE_CXX_COMPILER_VERSION", "unavailable"
+        )
+    cmake_version = subprocess.run(
+        ["cmake", "--version"],
+        capture_output=True,
+        text=True,
+        shell=False,
+        check=True,
+    ).stdout.splitlines()[0]
+
+    try:
+        git_root = Path(
+            subprocess.run(
+                ["git", "-C", str(source), "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                shell=False,
+                check=True,
+            ).stdout.strip()
+        ).resolve()
+        branch = subprocess.run(
+            ["git", "-C", str(git_root), "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            shell=False,
+            check=True,
+        ).stdout.strip() or "detached-head"
+        commit = subprocess.run(
+            ["git", "-C", str(git_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            shell=False,
+            check=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "-C", str(git_root), "status", "--porcelain=v1", "--untracked-files=all"],
+            capture_output=True,
+            shell=False,
+            check=True,
+        ).stdout
+        dirty = bool(status)
+        dirty_material = bytearray(status)
+        if dirty:
+            dirty_material.extend(
+                subprocess.run(
+                    ["git", "-C", str(git_root), "diff", "--binary", "HEAD"],
+                    capture_output=True,
+                    shell=False,
+                    check=True,
+                ).stdout
+            )
+            untracked = subprocess.run(
+                ["git", "-C", str(git_root), "ls-files", "--others", "--exclude-standard"],
+                capture_output=True,
+                text=True,
+                shell=False,
+                check=True,
+            ).stdout.splitlines()
+            for relative in sorted(untracked):
+                path = git_root / relative
+                if path.is_file():
+                    dirty_material.extend(
+                        f"\nuntracked:{relative}:{_sha256(path)}".encode("utf-8")
+                    )
+        source_identity = {
+            "repository": str(git_root),
+            "branch": branch,
+            "commit": commit,
+            "dirty_worktree": dirty,
+        }
+        if dirty:
+            source_identity["dirty_source_checksum"] = _sha256_bytes(
+                bytes(dirty_material)
+            )
+    except (OSError, subprocess.CalledProcessError):
+        source_material = b"".join(
+            path.relative_to(source).as_posix().encode("utf-8") + b":" + path.read_bytes()
+            for path in sorted(source.rglob("*"))
+            if path.is_file()
+        )
+        source_identity = {
+            "repository": str(source),
+            "branch": "not-git",
+            "commit": "0" * 40,
+            "dirty_worktree": True,
+            "dirty_source_checksum": _sha256_bytes(source_material),
+        }
+
+    effective_definitions = [
+        f"{key}={value}"
+        for key, value in sorted(cache_entries.items())
+        if key.startswith(("CMAKE_", "DISKANN_PIPELINE_", "BUILD_"))
+    ]
+    project_compile_options = (
+        "/W4;/permissive-"
+        if os.name == "nt"
+        else "-Wall;-Wextra;-Wpedantic"
+    )
+    effective_definitions.append(
+        f"PROJECT_COMPILE_OPTIONS={project_compile_options}"
+    )
+    source_config: dict[str, object]
+    if config_path is not None:
+        config_file = Path(config_path).resolve()
+        configuration = load_yaml_file(config_file)
+        normalized_configuration = normalize_run_request(
+            configuration, repository_root=repository
+        )
+        source_config = {
+            "path": str(config_file),
+            "yaml_sha256": _sha256(config_file),
+            "normalized_json_sha256": _canonical_json_sha256(
+                normalized_configuration
+            ),
+        }
+    else:
+        source_config = {
+            "applicable": False,
+            "reason": "build lifecycle has no experiment YAML",
+        }
+
+    manifest = {
+        "manifest_version": "1.0.0",
+        "run_id": "harness-build",
+        "stage": "build",
+        "implementation": {
+            "implementation_id": "diskann_harness_build",
+            "implementation_version": "1.0.0",
+        },
+        "source": source_identity,
+        "toolchain": {
+            "os": platform.platform(),
+            "compiler_path": compiler_path,
+            "compiler_version": compiler_version,
+            "cmake_version": cmake_version,
+            "generator": cache_entries.get("CMAKE_GENERATOR", "unknown"),
+            "build_type": cache_entries.get("CMAKE_BUILD_TYPE", build_type),
+            "cmake_definitions": effective_definitions,
+            "compile_commands": [shlex.join(configure), shlex.join(compile_command)],
+            "link_commands": [],
+        },
+        "dataset": {
+            "dataset_id": "fake-six-node-v1",
+            "dataset_checksum": "2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b",
+            "global_node_count": 6,
+            "vector_dimension": 2,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        },
+        "parameters": {
+            "immutable_build_configuration": {
+                "source_dir": str(source),
+                "build_dir": str(build),
+                "build_type": build_type,
+                "cmake_cache_sha256": _sha256(cache),
+            },
+            "source_config": source_config,
+        },
+        "resource_budget": {"memory_budget_bytes": 1, "thread_budget": 1},
+        "input_artifacts": [],
+        "output_artifacts": [],
+        "status": "SUCCEEDED",
+        "started_at": configure_started_at,
+        "ended_at": build_ended_at,
+    }
+    _schema_validator("build-manifest.schema.json", repository).validate(manifest)
+    target = build / "build-manifest.json"
+    try:
+        write_immutable_json(target, manifest)
     except ImmutableWriteError:
         existing = json.loads(target.read_text(encoding="utf-8"))
-        if existing != provenance:
+        if existing != manifest:
             raise
     return target

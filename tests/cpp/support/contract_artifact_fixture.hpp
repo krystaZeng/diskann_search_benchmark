@@ -16,17 +16,17 @@ namespace diskann_pipeline::test {
 
 using Json = nlohmann::json;
 
-inline constexpr const char* kDatasetPayloadChecksum =
+inline constexpr const char* kContractDatasetPayloadChecksum =
     "2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b";
-inline constexpr const char* kDatasetAggregateChecksum =
+inline constexpr const char* kContractDatasetAggregateChecksum =
     "4cfb7bdb7ce50e3b9f07abe72b918a2666d35ef07211d675c708c0e1d0ecf12d";
-inline constexpr const char* kPartitionAggregateChecksum =
+inline constexpr const char* kContractPartitionAggregateChecksum =
     "a640037c2d07b2dcdff98cd22b82b5c4f5da7e6323fc8da2a61538c1cbbb2984";
-inline constexpr const char* kLocal0AggregateChecksum =
+inline constexpr const char* kContractLocal0AggregateChecksum =
     "31d93424d2d0a826891c5d2cc6d3b5b7da6f646a9c6f878603d532ddfae0c9c1";
-inline constexpr const char* kLocal1AggregateChecksum =
+inline constexpr const char* kContractLocal1AggregateChecksum =
     "ca02d15d4709d62aea8f404de57d2143be1205f6fa517b4d2d550fe2dab265f6";
-inline constexpr const char* kGlobalAggregateChecksum =
+inline constexpr const char* kContractGlobalAggregateChecksum =
     "443e732732f559249248d749c1fac19af9f1986fc44dbdf25f3c2ed7de59a0fe";
 
 inline Json source(ArtifactType type, const char* format,
@@ -38,7 +38,7 @@ inline Json source(ArtifactType type, const char* format,
 
 inline Json dataset_identity() {
   return {{"dataset_id", "fake-six-node-v1"},
-          {"dataset_checksum", kDatasetPayloadChecksum},
+          {"dataset_checksum", kContractDatasetPayloadChecksum},
           {"global_node_count", 6},
           {"vector_dimension", 2},
           {"scalar_type", "float32"},
@@ -163,16 +163,16 @@ class ContractArtifactFixture {
   std::filesystem::path root;
   WorkspaceRef workspace;
   ArtifactRef dataset{"dataset/artifact.json", ArtifactType::kDataset,
-                      "fake-dataset-json/v1", kDatasetAggregateChecksum};
+                      "fake-dataset-json/v1", kContractDatasetAggregateChecksum};
   ArtifactRef partition{"partition/artifact.json", ArtifactType::kPartition,
                         "partition-artifact/v1",
-                        kPartitionAggregateChecksum};
+                        kContractPartitionAggregateChecksum};
   ArtifactRef local0{"local0/artifact.json", ArtifactType::kLocalGraph,
-                     "local-graph-artifact/v1", kLocal0AggregateChecksum};
+                     "local-graph-artifact/v1", kContractLocal0AggregateChecksum};
   ArtifactRef local1{"local1/artifact.json", ArtifactType::kLocalGraph,
-                     "local-graph-artifact/v1", kLocal1AggregateChecksum};
+                     "local-graph-artifact/v1", kContractLocal1AggregateChecksum};
   ArtifactRef global{"global/artifact.json", ArtifactType::kGlobalGraph,
-                     "global-graph-artifact/v1", kGlobalAggregateChecksum};
+                     "global-graph-artifact/v1", kContractGlobalAggregateChecksum};
 
  private:
   void write_artifact(const ArtifactRef& reference, const Json& metadata,
@@ -187,16 +187,16 @@ class ContractArtifactFixture {
   void materialize() {
     const auto dataset_source =
         source(ArtifactType::kDataset, "fake-dataset-json/v1",
-               kDatasetAggregateChecksum);
+               kContractDatasetAggregateChecksum);
     const auto partition_source =
         source(ArtifactType::kPartition, "partition-artifact/v1",
-               kPartitionAggregateChecksum);
+               kContractPartitionAggregateChecksum);
     const auto local0_source =
         source(ArtifactType::kLocalGraph, "local-graph-artifact/v1",
-               kLocal0AggregateChecksum);
+               kContractLocal0AggregateChecksum);
     const auto local1_source =
         source(ArtifactType::kLocalGraph, "local-graph-artifact/v1",
-               kLocal1AggregateChecksum);
+               kContractLocal1AggregateChecksum);
 
     write_artifact(
         dataset,
@@ -217,8 +217,8 @@ class ContractArtifactFixture {
           Json::array({payload(
               "vectors", "vectors.json",
               "application/vnd.diskann.fake-vectors+json;version=1", 49,
-              kDatasetPayloadChecksum)})},
-         {"aggregate_checksum", kDatasetAggregateChecksum}},
+              kContractDatasetPayloadChecksum)})},
+         {"aggregate_checksum", kContractDatasetAggregateChecksum}},
         {{"vectors.json",
           "{\"vectors\":[[0,0],[1,0],[2,0],[0,1],[1,1],[2,1]]}"}});
 
@@ -262,7 +262,7 @@ class ContractArtifactFixture {
                payload("partition/1/local_to_global_map", "p1-map.json",
                        "application/json", 29,
                        "90923604fcdf8dcfa013e82292ecdba7d015e4b77638cbb387c9a583450f493c")})},
-         {"aggregate_checksum", kPartitionAggregateChecksum}},
+         {"aggregate_checksum", kContractPartitionAggregateChecksum}},
         {{"p0-vectors.json", "{\"vectors\":[[0,0],[1,0],[2,0],[0,1]]}"},
          {"p0-map.json", "{\"local_to_global\":[0,1,2,3]}"},
          {"p1-vectors.json", "{\"vectors\":[[2,0],[0,1],[1,1],[2,1]]}"},
@@ -288,7 +288,7 @@ class ContractArtifactFixture {
              {"local_node_count", 4},
              {"declared_max_degree", 2},
              {"observed_max_degree", 2},
-             {"source_partition_checksum", kPartitionAggregateChecksum}}},
+             {"source_partition_checksum", kContractPartitionAggregateChecksum}}},
            {"capabilities", Json::array({"graph.local_adjacency/v1"})},
            {"source_artifacts", Json::array({partition_source})},
            {"payloads",
@@ -301,11 +301,11 @@ class ContractArtifactFixture {
     };
     make_local(local0, 0,
                "76fb4d67995b155a9755dd54977692290b7cdf416294229b4f320b81efd5ce7c",
-               kLocal0AggregateChecksum,
+               kContractLocal0AggregateChecksum,
                "{\"local_to_global\":[0,1,2,3]}");
     make_local(local1, 1,
                "90923604fcdf8dcfa013e82292ecdba7d015e4b77638cbb387c9a583450f493c",
-               kLocal1AggregateChecksum,
+               kContractLocal1AggregateChecksum,
                "{\"local_to_global\":[2,3,4,5]}");
 
     write_artifact(
@@ -330,7 +330,7 @@ class ContractArtifactFixture {
           Json::array({payload(
               "global_graph", "graph.json", "application/json", 50,
               "9cbfeade7ef24a5b7b1911da4ff7baead15b7444e338e3b0a5ee42ed780d622f")})},
-         {"aggregate_checksum", kGlobalAggregateChecksum}},
+         {"aggregate_checksum", kContractGlobalAggregateChecksum}},
         {{"graph.json",
           "{\"adjacency\":[[1,2],[0,2],[1,3,4],[2,4],[3,5],[]]}"}});
   }

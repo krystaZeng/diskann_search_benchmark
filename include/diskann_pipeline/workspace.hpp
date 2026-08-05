@@ -8,6 +8,9 @@
 namespace diskann_pipeline {
 
 WorkspaceRef create_workspace(const std::filesystem::path& root);
+void reject_upstream_write_target(
+    const std::filesystem::path& target,
+    const std::filesystem::path& repository_root);
 TemporaryStorageRef create_temporary_storage(const WorkspaceRef& workspace,
                                              std::string_view stage_identity);
 std::filesystem::path resolve_confined_path(

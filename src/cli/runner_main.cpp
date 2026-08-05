@@ -2,15 +2,12 @@
 
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/workspace.hpp"
+#include "production_registry.hpp"
 
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <vector>
-
-namespace diskann_pipeline {
-void register_production_implementations(ImplementationRegistry& registry);
-}
 
 namespace {
 
@@ -46,8 +43,13 @@ class NeverCancelled final : public diskann_pipeline::CancellationToken {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 6 || std::string(argv[2]) != "--request" ||
-      std::string(argv[4]) != "--result") {
+  const bool registry_command =
+      argc == 4 && std::string(argv[1]) == "registry" &&
+      std::string(argv[2]) == "--result";
+  const bool request_command =
+      argc == 6 && std::string(argv[2]) == "--request" &&
+      std::string(argv[4]) == "--result";
+  if (!registry_command && !request_command) {
     std::cerr << "usage: diskann_pipeline_runner OPERATION --request FILE --result FILE\n";
     return static_cast<int>(diskann_pipeline::RunnerExitCode::kUsage);
   }
@@ -55,20 +57,34 @@ int main(int argc, char** argv) {
       diskann_pipeline::RegistryAdmissionPolicy::kProduction);
   diskann_pipeline::register_production_implementations(registry);
   registry.seal();
+  if (registry_command) {
+    const auto result = diskann_pipeline::dispatch_registry_request(registry);
+    try {
+      diskann_pipeline::write_runner_result(argv[3], result.result_json);
+    } catch (const std::exception& error) {
+      std::cerr << error.what() << '\n';
+      return static_cast<int>(diskann_pipeline::RunnerExitCode::kInternal);
+    }
+    return result.exit_code;
+  }
+  try {
+    diskann_pipeline::reject_runner_write_target(argv[5]);
+  } catch (const std::exception& error) {
+    std::cerr << error.what() << '\n';
+    return static_cast<int>(diskann_pipeline::RunnerExitCode::kInternal);
+  }
   UnavailableVectors vectors;
   UnavailableDistance distance;
   NullMetrics metrics;
   NeverCancelled cancellation;
   diskann_pipeline::UnavailableCheckpointStore checkpoints;
-  const auto bootstrap = diskann_pipeline::create_workspace(
-      std::filesystem::temp_directory_path() / "diskann-production-runner");
-  diskann_pipeline::TemporaryStorageRef temporary{
-      bootstrap.temporary_root / "bootstrap-unpublished"};
+  diskann_pipeline::WorkspaceRef bootstrap;
+  diskann_pipeline::TemporaryStorageRef temporary;
   diskann_pipeline::StageContext context{
       bootstrap, 1, 1, temporary, &vectors, &distance, &checkpoints, &metrics,
       &cancellation};
   const auto result = diskann_pipeline::dispatch_runner_request(
-      argv[3], registry, context);
+      argv[3], argv[1], registry, context);
   try {
     diskann_pipeline::write_runner_result(argv[5], result.result_json);
   } catch (const std::exception& error) {

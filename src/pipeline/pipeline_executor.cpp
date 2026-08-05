@@ -6,11 +6,15 @@
 #include "diskann_pipeline/reuse.hpp"
 #include "diskann_pipeline/stores.hpp"
 #include "diskann_pipeline/workspace.hpp"
+#include "validation/parameter_validator.hpp"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <variant>
 
@@ -18,6 +22,35 @@ namespace diskann_pipeline {
 namespace {
 
 using Json = nlohmann::json;
+
+#ifndef DISKANN_PIPELINE_PROJECT_ROOT
+#define DISKANN_PIPELINE_PROJECT_ROOT ""
+#endif
+
+std::string now_utc() {
+  const auto now = std::chrono::system_clock::now();
+  const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
+                          now.time_since_epoch()) %
+                      std::chrono::seconds(1);
+  const auto time = std::chrono::system_clock::to_time_t(now);
+  std::tm utc{};
+#if defined(_WIN32)
+  gmtime_s(&utc, &time);
+#else
+  gmtime_r(&time, &utc);
+#endif
+  std::ostringstream output;
+  output << std::put_time(&utc, "%Y-%m-%dT%H:%M:%S") << '.'
+         << std::setw(6) << std::setfill('0') << micros.count() << 'Z';
+  return output.str();
+}
+
+std::string manifest_parameters(const PipelineExecutionRequest& request,
+                                const std::string& stage_parameters) {
+  return Json{{"stage_parameters", Json::parse(stage_parameters)},
+              {"source_config", Json::parse(request.source_config_json)}}
+      .dump();
+}
 
 std::filesystem::path relative_to(const std::filesystem::path& path,
                                   const std::filesystem::path& root) {
@@ -47,20 +80,21 @@ BuildManifest base_manifest(const PipelineExecutionRequest& request,
                             const ImplementationDescriptor& descriptor,
                             const DatasetIdentity& dataset,
                             const std::string& parameters,
-                            std::vector<ArtifactRef> inputs) {
+                            std::vector<ArtifactRef> inputs,
+                            std::string started_at) {
   return {request.run_id,
           stage,
           {descriptor.implementation_id, descriptor.implementation_version},
           request.source,
           request.toolchain,
           dataset,
-          parameters,
+          manifest_parameters(request, parameters),
           {context.memory_budget_bytes, context.thread_budget},
           std::move(inputs),
           {},
           StageStatus::kRunning,
-          request.started_at,
-          request.ended_at,
+          std::move(started_at),
+          {},
           std::nullopt,
           std::nullopt,
           std::nullopt,
@@ -69,7 +103,8 @@ BuildManifest base_manifest(const PipelineExecutionRequest& request,
 
 std::filesystem::path persist_stage_manifest(
     const WorkspaceRef& workspace, const std::string& run_id,
-    const std::string& identity, const BuildManifest& manifest) {
+    const std::string& identity, BuildManifest manifest) {
+  manifest.ended_at = now_utc();
   const auto target = resolve_confined_path(
       workspace.manifest_root,
       std::filesystem::path(run_id) / "stages" / (identity + ".json"));
@@ -89,11 +124,57 @@ struct PublicationFailure {
   std::filesystem::path evidence_path;
 };
 
+AvailableArtifactContract available_contract(const ValidatedArtifact& artifact) {
+  return {artifact.reference().artifact_type,
+          artifact.reference().format_version,
+          artifact.id_space(),
+          artifact.capabilities()};
+}
+
+RuntimeServiceCapabilities executor_services() {
+  return {{"vector_accessor/v1", "distance_function/l2-v1",
+           "metrics_sink/v1", "cancellation_token/v1"},
+          false};
+}
+
+std::optional<FailureInfo> producer_contract_mismatch(
+    const ValidatedArtifact& artifact,
+    const ImplementationDescriptor& producer) {
+  const auto& reference = artifact.reference();
+  if (reference.artifact_type != producer.provides.artifact_type) {
+    return FailureInfo{ErrorCategory::kCapabilityUnsatisfied,
+                       "validated output Artifact type differs from producer provides",
+                       std::nullopt};
+  }
+  if (reference.format_version != producer.provides.format_version) {
+    return FailureInfo{ErrorCategory::kUnsupportedVersion,
+                       "validated output format differs from producer provides",
+                       std::nullopt};
+  }
+  if (artifact.id_space() != producer.provides.output_id_space) {
+    return FailureInfo{ErrorCategory::kIdSpaceMismatch,
+                       "validated output ID space differs from producer provides",
+                       std::nullopt};
+  }
+  auto observed = artifact.capabilities();
+  auto declared = producer.provides.capabilities;
+  std::sort(observed.begin(), observed.end());
+  std::sort(declared.begin(), declared.end());
+  if (observed != declared) {
+    return FailureInfo{ErrorCategory::kCapabilityUnsatisfied,
+                       "validated output capabilities differ from producer provides",
+                       std::nullopt};
+  }
+  return std::nullopt;
+}
+
 std::variant<PublishedArtifact, PublicationFailure> validate_and_publish(
     const WorkspaceRef& workspace, const std::string& run_id,
     const std::string& identity, const TemporaryStorageRef& temporary,
     const ArtifactRef& candidate,
-    const std::vector<ValidatedArtifact>& sources) {
+    const std::vector<ValidatedArtifact>& sources,
+    const ImplementationDescriptor& producer,
+    const ImplementationDescriptor* next_consumer) {
   auto temporary_workspace = workspace;
   temporary_workspace.normal_root = temporary.stage_root;
   const Validator candidate_validator(temporary_workspace);
@@ -109,6 +190,33 @@ std::variant<PublishedArtifact, PublicationFailure> validate_and_publish(
             ? "candidate validation failed"
             : candidate_validation.evidence.checks.back().message,
         evidence};
+  }
+
+  const auto& validated_candidate = *candidate_validation.validated_artifact;
+  std::optional<FailureInfo> handoff_failure =
+      producer_contract_mismatch(validated_candidate, producer);
+  if (!handoff_failure && next_consumer != nullptr) {
+    std::vector<AvailableArtifactContract> available;
+    available.reserve(sources.size() + 1);
+    for (const auto& source : sources) {
+      available.push_back(available_contract(source));
+    }
+    available.push_back(available_contract(validated_candidate));
+    const auto compatibility = CompatibilityChecker{}.check(
+        *next_consumer, available, executor_services());
+    if (!compatibility.compatible) handoff_failure = compatibility.failure;
+  }
+  if (handoff_failure) {
+    auto evidence = candidate_validation.evidence;
+    evidence.result = ValidationResult::kInvalid;
+    evidence.failure_category = handoff_failure->category;
+    evidence.checks.push_back(
+        {"implementation_handoff", false, handoff_failure->reason,
+         std::nullopt, std::nullopt});
+    const auto evidence_path = persist_validation_evidence(
+        workspace, run_id + "-" + identity + "-handoff-invalid", evidence);
+    return PublicationFailure{handoff_failure->category,
+                              handoff_failure->reason, evidence_path};
   }
 
   const auto source_directory = temporary.stage_root / "candidate";
@@ -166,6 +274,61 @@ PipelineExecutionResult terminal_failure(
   return result;
 }
 
+PipelineExecutionResult terminal_output_violation(
+    PipelineExecutionResult result, const PipelineExecutionRequest& request,
+    const WorkspaceRef& workspace, const TemporaryStorageRef& temporary,
+    const std::string& identity, const ImplementationDescriptor& descriptor,
+    BuildManifest manifest, const StageResult& stage) {
+  const std::string reason =
+      "stage violated the terminal-output contract";
+  const auto candidate_root = temporary.stage_root / "candidate";
+  std::filesystem::create_directories(candidate_root);
+  std::filesystem::path candidate_metadata = candidate_root / "artifact.json";
+  if (!stage.output_candidate) {
+    candidate_metadata = candidate_root / "terminal-output.json";
+    write_immutable_text(
+        candidate_metadata,
+        Json{{"diagnostic", "output_candidate_missing"},
+             {"stage_status", to_string(stage.status)}}
+            .dump());
+  } else {
+    candidate_metadata = temporary.stage_root /
+                         stage.output_candidate->metadata_path;
+  }
+  ValidationEvidence evidence;
+  evidence.validator_version = "terminal-output-contract/v1";
+  evidence.artifact_candidate = {
+      descriptor.provides.artifact_type, descriptor.provides.format_version,
+      std::filesystem::relative(candidate_metadata, temporary.stage_root),
+      stage.output_candidate
+          ? std::optional<std::string>(
+                stage.output_candidate->aggregate_checksum)
+          : std::nullopt};
+  evidence.checks = {{"terminal_output_contract", false, reason,
+                      std::nullopt, std::nullopt}};
+  evidence.result = ValidationResult::kInvalid;
+  evidence.failure_category = ErrorCategory::kSchemaInvalid;
+  const auto evidence_path = persist_validation_evidence(
+      workspace, request.run_id + "-" + identity + "-terminal-output",
+      evidence);
+  manifest.status = StageStatus::kInvalidOutput;
+  manifest.failure =
+      FailureInfo{ErrorCategory::kSchemaInvalid, reason, std::nullopt};
+  manifest.validation_evidence_path = relative_to(evidence_path, workspace.root);
+  const auto manifest_path = persist_stage_manifest(
+      workspace, request.run_id, identity, manifest);
+  const auto quarantine_id = request.run_id + "-" + identity + "-invalid";
+  QuarantineManager(workspace).publish(
+      quarantine_id, candidate_root, candidate_metadata, manifest_path,
+      evidence_path,
+      {ErrorCategory::kSchemaInvalid, reason, std::nullopt}, now_utc());
+  result.build_manifest_paths.push_back(manifest_path);
+  result.validation_evidence_paths.push_back(evidence_path);
+  result.quarantine_id = quarantine_id;
+  return terminal_failure(std::move(result), StageStatus::kInvalidOutput,
+                          ErrorCategory::kSchemaInvalid, reason);
+}
+
 std::vector<PartitionId> partition_ids(const ValidatedArtifact& partition) {
   const auto structural = Json::parse(partition.structural_json());
   std::vector<PartitionId> result;
@@ -214,9 +377,19 @@ PipelineExecutionResult PipelineExecutor::execute(
                               compatibility.failure->category,
                               compatibility.failure->reason);
     }
+    detail::validate_implementation_parameters(
+        partition_descriptor, request.partition_parameters_json,
+        DISKANN_PIPELINE_PROJECT_ROOT);
+    detail::validate_implementation_parameters(
+        local_descriptor, request.local_parameters_json,
+        DISKANN_PIPELINE_PROJECT_ROOT);
+    detail::validate_implementation_parameters(
+        merge_descriptor, request.merge_parameters_json,
+        DISKANN_PIPELINE_PROJECT_ROOT);
 
     std::optional<ValidatedArtifact> validated_partition;
     if (request.reused_partition) {
+      const auto stage_started_at = now_utc();
       const ArtifactReuseService reuse(validator);
       const ArtifactRequirement requirement{
           ArtifactType::kPartition, {"partition-artifact/v1"}, IdSpace::kLocal};
@@ -230,7 +403,7 @@ PipelineExecutionResult PipelineExecutor::execute(
       auto manifest = base_manifest(request, context, "partition",
                                     partition_descriptor, dataset.dataset(),
                                     request.partition_parameters_json,
-                                    {request.dataset});
+                                    {request.dataset}, stage_started_at);
       manifest.validation_evidence_path =
           relative_to(evidence_path, workspace_.root);
       if (reused.status != StageStatus::kReused) {
@@ -251,6 +424,7 @@ PipelineExecutionResult PipelineExecutor::execute(
       result.build_manifest_paths.push_back(persist_stage_manifest(
           workspace_, request.run_id, "partition-reused", manifest));
     } else {
+      const auto stage_started_at = now_utc();
       const auto parameter_path = write_parameters(
           workspace_, request.run_id, "partition",
           request.partition_parameters_json);
@@ -265,11 +439,19 @@ PipelineExecutionResult PipelineExecutor::execute(
       auto manifest = base_manifest(request, context, "partition",
                                     partition_descriptor, dataset.dataset(),
                                     request.partition_parameters_json,
-                                    {request.dataset});
-      if (stage.status != StageStatus::kSucceeded || !stage.output_candidate) {
-        const auto terminal_status =
-            stage.status == StageStatus::kSucceeded ? StageStatus::kFailed
-                                                    : stage.status;
+                                    {request.dataset}, stage_started_at);
+      const bool terminal_output_valid =
+          (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
+          ((stage.status == StageStatus::kFailed ||
+            stage.status == StageStatus::kCancelled) &&
+           !stage.output_candidate);
+      if (!terminal_output_valid) {
+        return terminal_output_violation(
+            std::move(result), request, workspace_, context.temporary_storage,
+            "partition", partition_descriptor, manifest, stage);
+      }
+      if (stage.status != StageStatus::kSucceeded) {
+        const auto terminal_status = stage.status;
         manifest.status = terminal_status;
         if (stage.status == StageStatus::kFailed) {
           manifest.failure = FailureInfo{ErrorCategory::kInternal,
@@ -289,7 +471,8 @@ PipelineExecutionResult PipelineExecutor::execute(
       }
       auto publication = validate_and_publish(
           workspace_, request.run_id, "partition", context.temporary_storage,
-          *stage.output_candidate, {dataset});
+          *stage.output_candidate, {dataset}, partition_descriptor,
+          &local_descriptor);
       if (std::holds_alternative<PublicationFailure>(publication)) {
         const auto& failure = std::get<PublicationFailure>(publication);
         manifest.status = StageStatus::kInvalidOutput;
@@ -305,7 +488,7 @@ PipelineExecutionResult PipelineExecutor::execute(
             quarantine_id, context.temporary_storage.stage_root / "candidate",
             context.temporary_storage.stage_root / "candidate/artifact.json",
             manifest_path, failure.evidence_path,
-            {failure.category, failure.reason, std::nullopt}, request.ended_at);
+            {failure.category, failure.reason, std::nullopt}, now_utc());
         result.quarantine_id = quarantine_id;
         result.validation_evidence_paths.push_back(failure.evidence_path);
         return terminal_failure(std::move(result), StageStatus::kInvalidOutput,
@@ -326,6 +509,7 @@ PipelineExecutionResult PipelineExecutor::execute(
     const auto ids = partition_ids(*validated_partition);
     std::vector<ValidatedArtifact> validated_locals;
     for (const auto id : ids) {
+      const auto stage_started_at = now_utc();
       result.local_partition_ids.push_back(id);
       const auto identity = "local-" + std::to_string(id);
       Json local_parameters = Json::parse(request.local_parameters_json);
@@ -344,11 +528,19 @@ PipelineExecutionResult PipelineExecutor::execute(
           validated_partition->reference(), id, {parameter_path}, context);
       auto manifest = base_manifest(
           request, context, "local_build", local_descriptor, dataset.dataset(),
-          parameters, {validated_partition->reference()});
-      if (stage.status != StageStatus::kSucceeded || !stage.output_candidate) {
-        const auto terminal_status =
-            stage.status == StageStatus::kSucceeded ? StageStatus::kFailed
-                                                    : stage.status;
+          parameters, {validated_partition->reference()}, stage_started_at);
+      const bool terminal_output_valid =
+          (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
+          ((stage.status == StageStatus::kFailed ||
+            stage.status == StageStatus::kCancelled) &&
+           !stage.output_candidate);
+      if (!terminal_output_valid) {
+        return terminal_output_violation(
+            std::move(result), request, workspace_, context.temporary_storage,
+            identity, local_descriptor, manifest, stage);
+      }
+      if (stage.status != StageStatus::kSucceeded) {
+        const auto terminal_status = stage.status;
         manifest.status = terminal_status;
         if (stage.status == StageStatus::kFailed) {
           manifest.failure = FailureInfo{ErrorCategory::kInternal,
@@ -368,7 +560,8 @@ PipelineExecutionResult PipelineExecutor::execute(
       }
       auto publication = validate_and_publish(
           workspace_, request.run_id, identity, context.temporary_storage,
-          *stage.output_candidate, {*validated_partition});
+          *stage.output_candidate, {*validated_partition}, local_descriptor,
+          &merge_descriptor);
       if (std::holds_alternative<PublicationFailure>(publication)) {
         const auto& failure = std::get<PublicationFailure>(publication);
         manifest.status = StageStatus::kInvalidOutput;
@@ -384,7 +577,7 @@ PipelineExecutionResult PipelineExecutor::execute(
             quarantine_id, context.temporary_storage.stage_root / "candidate",
             context.temporary_storage.stage_root / "candidate/artifact.json",
             manifest_path, failure.evidence_path,
-            {failure.category, failure.reason, std::nullopt}, request.ended_at);
+            {failure.category, failure.reason, std::nullopt}, now_utc());
         result.quarantine_id = quarantine_id;
         result.validation_evidence_paths.push_back(failure.evidence_path);
         return terminal_failure(std::move(result), StageStatus::kInvalidOutput,
@@ -402,6 +595,7 @@ PipelineExecutionResult PipelineExecutor::execute(
           workspace_, request.run_id, identity, manifest));
     }
 
+    const auto merge_started_at = now_utc();
     const auto merge_parameters = write_parameters(
         workspace_, request.run_id, "merge", request.merge_parameters_json);
     context.temporary_storage =
@@ -418,11 +612,20 @@ PipelineExecutionResult PipelineExecutor::execute(
                         result.local_artifacts.end());
     auto manifest = base_manifest(request, context, "merge", merge_descriptor,
                                   dataset.dataset(),
-                                  request.merge_parameters_json, merge_inputs);
-    if (stage.status != StageStatus::kSucceeded || !stage.output_candidate) {
-      const auto terminal_status =
-          stage.status == StageStatus::kSucceeded ? StageStatus::kFailed
-                                                  : stage.status;
+                                  request.merge_parameters_json, merge_inputs,
+                                  merge_started_at);
+    const bool terminal_output_valid =
+        (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
+        ((stage.status == StageStatus::kFailed ||
+          stage.status == StageStatus::kCancelled) &&
+         !stage.output_candidate);
+    if (!terminal_output_valid) {
+      return terminal_output_violation(
+          std::move(result), request, workspace_, context.temporary_storage,
+          "merge", merge_descriptor, manifest, stage);
+    }
+    if (stage.status != StageStatus::kSucceeded) {
+      const auto terminal_status = stage.status;
       manifest.status = terminal_status;
       if (stage.status == StageStatus::kFailed) {
         manifest.failure = FailureInfo{ErrorCategory::kInternal,
@@ -445,7 +648,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                          validated_locals.end());
     auto publication = validate_and_publish(
         workspace_, request.run_id, "merge", context.temporary_storage,
-        *stage.output_candidate, merge_sources);
+        *stage.output_candidate, merge_sources, merge_descriptor, nullptr);
     if (std::holds_alternative<PublicationFailure>(publication)) {
       const auto& failure = std::get<PublicationFailure>(publication);
       manifest.status = StageStatus::kInvalidOutput;
@@ -461,7 +664,7 @@ PipelineExecutionResult PipelineExecutor::execute(
           quarantine_id, context.temporary_storage.stage_root / "candidate",
           context.temporary_storage.stage_root / "candidate/artifact.json",
           manifest_path, failure.evidence_path,
-          {failure.category, failure.reason, std::nullopt}, request.ended_at);
+          {failure.category, failure.reason, std::nullopt}, now_utc());
       result.quarantine_id = quarantine_id;
       result.validation_evidence_paths.push_back(failure.evidence_path);
       return terminal_failure(std::move(result), StageStatus::kInvalidOutput,
@@ -480,7 +683,7 @@ PipelineExecutionResult PipelineExecutor::execute(
     const auto report = evaluate_validated_global_graph(
         workspace_, published.validated,
         relative_to(published.evidence_path, workspace_.root),
-        request.run_id + "-evaluation", request.ended_at);
+        request.run_id + "-evaluation", now_utc());
     result.evaluation_report_path = persist_evaluation_report(workspace_, report);
     result.status = StageStatus::kSucceeded;
     return result;
