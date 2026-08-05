@@ -140,6 +140,8 @@ std::string_view to_string(ErrorCategory value) noexcept {
       return "payload_length_mismatch";
     case ErrorCategory::kChecksumMismatch:
       return "checksum_mismatch";
+    case ErrorCategory::kSourceMismatch:
+      return "source_mismatch";
     case ErrorCategory::kIdSpaceMismatch:
       return "id_space_mismatch";
     case ErrorCategory::kIdRangeInvalid:
@@ -154,6 +156,10 @@ std::string_view to_string(ErrorCategory value) noexcept {
       return "capability_unsatisfied";
     case ErrorCategory::kDuplicateImplementation:
       return "duplicate_implementation";
+    case ErrorCategory::kImplementationNotFound:
+      return "implementation_not_found";
+    case ErrorCategory::kRegistrySealed:
+      return "registry_sealed";
     case ErrorCategory::kReuseMismatch:
       return "reuse_mismatch";
     case ErrorCategory::kCancelled:
@@ -175,6 +181,7 @@ ErrorCategory error_category_from_string(std::string_view value) {
        {"payload_missing", ErrorCategory::kPayloadMissing},
        {"payload_length_mismatch", ErrorCategory::kPayloadLengthMismatch},
        {"checksum_mismatch", ErrorCategory::kChecksumMismatch},
+       {"source_mismatch", ErrorCategory::kSourceMismatch},
        {"id_space_mismatch", ErrorCategory::kIdSpaceMismatch},
        {"id_range_invalid", ErrorCategory::kIdRangeInvalid},
        {"mapping_incomplete", ErrorCategory::kMappingIncomplete},
@@ -182,6 +189,8 @@ ErrorCategory error_category_from_string(std::string_view value) {
        {"node_count_mismatch", ErrorCategory::kNodeCountMismatch},
        {"capability_unsatisfied", ErrorCategory::kCapabilityUnsatisfied},
        {"duplicate_implementation", ErrorCategory::kDuplicateImplementation},
+       {"implementation_not_found", ErrorCategory::kImplementationNotFound},
+       {"registry_sealed", ErrorCategory::kRegistrySealed},
        {"reuse_mismatch", ErrorCategory::kReuseMismatch},
        {"cancelled", ErrorCategory::kCancelled},
        {"checkpoint_unavailable", ErrorCategory::kCheckpointUnavailable},
@@ -250,4 +259,3 @@ std::string dump_json(const Json& value) {
 
 }  // namespace detail
 }  // namespace diskann_pipeline
-

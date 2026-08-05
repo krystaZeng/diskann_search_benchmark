@@ -6,8 +6,20 @@ add_library(
   core/artifact_resolver.cpp
   core/provenance_store.cpp
   core/evaluation_store.cpp
+  core/quarantine_manager.cpp
+  core/diagnostic_quarantine_resolver.cpp
+  pipeline/artifact_reuse.cpp
+  registry/implementation_registry.cpp
+  registry/compatibility_checker.cpp
   validation/canonical_json.cpp
-  validation/sha256.cpp)
+  validation/sha256.cpp
+  validation/schema_catalog.cpp
+  validation/validation_gate.cpp
+  validation/artifact_validator.cpp
+  validation/mapping_validator.cpp
+  validation/graph_validator.cpp
+  validation/validator.cpp
+  validation/adapter_policy.cpp)
 add_library(diskann_pipeline::core ALIAS diskann_pipeline_core)
 
 target_link_libraries(
@@ -22,4 +34,3 @@ target_link_libraries(diskann_pipeline_runner PRIVATE diskann_pipeline::core)
 diskann_pipeline_apply_cxx17(diskann_pipeline_runner)
 
 install(TARGETS diskann_pipeline_core diskann_pipeline_runner)
-

@@ -13,6 +13,7 @@ enum class ErrorCategory {
   kPayloadMissing,
   kPayloadLengthMismatch,
   kChecksumMismatch,
+  kSourceMismatch,
   kIdSpaceMismatch,
   kIdRangeInvalid,
   kMappingIncomplete,
@@ -20,6 +21,8 @@ enum class ErrorCategory {
   kNodeCountMismatch,
   kCapabilityUnsatisfied,
   kDuplicateImplementation,
+  kImplementationNotFound,
+  kRegistrySealed,
   kReuseMismatch,
   kCancelled,
   kCheckpointUnavailable,
@@ -41,4 +44,3 @@ class PipelineError : public std::runtime_error {
 };
 
 }  // namespace diskann_pipeline
-
