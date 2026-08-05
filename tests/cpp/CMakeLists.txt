@@ -20,6 +20,34 @@ function(add_diskann_pipeline_phase2_test name source)
   set_tests_properties("${name}" PROPERTIES LABELS "phase2")
 endfunction()
 
+function(add_diskann_pipeline_phase3_test name source)
+  add_executable("${name}" "${source}")
+  target_link_libraries(
+    "${name}"
+    PRIVATE diskann_pipeline::fake_stages nlohmann_json::nlohmann_json)
+  target_include_directories(
+    "${name}"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/src")
+  diskann_pipeline_apply_cxx17("${name}")
+  add_test(NAME "${name}" COMMAND "${name}")
+  set_tests_properties("${name}" PROPERTIES LABELS "phase3")
+endfunction()
+
+function(add_diskann_pipeline_phase4_test name source)
+  add_executable("${name}" "${source}")
+  target_link_libraries(
+    "${name}"
+    PRIVATE diskann_pipeline::fake_stages nlohmann_json::nlohmann_json)
+  target_include_directories(
+    "${name}"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/src")
+  target_compile_definitions(
+    "${name}" PRIVATE DISKANN_PIPELINE_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}/tests")
+  diskann_pipeline_apply_cxx17("${name}")
+  add_test(NAME "${name}" COMMAND "${name}")
+  set_tests_properties("${name}" PROPERTIES LABELS "phase4")
+endfunction()
+
 add_diskann_pipeline_test(
   public_api_cxx17
   contract/test_public_api_cxx17.cpp)
@@ -57,3 +85,33 @@ add_diskann_pipeline_phase2_test(
 add_diskann_pipeline_phase2_test(
   adapter_policy
   contract/test_adapter_policy.cpp)
+
+add_diskann_pipeline_phase3_test(
+  fake_stage_context
+  unit/test_fake_stage_context.cpp)
+add_diskann_pipeline_phase3_test(
+  fake_stage_contracts
+  contract/test_fake_stage_contracts.cpp)
+add_diskann_pipeline_phase3_test(
+  fake_merge_properties
+  property/test_fake_merge_properties.cpp)
+add_diskann_pipeline_phase3_test(
+  pipeline_orchestration
+  integration/test_pipeline_orchestration.cpp)
+add_diskann_pipeline_phase3_test(
+  pipeline_failure_gates
+  integration/test_pipeline_failure_gates.cpp)
+
+add_diskann_pipeline_phase4_test(
+  fake_pipeline_e2e
+  integration/test_fake_pipeline_e2e.cpp)
+add_diskann_pipeline_phase4_test(
+  negative_matrix_e2e
+  integration/test_negative_matrix_e2e.cpp)
+
+add_executable(production_surface contract/test_production_surface.cpp)
+target_link_libraries(production_surface PRIVATE diskann_pipeline::core)
+target_include_directories(production_surface PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+diskann_pipeline_apply_cxx17(production_surface)
+add_test(NAME production_surface COMMAND production_surface)
+set_tests_properties(production_surface PROPERTIES LABELS "phase4;assembly")

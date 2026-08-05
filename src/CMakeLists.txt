@@ -9,6 +9,9 @@ add_library(
   core/quarantine_manager.cpp
   core/diagnostic_quarantine_resolver.cpp
   pipeline/artifact_reuse.cpp
+  pipeline/pipeline_executor.cpp
+  pipeline/evaluator.cpp
+  cli/runner_protocol.cpp
   registry/implementation_registry.cpp
   registry/compatibility_checker.cpp
   validation/canonical_json.cpp
@@ -27,10 +30,25 @@ target_link_libraries(
   PUBLIC diskann_pipeline::headers
   PRIVATE nlohmann_json::nlohmann_json OpenSSL::Crypto)
 target_include_directories(diskann_pipeline_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(
+  diskann_pipeline_core
+  PRIVATE
+    DISKANN_PIPELINE_SOURCE_REPOSITORY="${DISKANN_PIPELINE_SOURCE_REPOSITORY}"
+    DISKANN_PIPELINE_SOURCE_BRANCH="${DISKANN_PIPELINE_SOURCE_BRANCH}"
+    DISKANN_PIPELINE_SOURCE_COMMIT="${DISKANN_PIPELINE_SOURCE_COMMIT}"
+    DISKANN_PIPELINE_SOURCE_DIRTY=${DISKANN_PIPELINE_SOURCE_DIRTY}
+    DISKANN_PIPELINE_SOURCE_DIRTY_CHECKSUM="${DISKANN_PIPELINE_SOURCE_DIRTY_CHECKSUM}"
+    DISKANN_PIPELINE_SYSTEM_NAME="${CMAKE_SYSTEM_NAME}"
+    DISKANN_PIPELINE_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
+    DISKANN_PIPELINE_CXX_COMPILER_VERSION="${CMAKE_CXX_COMPILER_VERSION}"
+    DISKANN_PIPELINE_CMAKE_VERSION="${CMAKE_VERSION}"
+    DISKANN_PIPELINE_CMAKE_GENERATOR="${CMAKE_GENERATOR}"
+    DISKANN_PIPELINE_BUILD_TYPE="${DISKANN_PIPELINE_RECORDED_BUILD_TYPE}")
+target_compile_definitions(
+  diskann_pipeline_core
+  PRIVATE DISKANN_PIPELINE_BINARY_DIR="${CMAKE_BINARY_DIR}")
 diskann_pipeline_apply_cxx17(diskann_pipeline_core)
 
-add_executable(diskann_pipeline_runner cli/runner_stub.cpp)
-target_link_libraries(diskann_pipeline_runner PRIVATE diskann_pipeline::core)
-diskann_pipeline_apply_cxx17(diskann_pipeline_runner)
+add_subdirectory(cli)
 
-install(TARGETS diskann_pipeline_core diskann_pipeline_runner)
+install(TARGETS diskann_pipeline_core)

@@ -129,6 +129,27 @@ def normalize_run_request(
         _schema_validator(schema_root).validate(normalized)
     except (ValidationError, KeyError, OSError, yaml.YAMLError) as error:
         raise ConfigurationError(f"RunRequest schema validation failed: {error}") from error
+    if "dataset" in normalized:
+        dataset = normalized["dataset"]
+        if (
+            dataset.get("artifact_type") != "dataset"
+            or dataset.get("format_version") != "fake-dataset-json/v1"
+            or dataset.get("aggregate_checksum")
+            != "4cfb7bdb7ce50e3b9f07abe72b918a2666d35ef07211d675c708c0e1d0ecf12d"
+        ):
+            raise ConfigurationError(
+                "Feature 001 accepts only the canonical Fake dataset"
+            )
+    if "implementations" in normalized:
+        expected = {
+            "partition": "fake_partition_v1",
+            "local_build": "fake_local_graph_v1",
+            "merge": "fake_merge_v1",
+        }
+        if normalized["implementations"] != expected:
+            raise ConfigurationError(
+                "Feature 001 accepts only the frozen Fake implementation selection"
+            )
     return normalized
 
 
@@ -136,4 +157,3 @@ def write_normalized_request(
     path: str | Path, configuration: dict[str, Any]
 ) -> Path:
     return write_immutable_json(path, configuration)
-

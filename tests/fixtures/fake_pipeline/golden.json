@@ -1,0 +1,41 @@
+{
+  "format_version": "fake-pipeline-golden/v1",
+  "dataset": {
+    "dataset_id": "fake-six-node-v1",
+    "dataset_checksum": "2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b",
+    "global_node_count": 6,
+    "vector_dimension": 2,
+    "scalar_type": "float32",
+    "distance_metric": "l2"
+  },
+  "payload_order": {
+    "dataset": ["vectors"],
+    "partition": [
+      "partition/0/vectors",
+      "partition/0/local_to_global_map",
+      "partition/1/vectors",
+      "partition/1/local_to_global_map"
+    ],
+    "local": ["local_to_global_map", "local_graph"],
+    "global": ["global_graph"]
+  },
+  "payloads": [
+    {"role":"vectors","content":"{\"vectors\":[[0,0],[1,0],[2,0],[0,1],[1,1],[2,1]]}","byte_length":49,"sha256":"2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b"},
+    {"role":"partition/0/vectors","content":"{\"vectors\":[[0,0],[1,0],[2,0],[0,1]]}","byte_length":37,"sha256":"a61d72902e4771175bf0767a13cc9006dd129ea92439fc092d167b632d35437c"},
+    {"role":"partition/0/local_to_global_map","content":"{\"local_to_global\":[0,1,2,3]}","byte_length":29,"sha256":"76fb4d67995b155a9755dd54977692290b7cdf416294229b4f320b81efd5ce7c"},
+    {"role":"partition/1/vectors","content":"{\"vectors\":[[2,0],[0,1],[1,1],[2,1]]}","byte_length":37,"sha256":"119a82674838210f5d056a5f1b784d91e11e84bf2b4113afa236a70736abd242"},
+    {"role":"partition/1/local_to_global_map","content":"{\"local_to_global\":[2,3,4,5]}","byte_length":29,"sha256":"90923604fcdf8dcfa013e82292ecdba7d015e4b77638cbb387c9a583450f493c"},
+    {"role":"local_graph","content":"{\"adjacency\":[[1,2],[0,2],[1,3],[]]}","byte_length":36,"sha256":"e54ec8ef5014c15c861cef23ea8aa2edddd1a587b1a30614abd9b0a4defbeddd"},
+    {"role":"global_graph","content":"{\"adjacency\":[[1,2],[0,2],[1,3,4],[2,4],[3,5],[]]}","byte_length":50,"sha256":"9cbfeade7ef24a5b7b1911da4ff7baead15b7444e338e3b0a5ee42ed780d622f"}
+  ],
+  "aggregate_checksums": {
+    "dataset": "4cfb7bdb7ce50e3b9f07abe72b918a2666d35ef07211d675c708c0e1d0ecf12d",
+    "partition": "a640037c2d07b2dcdff98cd22b82b5c4f5da7e6323fc8da2a61538c1cbbb2984",
+    "local_0": "31d93424d2d0a826891c5d2cc6d3b5b7da6f646a9c6f878603d532ddfae0c9c1",
+    "local_1": "ca02d15d4709d62aea8f404de57d2143be1205f6fa517b4d2d550fe2dab265f6",
+    "global": "443e732732f559249248d749c1fac19af9f1986fc44dbdf25f3c2ed7de59a0fe"
+  },
+  "maps": [[0,1,2,3],[2,3,4,5]],
+  "local_adjacency": [[1,2],[0,2],[1,3],[]],
+  "global_adjacency": [[1,2],[0,2],[1,3,4],[2,4],[3,5],[]]
+}

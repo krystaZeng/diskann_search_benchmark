@@ -1,14 +1,16 @@
-"""Phase 1 command-line skeleton.
-
-Execution lifecycles are intentionally deferred to Phase 3.  Keeping the entry
-point present in Phase 1 lets packaging and help output be validated without
-claiming that a runner or Registry implementation exists.
-"""
+"""User-facing Feature 001 Harness CLI."""
 
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from collections.abc import Sequence
+from pathlib import Path
+
+from .config import ConfigurationError
+from .runner import RunnerError, build_project, execute_configuration, run_single_request
+from .workspace import WorkspaceError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,8 +19,15 @@ def build_parser() -> argparse.ArgumentParser:
         "operation",
         choices=("build", "execute", "validate", "evaluate"),
         nargs="?",
-        help="Lifecycle reserved by the public CLI contract.",
+        help="Lifecycle to execute.",
     )
+    parser.add_argument("--config")
+    parser.add_argument("--artifact-ref")
+    parser.add_argument("--workspace")
+    parser.add_argument("--runner")
+    parser.add_argument("--build-dir")
+    parser.add_argument("--build-type", default="Debug")
+    parser.add_argument("--source-dir", default=str(Path(__file__).resolve().parents[3]))
     return parser
 
 
@@ -28,10 +37,58 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.operation is None:
         parser.print_help()
         return 0
-    parser.error(f"{args.operation} is not implemented in Phase 1")
-    return 2
+    try:
+        if args.operation == "build":
+            if not args.build_dir:
+                raise RunnerError("build requires --build-dir")
+            output = build_project(args.source_dir, args.build_dir, build_type=args.build_type)
+            print(output)
+            return 0
+        if not args.workspace or not args.runner:
+            raise RunnerError(f"{args.operation} requires --workspace and --runner")
+        if args.operation == "execute":
+            if not args.config:
+                raise RunnerError("execute requires --config")
+            summary = execute_configuration(args.config, args.workspace, args.runner)
+            print(summary["summary_path"])
+            return 0 if all(
+                run["exit_code"] == 0 for run in summary["retained_runs"]
+            ) else max(run["exit_code"] for run in summary["retained_runs"])
+
+        if not args.artifact_ref:
+            raise RunnerError(f"{args.operation} requires --artifact-ref")
+        artifact = json.loads(Path(args.artifact_ref).read_text(encoding="utf-8"))
+        request: dict[str, object] = {
+            "request_version": "1.0.0",
+            "request_id": f"harness-{args.operation}",
+            "operation": args.operation,
+            "study_class": "infrastructure_validation",
+            "workspace": {"root": str(Path(args.workspace).resolve())},
+            "target_artifact": artifact,
+        }
+        if args.operation == "validate":
+            request["expected_contract"] = {
+                "artifact_type": artifact["artifact_type"],
+                "accepted_format_versions": [artifact["format_version"]],
+                "id_space": "global" if artifact["artifact_type"] == "global_graph" else "none",
+                "capabilities": (
+                    ["graph.global_adjacency/v1"]
+                    if artifact["artifact_type"] == "global_graph"
+                    else ["dataset.vector_access/v1"]
+                ),
+            }
+        else:
+            request["evaluator"] = {
+                "implementation_id": "fake_graph_integrity_evaluator",
+                "parameters": {},
+            }
+        result = run_single_request(request, args.workspace, args.runner)
+        print(json.dumps(result, sort_keys=True))
+        return int(result["exit_code"])
+    except (ConfigurationError, RunnerError, WorkspaceError, OSError, json.JSONDecodeError) as error:
+        print(str(error), file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

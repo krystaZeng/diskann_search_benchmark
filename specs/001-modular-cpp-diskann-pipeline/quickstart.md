@@ -1,8 +1,7 @@
 # Quickstart Validation Guide
 
-This guide describes the commands that must work after Feature 001 is implemented. At planning
-time the C++ and Python sources do not yet exist; these are acceptance commands for implementation,
-not claims about the current repository.
+This guide records the implemented Feature 001 command surface and the validation commands used by
+the repository. All build and workspace paths stay outside `upstream/diskann-cpp-main`.
 
 ## 1. Prerequisites
 
@@ -114,7 +113,7 @@ run; the pinned Baseline Reference remains `not-executed`.
 .venv/bin/python -m diskann_harness.cli execute \
   --config tests/fixtures/fake_pipeline/experiment.yaml \
   --workspace build/feature-001/fake-workspace \
-  --runner build/feature-001/tests/diskann_pipeline_fake_runner
+  --runner build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner
 ```
 
 At the C++ stage boundary, Local Build is invoked once for each record in the validated aggregate
@@ -150,6 +149,13 @@ evaluation findings projections. Complete EvaluationReport JSON documents are no
 byte-identical: `report_id`, `generated_at`, run IDs, paths, timestamps, provenance, and
 non-deterministic runtime metrics remain independent.
 
+The retained summary is written to
+`build/feature-001/fake-workspace/reports/summaries/fake-six-node-two-run-v1.json`.
+Normal Artifact metadata is below `normal/<run_id>/`, stage BuildManifests are below
+`manifests/<run_id>/stages/`, validation evidence is below `manifests/evidence/`, and Evaluation
+Reports are below `reports/`. Invalid candidates use only `quarantine/` and never appear below
+`normal/`.
+
 ## 7. Validate Reuse
 
 Run the reuse fixture using the published Partition ArtifactRef from the preceding run:
@@ -158,7 +164,7 @@ Run the reuse fixture using the published Partition ArtifactRef from the precedi
 .venv/bin/python -m diskann_harness.cli execute \
   --config tests/fixtures/fake_pipeline/reuse-partition.yaml \
   --workspace build/feature-001/fake-reuse-workspace \
-  --runner build/feature-001/tests/diskann_pipeline_fake_runner
+  --runner build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner
 ```
 
 Expected: Partition invocation count is zero, current validation succeeds, Local Build and Merge
@@ -168,8 +174,11 @@ fixture must fail without changing or consuming the cached Artifact.
 ## 8. Run the Negative Matrix
 
 ```bash
-ctest --test-dir build/feature-001 --output-on-failure -R 'contract_negative|preflight|quarantine'
-.venv/bin/python -m pytest tests/python -k 'negative or quarantine or cancellation'
+ctest --test-dir build/feature-001 --output-on-failure \
+  -R 'compatibility_preflight|quarantine_isolation|pipeline_failure_gates|negative_matrix_e2e'
+.venv/bin/python -m pytest \
+  tests/python/test_harness_reuse_e2e.py \
+  tests/python/test_feature_governance.py
 ```
 
 Expected:

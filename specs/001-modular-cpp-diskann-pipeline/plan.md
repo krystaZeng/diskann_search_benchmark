@@ -15,6 +15,12 @@ format and is normalized by a Python 3.10+ Harness before invoking a C++ CLI. Te
 implementations prove the exact six-node pipeline, reuse, failure gates, and quarantine behavior
 without linking or executing the real DiskANN Baseline.
 
+**Implemented targets**: `diskann_pipeline_core` is the public C++17 library;
+`diskann_pipeline_runner` is the installed production assembly with no registered stage in Feature
+001; `diskann_pipeline_fake_stages` and the non-installed `diskann_pipeline_fake_runner` exist only
+under `tests/cpp/fakes`. The Python entry point is `diskann-harness` / `python -m
+diskann_harness.cli` with `build`, `execute`, `validate`, and `evaluate` lifecycles.
+
 ## Technical Context
 
 **Language/Version**: Public core and module contracts: ISO C++17; Python Harness: Python 3.10+.
@@ -49,6 +55,13 @@ configure-time/CTest script assertion verifies target/source separation; and
 `tests/python/test_production_assembly.py` installs to a temporary prefix and verifies that only the
 production runner, not Fake targets or files, is installed. Registry enumeration alone is not link
 isolation evidence.
+
+The final C++ smoke targets are `fake_pipeline_e2e`, `negative_matrix_e2e`,
+`production_surface`, and `production_target_isolation`. Python end-to-end and installation
+coverage lives in `test_harness_fake_pipeline_e2e.py`, `test_harness_reuse_e2e.py`, and
+`test_production_assembly.py`. The canonical Harness writes retained runner results and summaries
+under the normalized `reports/` root while normal Artifacts, BuildManifests/evidence, quarantine,
+and stage temporary data remain under their separate roots.
 
 **Target Platform**: Linux is the normative experiment platform. macOS with a C++17-capable
 AppleClang/Clang toolchain is supported for this Feature's unit tests and Fake Pipeline only.
@@ -164,7 +177,9 @@ include/diskann_pipeline/
 ├── artifact_ref.hpp
 ├── identifiers.hpp
 ├── implementation.hpp
+├── pipeline.hpp
 ├── registry.hpp              # public ImplementationRegistry interface
+├── runner_protocol.hpp
 ├── stage_context.hpp
 ├── stage_interfaces.hpp
 └── validation.hpp
@@ -177,8 +192,8 @@ src/
 ├── core/
 ├── registry/
 ├── validation/
-├── pipeline/
-└── cli/                      # installed C++ runner; no Fake registration
+├── pipeline/                 # executor, validated reuse, evaluator
+└── cli/                      # protocol + installed C++ runner; no Fake registration
 harness/python/diskann_harness/
 ├── cli.py
 ├── config.py

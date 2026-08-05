@@ -1,0 +1,6 @@
+{
+  "roots": ["normal", "temporary", "manifests", "reports", "quarantine"],
+  "retained_runs": 2,
+  "aggregation": "retain_all",
+  "separate_documents": ["artifact", "build_manifest", "evaluation_report"]
+}
