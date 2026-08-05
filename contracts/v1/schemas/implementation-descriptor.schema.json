@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/implementation-descriptor.schema.json",
+  "title": "ImplementationDescriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "descriptor_version",
+    "implementation_id",
+    "implementation_version",
+    "stage",
+    "requires",
+    "provides",
+    "parameter_schema_path",
+    "test_only"
+  ],
+  "properties": {
+    "descriptor_version": {"const": "1.0.0"},
+    "implementation_id": {"$ref": "common.schema.json#/$defs/stableId"},
+    "implementation_version": {"$ref": "common.schema.json#/$defs/version"},
+    "stage": {"$ref": "common.schema.json#/$defs/stage"},
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_artifacts", "capabilities", "runtime_services"],
+      "properties": {
+        "input_artifacts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["artifact_type", "accepted_format_versions", "input_id_space"],
+            "properties": {
+              "artifact_type": {"$ref": "common.schema.json#/$defs/artifactType"},
+              "accepted_format_versions": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {"$ref": "common.schema.json#/$defs/version"}
+              },
+              "input_id_space": {"$ref": "common.schema.json#/$defs/idSpace"}
+            }
+          }
+        },
+        "capabilities": {"$ref": "common.schema.json#/$defs/capabilityArray"},
+        "runtime_services": {"$ref": "common.schema.json#/$defs/capabilityArray"}
+      }
+    },
+    "provides": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "format_version", "output_id_space", "capabilities"],
+      "properties": {
+        "artifact_type": {"$ref": "common.schema.json#/$defs/artifactType"},
+        "format_version": {"$ref": "common.schema.json#/$defs/version"},
+        "output_id_space": {"$ref": "common.schema.json#/$defs/idSpace"},
+        "capabilities": {"$ref": "common.schema.json#/$defs/capabilityArray"}
+      }
+    },
+    "parameter_schema_path": {
+      "$ref": "common.schema.json#/$defs/relativePath",
+      "description": "Stable repository-relative path to the implementation parameter JSON Schema."
+    },
+    "test_only": {"type": "boolean"}
+  }
+}

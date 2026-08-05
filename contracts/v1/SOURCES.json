@@ -1,0 +1,85 @@
+{
+  "format_version": "diskann-contract-sources-v1",
+  "entries": [
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/adapter-policy.md",
+      "target": "contracts/v1/adapter-policy.md",
+      "sha256": "49a63180d8c7ed0f2b2558d21ee04ebd8656501864155532f08dac707a05237e"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/checksum-canonicalization.md",
+      "target": "contracts/v1/checksum-canonicalization.md",
+      "sha256": "83b7801312a76f1917382f603f20fa8d2976ce48eb9b0ff73d8b332a044caf9c"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/artifact-ref.schema.json",
+      "target": "contracts/v1/schemas/artifact-ref.schema.json",
+      "sha256": "7b473703b8e1a364e09539dcb2edf44612095f229bba9f40c149988f9a239690"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/build-manifest.schema.json",
+      "target": "contracts/v1/schemas/build-manifest.schema.json",
+      "sha256": "8fe3eeb9d9492796da5d8155df36d68eba0df43e240fa3bfaccaeebfcd028f97"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/common.schema.json",
+      "target": "contracts/v1/schemas/common.schema.json",
+      "sha256": "ab788c1cdfb98b9c77dc0bcc7c80e513d919dc9f94fe62043b0220b5664fc832"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/dataset-artifact.schema.json",
+      "target": "contracts/v1/schemas/dataset-artifact.schema.json",
+      "sha256": "d46378752625b1c702f2e42864a0cd80b9ff538efdb1ce955e295ae04c01ce78"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/evaluation-report.schema.json",
+      "target": "contracts/v1/schemas/evaluation-report.schema.json",
+      "sha256": "ede0f95805582b34b74a35333bc6b88cc02284b27231ef004a5a65dae9d1bec8"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/fake-parameters.schema.json",
+      "target": "contracts/v1/schemas/fake-parameters.schema.json",
+      "sha256": "9501fb6933066afc3e1264949d4fc7e62c42f1075f4bce43b929ca0ea0425851"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/global-graph-artifact.schema.json",
+      "target": "contracts/v1/schemas/global-graph-artifact.schema.json",
+      "sha256": "851550a33a016bd4d0b7018fcab567155af4dc17b90d7369296c0657f61eddb5"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/implementation-descriptor.schema.json",
+      "target": "contracts/v1/schemas/implementation-descriptor.schema.json",
+      "sha256": "9f21d143039348acf17716354f7a55a4cf2c44591d75be827c9f5347c132f57f"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/local-graph-artifact.schema.json",
+      "target": "contracts/v1/schemas/local-graph-artifact.schema.json",
+      "sha256": "9bb599198a5a91ae8fc94c5cb74882658fbb549786e35d78165030c60cd0387c"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/partition-artifact.schema.json",
+      "target": "contracts/v1/schemas/partition-artifact.schema.json",
+      "sha256": "65555ac43fc898f0b61c0548d92410391a1321a2c126acc5e1cfbc478de1f3e0"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/quarantine-record.schema.json",
+      "target": "contracts/v1/schemas/quarantine-record.schema.json",
+      "sha256": "8eb8d3adfdd9f8290548ef2e7cade8253659dc8a6af61ba77206ed7197dee20a"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/run-request.schema.json",
+      "target": "contracts/v1/schemas/run-request.schema.json",
+      "sha256": "701bcee2fea5c0126d8fa7595d082500e242adb840994d71fa53efc99f1e2aa6"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/runner-result.schema.json",
+      "target": "contracts/v1/schemas/runner-result.schema.json",
+      "sha256": "9497cd3851a3b128053fd9775789399e4e53fb6a4f182127efb1093500d7cc63"
+    },
+    {
+      "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/validation-evidence.schema.json",
+      "target": "contracts/v1/schemas/validation-evidence.schema.json",
+      "sha256": "c15e1b58a7105944a141f8f790a2078b088ff735b8a66539f5a0e7dd338f5add"
+    }
+  ]
+}

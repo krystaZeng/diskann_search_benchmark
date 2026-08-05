@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/fake-parameters.schema.json",
+  "title": "Test-only Fake Stage Parameters v1",
+  "$defs": {
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partition_count", "local_to_global_maps"],
+      "properties": {
+        "partition_count": {"const": 2},
+        "local_to_global_maps": {
+          "const": [[0, 1, 2, 3], [2, 3, 4, 5]]
+        }
+      }
+    },
+    "local_build": {
+      "type": "object",
+      "description": "Configuration shared by Local Build invocations. The owning PartitionId is a separate mandatory API argument selected from the aggregate PartitionArtifact.",
+      "additionalProperties": false,
+      "required": ["declared_max_degree", "adjacency"],
+      "properties": {
+        "declared_max_degree": {"const": 2},
+        "adjacency": {
+          "const": [[1, 2], [0, 2], [1, 3], []]
+        }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "declared_max_degree",
+        "partition_order",
+        "candidate_order",
+        "deduplicate",
+        "truncate"
+      ],
+      "properties": {
+        "declared_max_degree": {"const": 3},
+        "partition_order": {"const": "ascending_partition_id"},
+        "candidate_order": {"const": "first_occurrence"},
+        "deduplicate": {"const": "exact_global_node_id"},
+        "truncate": {"const": "after_deduplication"}
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/evaluation-report.schema.json",
+  "title": "EvaluationReport v1",
+  "description": "Independent evaluation document. Fake determinism compares the findings projection, not complete report bytes; report_id, generated_at, paths, run provenance, and non-deterministic metrics remain independent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "report_id",
+    "artifact",
+    "validation_evidence_path",
+    "evaluator",
+    "generated_at",
+    "findings"
+  ],
+  "properties": {
+    "report_version": {"const": "1.0.0"},
+    "report_id": {"$ref": "common.schema.json#/$defs/stableId"},
+    "artifact": {"$ref": "common.schema.json#/$defs/artifactRef"},
+    "validation_evidence_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation_id", "version"],
+      "properties": {
+        "implementation_id": {"$ref": "common.schema.json#/$defs/stableId"},
+        "version": {"$ref": "common.schema.json#/$defs/version"}
+      }
+    },
+    "generated_at": {"type": "string", "format": "date-time"},
+    "findings": {
+      "type": "object",
+      "description": "Deterministic comparison projection for Feature 001: graph integrity, node count, invalid-neighbor count, declared/observed degree bounds, and pass/fail.",
+      "additionalProperties": false,
+      "required": [
+        "graph_integrity",
+        "logical_node_count",
+        "invalid_neighbor_count",
+        "declared_max_degree",
+        "observed_max_degree",
+        "passed"
+      ],
+      "properties": {
+        "graph_integrity": {"enum": ["VALID", "INVALID"]},
+        "logical_node_count": {"type": "integer", "minimum": 0},
+        "invalid_neighbor_count": {"type": "integer", "minimum": 0},
+        "declared_max_degree": {"type": "integer", "minimum": 0},
+        "observed_max_degree": {"type": "integer", "minimum": 0},
+        "passed": {"type": "boolean"}
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Excluded from deterministic comparison unless a Fake evaluator contract explicitly marks a metric deterministic."
+    }
+  }
+}

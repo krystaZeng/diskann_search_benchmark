@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/run-request.schema.json",
+  "title": "Normalized Runner Request v1",
+  "description": "Feature 001 infrastructure-validation request. A future executed-Baseline Feature must use its own versioned request contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request_version", "request_id", "operation", "study_class", "workspace"],
+  "properties": {
+    "request_version": {"const": "1.0.0"},
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/stableId",
+      "description": "Identity of the normalized request; each retained repetition receives a distinct BuildManifest run_id."
+    },
+    "operation": {"enum": ["preflight", "execute", "validate", "evaluate"]},
+    "study_class": {
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/studyClass"},
+        {"const": "infrastructure_validation"}
+      ],
+      "description": "Feature 001 does not execute the pinned Baseline and cannot claim baseline_validation."
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Normalized workspace. Human YAML supplies root and budgets; workspace.py derives and confines the five lifecycle roots before schema validation.",
+      "required": [
+        "root",
+        "normal_root",
+        "temporary_root",
+        "manifest_root",
+        "report_root",
+        "quarantine_root",
+        "memory_budget_bytes",
+        "thread_budget"
+      ],
+      "properties": {
+        "root": {"type": "string", "minLength": 1},
+        "normal_root": {"type": "string", "minLength": 1},
+        "temporary_root": {"type": "string", "minLength": 1},
+        "manifest_root": {"type": "string", "minLength": 1},
+        "report_root": {"type": "string", "minLength": 1},
+        "quarantine_root": {"type": "string", "minLength": 1},
+        "memory_budget_bytes": {"type": "integer", "minimum": 1},
+        "thread_budget": {"type": "integer", "minimum": 1, "maximum": 4294967295}
+      }
+    },
+    "dataset": {"$ref": "common.schema.json#/$defs/artifactRef"},
+    "implementations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partition", "local_build", "merge"],
+      "properties": {
+        "partition": {"$ref": "common.schema.json#/$defs/stableId"},
+        "local_build": {"$ref": "common.schema.json#/$defs/stableId"},
+        "merge": {"$ref": "common.schema.json#/$defs/stableId"}
+      }
+    },
+    "stage_parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partition", "local_build", "merge"],
+      "properties": {
+        "partition": {"type": "object"},
+        "local_build": {"type": "object"},
+        "merge": {"type": "object"}
+      }
+    },
+    "repetition_policy": {
+      "type": "object",
+      "description": "Two retained deterministic runs use identical input/configuration but distinct run/report identities, timestamps, and provenance.",
+      "additionalProperties": false,
+      "required": ["count", "aggregation"],
+      "properties": {
+        "count": {"const": 2},
+        "aggregation": {"const": "retain_all"}
+      }
+    },
+    "reuse_artifact": {"$ref": "common.schema.json#/$defs/artifactRef"},
+    "target_artifact": {"$ref": "common.schema.json#/$defs/artifactRef"},
+    "expected_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "accepted_format_versions", "id_space", "capabilities"],
+      "properties": {
+        "artifact_type": {"$ref": "common.schema.json#/$defs/artifactType"},
+        "accepted_format_versions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "common.schema.json#/$defs/version"}
+        },
+        "id_space": {"$ref": "common.schema.json#/$defs/idSpace"},
+        "capabilities": {"$ref": "common.schema.json#/$defs/capabilityArray"}
+      }
+    },
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation_id", "parameters"],
+      "properties": {
+        "implementation_id": {"$ref": "common.schema.json#/$defs/stableId"},
+        "parameters": {"type": "object"}
+      }
+    },
+    "source_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["yaml_sha256", "normalized_json_sha256"],
+      "properties": {
+        "yaml_sha256": {"$ref": "common.schema.json#/$defs/sha256"},
+        "normalized_json_sha256": {"$ref": "common.schema.json#/$defs/sha256"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"operation": {"enum": ["preflight", "execute"]}},
+        "required": ["operation"]
+      },
+      "then": {
+        "required": [
+          "dataset",
+          "implementations",
+          "stage_parameters",
+          "repetition_policy"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {"operation": {"const": "validate"}},
+        "required": ["operation"]
+      },
+      "then": {"required": ["target_artifact", "expected_contract"]}
+    },
+    {
+      "if": {
+        "properties": {"operation": {"const": "evaluate"}},
+        "required": ["operation"]
+      },
+      "then": {"required": ["target_artifact", "evaluator"]}
+    }
+  ]
+}

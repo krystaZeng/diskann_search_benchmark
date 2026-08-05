@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/quarantine-record.schema.json",
+  "title": "QuarantineRecord v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_version",
+    "quarantine_id",
+    "status",
+    "candidate_metadata_path",
+    "build_manifest_path",
+    "validation_evidence_path",
+    "failure",
+    "capabilities",
+    "isolated_from_normal_resolver",
+    "retained_at"
+  ],
+  "properties": {
+    "record_version": {"const": "1.0.0"},
+    "quarantine_id": {"$ref": "common.schema.json#/$defs/stableId"},
+    "status": {"const": "INVALID_OUTPUT"},
+    "candidate_metadata_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "build_manifest_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "validation_evidence_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "failure": {"$ref": "common.schema.json#/$defs/failure"},
+    "capabilities": {"type": "array", "maxItems": 0},
+    "isolated_from_normal_resolver": {"const": true},
+    "retained_at": {"type": "string", "format": "date-time"},
+    "diagnostic_parent_quarantine_id": {"$ref": "common.schema.json#/$defs/stableId"}
+  }
+}

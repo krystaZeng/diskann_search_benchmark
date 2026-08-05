@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/dataset-artifact.schema.json",
+  "title": "DatasetArtifact Metadata v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "canonicalization",
+    "artifact_type",
+    "format_version",
+    "dataset",
+    "id_space",
+    "structural",
+    "capabilities",
+    "source_artifacts",
+    "payloads",
+    "aggregate_checksum"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "canonicalization": {"const": "diskann-artifact-c14n-v1"},
+    "artifact_type": {"const": "dataset"},
+    "format_version": {"const": "fake-dataset-json/v1"},
+    "dataset": {
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/datasetIdentity"},
+        {
+          "type": "object",
+          "properties": {
+            "dataset_id": {"const": "fake-six-node-v1"},
+            "dataset_checksum": {
+              "const": "2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b"
+            },
+            "global_node_count": {"const": 6},
+            "vector_dimension": {"const": 2},
+            "scalar_type": {"const": "float32"},
+            "distance_metric": {"const": "l2"}
+          }
+        }
+      ]
+    },
+    "id_space": {"const": "none"},
+    "structural": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["global_node_count", "vector_dimension", "scalar_type", "distance_metric"],
+      "properties": {
+        "global_node_count": {"const": 6},
+        "vector_dimension": {"const": 2},
+        "scalar_type": {"const": "float32"},
+        "distance_metric": {"const": "l2"}
+      }
+    },
+    "capabilities": {
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/capabilityArray"},
+        {"contains": {"const": "dataset.vector_access/v1"}}
+      ]
+    },
+    "source_artifacts": {"type": "array", "maxItems": 0},
+    "payloads": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "prefixItems": [
+        {
+          "allOf": [
+            {"$ref": "common.schema.json#/$defs/payloadRef"},
+            {
+              "type": "object",
+              "properties": {
+                "role": {"const": "vectors"},
+                "media_type": {"const": "application/vnd.diskann.fake-vectors+json;version=1"},
+                "byte_length": {"const": 49},
+                "sha256": {
+                  "const": "2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "aggregate_checksum": {
+      "const": "4cfb7bdb7ce50e3b9f07abe72b918a2666d35ef07211d675c708c0e1d0ecf12d"
+    }
+  }
+}

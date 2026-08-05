@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/artifact-ref.schema.json",
+  "title": "ArtifactRef v1",
+  "description": "Immutable reference whose metadata_path resolves to an Artifact metadata document, never a BuildManifest or EvaluationReport.",
+  "$ref": "common.schema.json#/$defs/artifactRef"
+}

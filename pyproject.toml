@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diskann-modular-harness"
+version = "0.1.0"
+description = "Python 3.10+ manifest harness for the modular DiskANN pipeline"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0",
+  "jsonschema>=4.20",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7.4",
+]
+
+[project.scripts]
+diskann-harness = "diskann_harness.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "harness/python"}
+
+[tool.setuptools.packages.find]
+where = ["harness/python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = "-ra"
+

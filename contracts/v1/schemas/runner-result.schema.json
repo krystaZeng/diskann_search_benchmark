@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/runner-result.schema.json",
+  "title": "C++ Runner Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "result_version",
+    "request_id",
+    "operation",
+    "outcome",
+    "exit_code",
+    "stage_invocations"
+  ],
+  "properties": {
+    "result_version": {"const": "1.0.0"},
+    "request_id": {"$ref": "common.schema.json#/$defs/stableId"},
+    "operation": {"enum": ["preflight", "execute", "validate", "evaluate", "registry"]},
+    "outcome": {
+      "enum": [
+        "SUCCEEDED",
+        "REJECTED",
+        "FAILED",
+        "CANCELLED",
+        "INVALID_OUTPUT"
+      ]
+    },
+    "exit_code": {"enum": [0, 2, 3, 4, 5, 6, 7, 10]},
+    "stage_invocations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partition", "local_build", "merge"],
+      "properties": {
+        "partition": {"type": "integer", "minimum": 0},
+        "local_build": {"type": "integer", "minimum": 0},
+        "merge": {"type": "integer", "minimum": 0}
+      }
+    },
+    "artifact": {"$ref": "common.schema.json#/$defs/artifactRef"},
+    "build_manifest_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "evaluation_report_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "validation_evidence_path": {"$ref": "common.schema.json#/$defs/relativePath"},
+    "quarantine_id": {"$ref": "common.schema.json#/$defs/stableId"},
+    "failure": {"$ref": "common.schema.json#/$defs/failure"},
+    "registered_implementations": {
+      "type": "array",
+      "items": {"$ref": "implementation-descriptor.schema.json"}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"exit_code": {"const": 0}}},
+      "then": {"properties": {"outcome": {"const": "SUCCEEDED"}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {"enum": ["REJECTED", "FAILED", "INVALID_OUTPUT"]}
+        }
+      },
+      "then": {"required": ["failure"]}
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "INVALID_OUTPUT"}}},
+      "then": {"required": ["quarantine_id", "validation_evidence_path"]}
+    }
+  ]
+}

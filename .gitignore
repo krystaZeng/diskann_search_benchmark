@@ -1,0 +1,43 @@
+# CMake and native build outputs
+/build/
+/out/
+/bin/
+/obj/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Python environments and package/test outputs
+/.venv/
+/venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+/.pytest_cache/
+/.coverage
+/htmlcov/
+/dist/
+
+# Generated workspaces and transient validation output
+/workspaces/
+/test-output/
+*.tmp
+*.swp
+*.log
+.env*
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
