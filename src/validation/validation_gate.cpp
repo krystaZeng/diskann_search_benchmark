@@ -172,11 +172,8 @@ AdmittedArtifact admit_artifact(const WorkspaceRef& workspace,
       throw PipelineError(ErrorCategory::kSchemaInvalid,
                           "ArtifactRef type differs from metadata type");
     }
-    const auto& rule = schema_rule(reference.artifact_type);
-    if (reference.format_version != rule.format_version) {
-      throw PipelineError(ErrorCategory::kUnsupportedVersion,
-                          "ArtifactRef format version is unsupported");
-    }
+    const auto& rule =
+        schema_rule(reference.artifact_type, reference.format_version);
     if (metadata.at("format_version").get<std::string>() !=
         reference.format_version) {
       throw PipelineError(ErrorCategory::kUnsupportedVersion,

@@ -3,6 +3,7 @@
 #include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/workspace.hpp"
+#include "baseline/cpp_main/native_formats.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -97,6 +98,56 @@ void validate_vector_payload(const AdmittedArtifact& artifact,
   }
 }
 
+bool is_native_media(const PayloadRef& payload, const char* expected) {
+  return payload.media_type == expected;
+}
+
+void validate_map_payload(const AdmittedArtifact& artifact,
+                          const PayloadRef& payload, NodeCount local_count) {
+  if (is_native_media(payload, cpp_main::kPartitionIdMapMediaType)) {
+    cpp_main::validate_partition_id_map(payload_path(artifact, payload),
+                                        local_count,
+                                        artifact.dataset.global_node_count);
+    return;
+  }
+  if (payload.media_type != "application/json") {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "unsupported LocalToGlobal map media type");
+  }
+  validate_local_to_global_map(payload_path(artifact, payload), local_count,
+                               artifact.dataset.global_node_count);
+}
+
+void validate_graph_payload(const AdmittedArtifact& artifact,
+                            const PayloadRef& payload, NodeCount node_count,
+                            std::uint32_t degree_bound, bool local,
+                            std::uint32_t observed_claim) {
+  std::uint32_t observed = 0;
+  const char* native_media =
+      local ? cpp_main::kLocalGraphMediaType : cpp_main::kGlobalGraphMediaType;
+  if (is_native_media(payload, native_media)) {
+    const auto facts = local
+                           ? cpp_main::validate_local_graph(
+                                 payload_path(artifact, payload), node_count,
+                                 degree_bound)
+                           : cpp_main::validate_merged_global_graph(
+                                 payload_path(artifact, payload), node_count,
+                                 degree_bound);
+    observed = facts.observed_max_degree;
+  } else {
+    if (payload.media_type != "application/json") {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "unsupported graph payload media type");
+    }
+    observed = validate_adjacency_graph(payload_path(artifact, payload),
+                                        node_count, node_count, degree_bound);
+  }
+  if (observed != observed_claim) {
+    throw PipelineError(ErrorCategory::kDegreeExceeded,
+                        "observed degree does not match graph payload");
+  }
+}
+
 NodeCount partition_count(const ValidatedArtifact& partition) {
   const auto structural = detail::parse_json_strict(partition.structural_json());
   return structural.at("partition_count").get<NodeCount>();
@@ -156,6 +207,29 @@ void validate_artifact_semantics(
   validate_sources(artifact, validated_sources);
   const auto& structural = artifact.structural;
   if (artifact.reference.artifact_type == ArtifactType::kDataset) {
+    if (artifact.reference.format_version == "diskann-float32-dataset/v1") {
+      if (!validated_sources.empty() || artifact.payloads.size() != 1 ||
+          artifact.payloads[0].role != "vectors" ||
+          !is_native_media(artifact.payloads[0],
+                           cpp_main::kFloat32DatasetMediaType) ||
+          artifact.payloads[0].sha256 != artifact.dataset.dataset_checksum ||
+          structural.at("global_node_count").get<NodeCount>() !=
+              artifact.dataset.global_node_count ||
+          structural.at("vector_dimension").get<std::uint32_t>() !=
+              artifact.dataset.vector_dimension ||
+          structural.at("scalar_type") != "float32" ||
+          structural.at("distance_metric") != "l2") {
+        throw PipelineError(
+            ErrorCategory::kSchemaInvalid,
+            "cpp_main DatasetArtifact metadata does not match native contract");
+      }
+      cpp_main::validate_float32_dataset(
+          payload_path(artifact, artifact.payloads[0]),
+          artifact.dataset.global_node_count,
+          artifact.dataset.vector_dimension,
+          artifact.dataset.dataset_checksum);
+      return;
+    }
     if (!validated_sources.empty() || artifact.dataset.dataset_id != "fake-six-node-v1" ||
         artifact.dataset.dataset_checksum !=
             "2fdb9aa4fa5b41129e8f6577ce9a6282b33a5348c089e8e87184d7e83951027b" ||
@@ -214,12 +288,17 @@ void validate_artifact_semantics(
               "centroids is reserved for the aggregate P0 payload");
         }
         const auto& vectors = require_payload(artifact, vector_role);
-        validate_vector_payload(artifact, vectors, local_count);
+        if (is_native_media(vectors, cpp_main::kFloat32DatasetMediaType)) {
+          cpp_main::validate_float32_matrix(payload_path(artifact, vectors),
+                                            local_count,
+                                            artifact.dataset.vector_dimension);
+        } else {
+          validate_vector_payload(artifact, vectors, local_count);
+        }
         expected_payload_roles.push_back(vector_role);
       }
       const auto& map = require_payload(artifact, map_role);
-      validate_local_to_global_map(payload_path(artifact, map), local_count,
-                                   artifact.dataset.global_node_count);
+      validate_map_payload(artifact, map, local_count);
       expected_payload_roles.push_back(map_role);
     }
     const bool centroids_present =
@@ -234,6 +313,11 @@ void validate_artifact_semantics(
           "Partition centroids payload and capability must be declared together");
     }
     if (centroids_present) {
+      const auto& centroids = artifact.payloads.back();
+      if (is_native_media(centroids, cpp_main::kCentroidsMediaType)) {
+        cpp_main::validate_centroids(payload_path(artifact, centroids), count,
+                                     artifact.dataset.vector_dimension);
+      }
       expected_payload_roles.push_back(kPartitionCentroidsPayloadRole);
     }
     if (artifact.payloads.size() != expected_payload_roles.size() ||
@@ -299,20 +383,13 @@ void validate_artifact_semantics(
       throw PipelineError(ErrorCategory::kMappingIncomplete,
                           "LocalGraph map does not match selected PartitionId map");
     }
-    validate_local_to_global_map(payload_path(artifact, artifact.payloads[0]),
-                                 local_count,
-                                 artifact.dataset.global_node_count);
+    validate_map_payload(artifact, artifact.payloads[0], local_count);
     const auto declared =
         structural.at("declared_max_degree").get<std::uint32_t>();
     const auto observed_claim =
         structural.at("observed_max_degree").get<std::uint32_t>();
-    const auto observed = validate_adjacency_graph(
-        payload_path(artifact, artifact.payloads[1]), local_count, local_count,
-        declared);
-    if (observed != observed_claim) {
-      throw PipelineError(ErrorCategory::kDegreeExceeded,
-                          "observed degree does not match graph payload");
-    }
+    validate_graph_payload(artifact, artifact.payloads[1], local_count,
+                           declared, true, observed_claim);
     return;
   }
 
@@ -365,12 +442,12 @@ void validate_artifact_semantics(
       structural.at("declared_max_degree").get<std::uint32_t>();
   const auto observed_claim =
       structural.at("observed_max_degree").get<std::uint32_t>();
-  const auto observed = validate_adjacency_graph(
-      payload_path(artifact, artifact.payloads[0]), global_count, global_count,
-      declared);
-  if (observed != observed_claim) {
-    throw PipelineError(ErrorCategory::kDegreeExceeded,
-                        "observed global degree does not match graph payload");
+  validate_graph_payload(artifact, artifact.payloads[0], global_count,
+                         declared, false, observed_claim);
+  if (medoids_present &&
+      is_native_media(artifact.payloads[1], cpp_main::kMedoidsMediaType)) {
+    cpp_main::validate_medoids(payload_path(artifact, artifact.payloads[1]),
+                               expected_locals, global_count);
   }
   const auto& source_partition = structural.at("source_partition_artifact");
   const auto& source_locals = structural.at("source_local_graph_artifacts");

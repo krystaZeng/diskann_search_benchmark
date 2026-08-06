@@ -1,0 +1,42 @@
+study_class: baseline_validation
+reproduction_mode: upstream_faithful
+replacement_scope: none
+status: draft
+source:
+  repository: https://github.com/microsoft/DiskANN.git
+  branch: cpp_main
+  commit: 78256bbab4685e1774e78d331e081a153be26823
+  source_path: upstream/diskann-cpp-main
+  require_clean: true
+dataset:
+  dataset_id: sift1m-base-float32-v1
+  path: sift1M_dataset/base_vector.bin
+  checksum: 8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e
+  global_node_count: 1000000
+  vector_dimension: 128
+  byte_length: 512000008
+implementations:
+  partition: cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1
+  local_build: cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1
+  merge: cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1
+profile:
+  R: 16
+  L: 32
+  build_DRAM_budget_gib: 0.6
+  num_threads: 6
+  data_type: float32
+  metric: l2
+  filtered: false
+  labels_enabled: false
+  build_pq_bytes: 0
+  disk_pq_bytes: 0
+  opq_enabled: false
+derived:
+  p0_sample_probability: 0.256
+  p0_local_degree: 10
+  p0_replication_factor: 2
+  b0_local_degree: 10
+  b0_saturation: false
+  b0_alpha: 1.2
+  b0_max_occlusion_size: 750
+  m0_degree_bound: 16

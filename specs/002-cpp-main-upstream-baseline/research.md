@@ -12,9 +12,11 @@
 | Out-of-tree Native Probe | completed once on Linux amd64 with the pinned executable and SIFT1M; exit `0` |
 | Sharded branch proven at runtime | **yes**; positive P0, three-B0, and M0 log sequence retained |
 | Native Partition count observed | **yes**; `3` |
-| Gate A decision | `PASS` for native source/probe evidence only; Stage Binding and formal parity remain gated |
-| Formal Graph Parity gate | `not_reached` |
-| Baseline registration | prohibited; no `validated_graph_baseline` registration |
+| Gate A decision | `PASS`; P0, B0, and M0 are separable, Contract-compatible, and planned |
+| Native Reference reachable | `yes` |
+| Unified Graph Parity reachable | `yes` at the approved design boundary; Stage Bindings are not implemented |
+| Formal Graph Parity gate | `not_reached`; no formal run has started |
+| Baseline registration | `prohibited`; no `validated_graph_baseline` registration |
 | Current Contract assessment | P0, B0 preparation, and M0 representation are `compatible` after the reviewed v1-compatible amendment; Stage Bindings remain unimplemented |
 
 `source-mapping.md` is the commit-bound record of per-symbol source facts. This document keeps the
@@ -318,21 +320,35 @@ the native argv or originals; the process still exited `0`. This proves mechanic
 those files, not zero timing impact. A formal protocol that depends on complete native intermediate
 capture still needs a predeclared capture method and complete-set evidence.
 
-## 15. Preliminary stage separability and availability
+## 15. Final Gate A stage separability and availability
 
-| Stage | Preliminary separability | Native output boundary | Contract status | Availability now | Reason |
+| Stage | Separability | Native output boundary | Contract status | Availability | Final Gate A basis |
 |---|---|---|---|---|---|
-| P0 | faithful independent exposure candidate | exported `partition_with_ram_budget<float>` returns count and emits centroids plus ID maps | `compatible` | native composite boundary `probe_verified`; Unified stage unavailable | PartitionArtifact now requires every map/ownership/lineage record, permits absent shard vectors, and permits aggregate centroids; no P0 Stage Binding has been implemented |
-| B0 | `separable` | `upstream_callable_wrapper`: complete Dataset + explicit PartitionId + selected map -> upstream shard retrieval -> upstream `Index<float>::build/save` -> LocalGraphArtifact | `compatible` at the public representation/service boundary; native Dataset and graph format validators remain implementation work | design-approved, not implemented | Local Build receives the aggregate PartitionArtifact and explicit PartitionId; when shard vectors are absent it uses the validated Dataset-backed StageContext VectorAccessor in map order; byte/process/thread equivalence and a standalone CLI are intentionally not required |
-| M0 | faithful independent exposure candidate | exported `merge_shards` consumes all ID maps/local graphs and emits graph plus medoids | `compatible` | native composite behavior `probe_verified`; Unified stage unavailable | GlobalGraphArtifact now permits medoids, includes them in aggregate identity, and requires them when `graph.medoids/v1` is declared; no M0 Stage Binding has been implemented |
+| P0 | `separable` | exported `partition_with_ram_budget<float>` returns Partition count and emits centroids plus ID maps | `compatible` | `planned` | PartitionArtifact preserves Dataset lineage, PartitionId, ownership, complete maps, and optional centroids; shard-vector materialization belongs to B0 preparation |
+| B0 | `separable` | `upstream_callable_wrapper`: `retrieve_shard_data_from_ids` -> `Index::build` -> `Index::save` -> LocalGraphArtifact | `compatible` | `planned` | validation is `structural_and_contract`; byte identity with the native top-level loop is not required, and Vamana may not be copied or rewritten |
+| M0 | `separable` | exported `merge_shards` consumes all ID maps/local graphs and emits global graph plus medoids | `compatible` | `planned` | GlobalGraphArtifact represents graph plus optional medoids; cpp_main M0 must declare `graph.medoids/v1` and produce medoids |
 
-The B0 decision is fixed as:
+The final Gate A decision is fixed as:
 
 ```yaml
+p0:
+  separability: separable
+  contract_status: compatible
+  availability: planned
 b0:
   separability: separable
+  contract_status: compatible
+  availability: planned
   binding_mode: upstream_callable_wrapper
   validation_scope: structural_and_contract
+m0:
+  separability: separable
+  contract_status: compatible
+  availability: planned
+native_reference_reachable: yes
+unified_graph_parity_reachable: yes
+formal_gate_status: not_reached
+baseline_registration: prohibited
 ```
 
 No Stage Binding has been implemented. The decision authorizes a minimal implementation plan, not
@@ -401,7 +417,9 @@ B0 is also compatible at the existing public execution boundary because a map-on
 be combined with the validated Dataset-backed `StageContext::vector_accessor`; materialization is
 B0 preparation. Native float32 Dataset and local-graph parsers, descriptors, build integration,
 and Stage Bindings remain unimplemented engineering work, not permission to change semantics. No
-`blocking_incompatible` fact has been proven. Formal Graph Parity remains `not_reached`.
+`blocking_incompatible` fact has been proven. The Native Reference and Unified Graph Parity design
+are reachable; the formal gate remains `not_reached` until the planned Stage Bindings and frozen
+Parity Protocol exist and the formal run is actually executed.
 
 ## 18. Fields suitable for checksum identity
 
@@ -691,7 +709,7 @@ dimension, and checksum are `not reached`, not omitted evidence. No experiment o
 All generated CMake probe files are under `/tmp/diskann-native-probe-78256-20260806-{a,b}`. No file
 was generated under `upstream/diskann-cpp-main`.
 
-## Unresolved items and gate consequence
+## Parity Protocol strategy inputs and remaining implementation work
 
 The following remain `uncertain`:
 
@@ -699,30 +717,30 @@ The following remain `uncertain`:
   generated target flags, link command, toolchain, executable, and runtime identities;
 - effective OpenMP/MKL placement, dynamic-team, and affinity state beyond explicit `T=6` and the
   linked runtime identity;
-- exact-byte capture of the transient M0 merged graph;
-- whether an external complete-set capture has zero observable timing/resource effect;
-- independent P0/M0 invocation equivalence and the unimplemented native format validators;
+- whether formal parity should use exact-byte capture of the transient M0 merged graph or a
+  predeclared structural/logical projection;
+- whether an external complete-set capture has acceptable, predeclared timing/resource effects;
+- unimplemented native format validators and Stage Bindings for the three planned stages;
 - the final logical Graph Parity projection, repetitions, aggregation, and thresholds.
 
-Complete three-B0 capture, B0 repeat behavior, and equivalence of the wrapper to the composite loop
-at process, schedule, adjacency, or byte level are deliberately not pursued by the approved B0
-validation scope; they are not open implementation blockers.
+Incomplete exact-byte capture, complete three-B0 capture, B0 repeat behavior, and equivalence of the
+wrapper to the composite loop at process, schedule, adjacency, or byte level are comparison-strategy
+questions for a later frozen Parity Protocol. They are not P0/B0/M0 implementation blockers.
 
 No current item is `blocked_by_environment` on the successful Linux runtime. The earlier macOS
 configure attempts remain historically `blocked_by_environment` because their dependencies were
 incomplete.
 
-### Gate A preliminary decision
+### Gate A final decision
 
-Gate A is `PASS` only for the scoped question “is the fixed native SIFT1M sharded graph-build path
-executable and are its real P0/B0/M0 calls and file boundaries observable?” The positive predicate,
-three-Partition P0, three B0 builds, M0 merge, exit `0`, immutable input identity, and clean pinned
-upstream state are reviewable.
+Gate A is `PASS`. The fixed native SIFT1M sharded graph-build path, three-Partition P0, three B0
+builds, M0 merge, exit `0`, immutable input identity, and clean pinned upstream state are
+reviewable. P0, B0, and M0 are each `separable`, `compatible`, and `planned`. B0 uses the approved
+`upstream_callable_wrapper` and `structural_and_contract` boundary; no byte-identical equivalence to
+the top-level loop is required and no Vamana code may be copied or rewritten.
 
-This decision does **not** advance the Feature automatically. The P0 and M0 representation gaps are
-now `compatible`, and B0 is `separable` through an `upstream_callable_wrapper` using the existing
-Dataset-backed VectorAccessor fallback. Complete native intermediate capture is incomplete; native
-format validators and all Stage Bindings remain unimplemented; the complete Unified path is
-unreachable. Therefore formal Graph Parity remains `not_reached`, no
-`validated_graph_baseline` registration is permitted, and any implementation stage still requires
-explicit human approval.
+Accordingly, `native_reference_reachable: yes` and
+`unified_graph_parity_reachable: yes`. Reachability is a final design/admission decision, not a
+claim that the Unified path has executed. Native format validators and Stage Bindings remain
+unimplemented, the Parity Protocol is not frozen, and no formal run has started. Therefore
+`formal_gate_status: not_reached` and `baseline_registration: prohibited` remain unchanged.

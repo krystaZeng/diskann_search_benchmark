@@ -1,95 +1,247 @@
-# Quickstart: Validate the Planned B0 Callable Wrapper
+# Quickstart: Planned cpp_main P0+B0+M0 Structural Closure
 
-This is a post-implementation validation guide, not evidence that the wrapper currently exists.
-Run nothing from this guide until the planned targets and native format validators are implemented.
-The v1 representation amendment is complete. All commands use out-of-tree build/output paths.
+This is a post-implementation validation guide, not evidence that the Stage Bindings currently
+exist. It does not run formal Graph Parity or register a validated Baseline. All generated paths
+must remain outside upstream/diskann-cpp-main.
 
-## 1. Admission checks
+## 1. Verify immutable inputs
 
-```sh
+From the repository root:
+
+~~~sh
 git ls-files --stage upstream/diskann-cpp-main
 git -C upstream/diskann-cpp-main rev-parse HEAD
 git -C upstream/diskann-cpp-main status --porcelain=v1
-```
+~~~
 
-Expected: gitlink and submodule HEAD both equal
-`78256bbab4685e1774e78d331e081a153be26823`; upstream status is empty. Any mismatch stops the run.
+Expected:
 
-Verify the immutable SIFT1M input through the implemented DatasetArtifact admission command. The
-expected identity is `1000000 x 128` little-endian float32, 512000008 bytes, SHA-256
-`8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e`.
-Do not read `sift1M_dataset/selected_query.csv` for B0.
+- gitlink mode 160000 and object 78256bbab4685e1774e78d331e081a153be26823;
+- submodule HEAD 78256bbab4685e1774e78d331e081a153be26823;
+- empty upstream porcelain status.
+
+Any mismatch stops configure and execution.
+
+The SIFT1M Dataset admission must establish:
+
+~~~text
+repository-relative path: sift1M_dataset/base_vector.bin
+format: little-endian uint32 npts, uint32 dim, then little-endian float32 values
+npts: 1000000
+dim: 128
+byte length: 512000008
+SHA-256: 8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e
+non-finite values: 0
+~~~
+
+Do not read or convert sift1M_dataset/selected_query.csv for this graph-build closure.
 
 ## 2. Configure and build outside upstream
 
-```sh
-cmake -S . -B build/cpp-main-b0 -DCMAKE_BUILD_TYPE=Release \
+~~~sh
+cmake -S . -B build/cpp-main-baseline \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON \
   -DDISKANN_CPP_MAIN_BASELINE=ON
-cmake --build build/cpp-main-b0 --target cpp_main_b0_tests --parallel
-```
+cmake --build build/cpp-main-baseline --parallel
+~~~
 
-Expected: the fixed upstream source is configured with an explicit binary directory below
-`build/cpp-main-b0/`; no generated file appears under `upstream/diskann-cpp-main`. The BuildManifest
-records actual configure/build commands, toolchain, effective definitions/options, linked runtime
-identities, and binary checksums.
+Expected:
 
-## 3. Run contract and small-fixture tests first
+- upstream is configured with an explicit binary directory below build/cpp-main-baseline;
+- the Feature links the real diskann_s target at the pinned source;
+- no generated file appears under upstream/diskann-cpp-main;
+- the build evidence records actual compiler, CMake, generator, build type, effective definitions
+  and compile options, actual commands, dependency identities, and binary checksums.
 
-```sh
-ctest --test-dir build/cpp-main-b0 --output-on-failure \
-  -R '^cpp_main_b0_(contract|input_gate|callable_wrapper|structural)$'
-```
+The Native Probe toolchain values in research.md are historical evidence only. The current build
+must record its own identity.
+
+## 3. Run focused tests before SIFT1M
+
+### Native formats and source/build admission
+
+~~~sh
+ctest --test-dir build/cpp-main-baseline --output-on-failure \
+  -R '^cpp_main_(source_build_admission|native_formats)$'
+~~~
+
+Expected coverage:
+
+- exact commit/gitlink/clean-state admission and read-only external build paths;
+- DiskANN float32 Dataset header, finite payload, overflow-safe length, and checksum;
+- uint32 ID maps and medoids;
+- float32 centroids;
+- local graph, local .data, and merged graph header/record/length parsing;
+- truncated, trailing, overflowed, wrong-type, non-finite, and out-of-range negative fixtures.
+
+### Descriptors, stages, and small complete Pipeline
+
+~~~sh
+ctest --test-dir build/cpp-main-baseline --output-on-failure \
+  -R '^cpp_main_(descriptors_preflight|p0|b0|m0|pipeline)$'
+~~~
 
 Expected positive findings:
 
-- the descriptor admits the Dataset/Partition requirements, receives an explicit PartitionId, and
-  uses the Dataset-backed VectorAccessor when the selected Partition has no shard vectors;
-- the pinned upstream shard-retrieval and `Index<float>::build/save` call path is used;
-- reconstructed shard rows equal Dataset rows selected by the unchanged map;
-- LocalGraph node count equals map length, neighbors are valid LocalNodeIds, and maximum degree is
-  at most `floor(2R/3)`;
-- Dataset, Partition, and map lineage are exact.
+- all three descriptors declare their Artifact/version/ID-space/capability/service requirements,
+  one provided Artifact, and stable parameter_schema_path;
+- P0 calls partition_with_ram_budget and produces a map-only aggregate PartitionArtifact with
+  centroids and no shard-vector claim;
+- B0 receives an explicit PartitionId, reconstructs rows in exact map order, calls the pinned
+  retrieve/build/save sequence, validates the .data companion, and publishes a local graph;
+- M0 receives the exact complete Partition/local-graph set, calls merge_shards, and publishes a
+  global graph plus medoids;
+- the existing Pipeline orders P0, all explicit B0 selections, and M0, and validates every Artifact
+  before downstream execution.
 
-Expected negative cases fail before factory/build/publication as appropriate: invalid PartitionId,
-missing Partition record, incomplete/out-of-range/non-consumable map, Dataset mismatch, invalid
-parameters, shard-order mismatch, invalid neighbor, wrong node count, and degree overflow. No
-invalid candidate enters downstream execution.
+Required negative findings include source mismatch, invalid parameters, missing/invalid Dataset,
+missing or invalid PartitionId/map/centroids, shard row-order mismatch, local neighbor or degree
+error, incomplete/duplicate/extra M0 inputs, global neighbor error, and missing/invalid medoids.
+Preflight failures create no factory. Invalid or cancelled stage output invokes no downstream stage.
 
-## 4. Run one SIFT1M structural gate
+## 4. Inspect the draft structural Profile
 
-After the smaller tests pass, run the planned non-installed B0 stage driver once with:
+The planned configuration is:
 
-```text
-experiments/configs/cpp-main-upstream-baseline/b0-sift1m-structural.yaml
-```
+~~~text
+experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml
+~~~
 
-The frozen profile is float32/L2/unfiltered, `R=16`, `L=32`, `T=6`, build PQ/OPQ/labels disabled,
-and one explicit validated PartitionId/map. The run must retain a schema-valid terminal
-BuildManifest, one validated LocalGraphArtifact, and ValidationEvidence. It must not automatically
-change a parameter or retry on failure.
+It declares baseline_validation and the exact three implementation identities:
 
-Expected terminal scope:
-
-```yaml
+~~~yaml
 study_class: baseline_validation
-stage: B0
-separability: separable
-binding_mode: upstream_callable_wrapper
+reproduction_mode: upstream_faithful
+replacement_scope: none
+status: draft
+implementations:
+  partition: cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1
+  local_build: cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1
+  merge: cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1
+profile:
+  R: 16
+  L: 32
+  build_DRAM_budget_gib: 0.6
+  num_threads: 6
+  data_type: float32
+  metric: l2
+  filtered: false
+  labels_enabled: false
+  build_pq_bytes: 0
+  disk_pq_bytes: 0
+  opq_enabled: false
+~~~
+
+The implementation-specific P0/B0/M0 parameter documents also record every derived/default value
+defined in data-model.md. The baseline-local normalizer reuses the existing safe YAML loading and
+JSON-compatible tree validation, validates cpp-main-run-request.schema.json, writes immutable
+normalized JSON during non-running preflight, and the later `execute --request` mode invokes the
+runner exactly once. This does not modify or reuse Feature 001's Fake-only
+infrastructure-validation request contract.
+
+Before execution, the runner recomputes the source branch predicate. For the probed ABI, fixed
+Dataset identity, and draft Profile values:
+
+~~~text
+estimated full index RAM = 707519996.643066406 bytes
+M budget                = 644245094.4 bytes
+single condition        = estimated RAM < M budget
+result                  = false; sharded path required
+~~~
+
+The exact compiled ABI value must be recomputed and recorded rather than copied blindly from this
+guide.
+
+## 5. Preflight SIFT1M without starting the runner
+
+Only after all focused tests pass:
+
+~~~sh
+.venv/bin/python -m diskann_harness.cpp_main_baseline preflight \
+  --config experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml \
+  --workspace build/cpp-main-baseline/runs/sift1m-unified
+~~~
+
+Preflight must validate the draft Profile, pinned Source/Build Identity, and complete Dataset;
+publish the confined immutable DatasetArtifact and its ValidationEvidence; recompute the strict
+sharded-path predicate; and write exactly:
+
+~~~text
+build/cpp-main-baseline/runs/sift1m-unified/requests/unified-sharded-request.json
+~~~
+
+Its terminal response returns that request path and the admitted Dataset ArtifactRef. It must not
+start `cpp_main_baseline_runner`, create a Stage factory, or invoke P0, B0, or M0; every stage
+invocation count is zero. A failed preflight retains failure evidence but produces no executable
+request.
+
+## 6. Run one Unified structural closure from the admitted request
+
+Only after preflight succeeds:
+
+~~~sh
+.venv/bin/python -m diskann_harness.cpp_main_baseline execute \
+  --request build/cpp-main-baseline/runs/sift1m-unified/requests/unified-sharded-request.json \
+  --workspace build/cpp-main-baseline/runs/sift1m-unified \
+  --runner build/cpp-main-baseline/src/baseline/cpp_main/cpp_main_baseline_runner
+~~~
+
+Execute consumes the immutable normalized request and its validated DatasetArtifact; it does not
+accept `--config` as an implicit second admission path or rewrite the request. The command performs
+one retained structural run. It must not alter a parameter, retry with a new profile, run a second
+statistical repetition, execute the Native Reference, or start Graph Parity.
+
+Expected stage evidence:
+
+1. P0 returns at least two Partitions and publishes centroids plus one complete map for every
+   contiguous PartitionId, with no shard vectors.
+2. The executor passes each explicit PartitionId to B0. Every reconstructed shard row matches its
+   selected Dataset row; every LocalGraph has the same node count as its map, only valid
+   LocalNodeIds, and observed degree at most 10.
+3. M0 receives exactly the complete validated set. The final graph has 1,000,000 records, only
+   valid GlobalNodeIds, and observed degree at most 16. Medoids exist and validate.
+4. The GlobalGraphArtifact aggregate checksum covers both global_graph and medoids.
+5. One build-stage BuildManifest plus the existing per-stage BuildManifests and separate structural
+   ValidationEvidence collectively retain complete Source/Build/Dataset/configuration/stage and
+   lifecycle identity. The separate graph-integrity EvaluationReport is generated by
+   `cpp_main_native_graph_integrity_evaluator` from the already validated structural claims and
+   corresponding ValidationEvidence; it is not a Graph Parity Report or performance report. The
+   existing `fake_graph_integrity_evaluator` remains limited to its Fake JSON adjacency path.
+6. `specs/002-cpp-main-upstream-baseline/unified-sharded-report.json` is written as a Feature-local
+   structural summary that references those separate records rather than embedding them.
+
+The P0 Partition count is not required to equal the Native Probe's observed count of three. Native
+P0 randomness remains unchanged. Fewer than two Partitions fails the sharded closure rather than
+silently changing M.
+
+## 7. Verify terminal scope and upstream state
+
+The terminal evidence must retain:
+
+~~~yaml
+study_class: baseline_validation
+reproduction_mode: upstream_faithful
+replacement_scope: none
 validation_scope: structural_and_contract
-formal_graph_parity: not_reached
+profile_ref: experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml
+profile_status: draft
+formal_graph_parity: false
 validated_graph_baseline_registered: false
-```
+run_class: unified_sharded_closure
+~~~
 
-Do not compare LocalGraph bytes or adjacency with Native Probe captures. Do not run repetitions,
-P0, M0, formal Graph Parity, Recall/QPS/latency evaluation, or a dataset larger than SIFT1M.
+Then verify:
 
-## 5. Post-run immutability check
-
-```sh
+~~~sh
 git -C upstream/diskann-cpp-main rev-parse HEAD
 git -C upstream/diskann-cpp-main status --porcelain=v1
 git diff --check
-```
+~~~
 
-Expected: the pinned upstream HEAD is unchanged and clean. Report executed, failed, and unexecuted
-tests separately; an incomplete SIFT1M gate must not be described as passed.
+Expected: the pinned upstream HEAD is unchanged and its porcelain status is empty.
+
+Report all executed, failed, and applicable unexecuted tests separately. A valid structural closure
+must not be described as Graph Parity PASS, production-ready, complete DiskANN parity, or
+validated_graph_baseline. Do not run Recall, QPS, latency evaluation, a larger dataset, parameter
+search, or Feature 001 deferred hardening from this guide.

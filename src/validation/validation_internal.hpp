@@ -26,7 +26,8 @@ struct AdmittedArtifact {
   detail::Json structural;
 };
 
-const SchemaRule& schema_rule(ArtifactType artifact_type);
+const SchemaRule& schema_rule(ArtifactType artifact_type,
+                              std::string_view format_version);
 AdmittedArtifact admit_artifact(const WorkspaceRef& workspace,
                                 const ArtifactRef& reference);
 void validate_payload_identity(const WorkspaceRef& workspace,

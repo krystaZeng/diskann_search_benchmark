@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/baseline-v1/cpp-main-run-request.schema.json",
+  "title": "cpp_main Baseline draft run profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "study_class",
+    "reproduction_mode",
+    "replacement_scope",
+    "status",
+    "source",
+    "dataset",
+    "implementations",
+    "profile",
+    "derived"
+  ],
+  "properties": {
+    "study_class": {"const": "baseline_validation"},
+    "reproduction_mode": {"const": "upstream_faithful"},
+    "replacement_scope": {"const": "none"},
+    "status": {"const": "draft"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commit", "source_path", "require_clean"],
+      "properties": {
+        "repository": {"const": "https://github.com/microsoft/DiskANN.git"},
+        "branch": {"const": "cpp_main"},
+        "commit": {"const": "78256bbab4685e1774e78d331e081a153be26823"},
+        "source_path": {"const": "upstream/diskann-cpp-main"},
+        "require_clean": {"const": true}
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset_id", "path", "checksum", "global_node_count", "vector_dimension", "byte_length"],
+      "properties": {
+        "dataset_id": {"const": "sift1m-base-float32-v1"},
+        "path": {"const": "sift1M_dataset/base_vector.bin"},
+        "checksum": {"const": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e"},
+        "global_node_count": {"const": 1000000},
+        "vector_dimension": {"const": 128},
+        "byte_length": {"const": 512000008}
+      }
+    },
+    "implementations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partition", "local_build", "merge"],
+      "properties": {
+        "partition": {"const": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1"},
+        "local_build": {"const": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1"},
+        "merge": {"const": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1"}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["R", "L", "build_DRAM_budget_gib", "num_threads", "data_type", "metric", "filtered", "labels_enabled", "build_pq_bytes", "disk_pq_bytes", "opq_enabled"],
+      "properties": {
+        "R": {"const": 16},
+        "L": {"const": 32},
+        "build_DRAM_budget_gib": {"const": 0.6},
+        "num_threads": {"const": 6},
+        "data_type": {"const": "float32"},
+        "metric": {"const": "l2"},
+        "filtered": {"const": false},
+        "labels_enabled": {"const": false},
+        "build_pq_bytes": {"const": 0},
+        "disk_pq_bytes": {"const": 0},
+        "opq_enabled": {"const": false}
+      }
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p0_sample_probability", "p0_local_degree", "p0_replication_factor", "b0_local_degree", "b0_saturation", "b0_alpha", "b0_max_occlusion_size", "m0_degree_bound"],
+      "properties": {
+        "p0_sample_probability": {"const": 0.256},
+        "p0_local_degree": {"const": 10},
+        "p0_replication_factor": {"const": 2},
+        "b0_local_degree": {"const": 10},
+        "b0_saturation": {"const": false},
+        "b0_alpha": {"const": 1.2},
+        "b0_max_occlusion_size": {"const": 750},
+        "m0_degree_bound": {"const": 16}
+      }
+    }
+  }
+}

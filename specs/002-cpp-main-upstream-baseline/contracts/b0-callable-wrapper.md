@@ -16,6 +16,8 @@ upstream:
   commit: 78256bbab4685e1774e78d331e081a153be26823
 b0:
   separability: separable
+  contract_status: compatible
+  availability: planned
   binding_mode: upstream_callable_wrapper
   validation_scope: structural_and_contract
 ```
@@ -37,10 +39,16 @@ StageResult build(
 
 All types remain in the C++17 public contract and expose no upstream or C++20 type. The
 PartitionArtifact remains aggregate; no `partition_shard` ArtifactRef is introduced. PartitionId is
-explicit. Each map is mandatory and `shard_vectors_role` is optional. When vectors are absent, B0
-uses the validated Dataset-backed `StageContext::vector_accessor` in exact map order; missing both
-sources fails before upstream work. Passing a Dataset path in implementation parameters or finding
-it through process-global state is forbidden.
+explicit. Each map is mandatory and the public contract permits optional `shard_vectors_role`.
+This cpp_main binding nevertheless uses the validated Dataset-backed
+`StageContext::vector_accessor` and pinned retrieval callable in exact map order for every
+invocation. The Feature-local runner binds a private cpp_main float32 accessor to the exact
+validated native Dataset payload/checksum; the wrapper verifies that private concrete binding and
+uses its confined read-only path as the upstream filename argument without changing the public
+VectorAccessor interface. It does not bypass `retrieve_shard_data_from_ids` when a different
+producer includes shard vectors. Missing or differently bound Dataset access fails before upstream
+work. Passing a Dataset path in implementation parameters or finding it through process-global
+state is forbidden.
 
 The planned Registry declaration is:
 
@@ -88,9 +96,11 @@ it to the installed production runner and does not register `validated_graph_bas
    every GlobalNodeId in Dataset range.
 5. A normalized parameter document validated before factory creation.
 
-If the selected record contains shard vectors, B0 may use them directly. Otherwise it materializes
-them through the Dataset VectorAccessor in map order. This materialization is B0 preparation, not
-P0 output, and the temporary file cannot be labeled as a P0 shard-vector payload.
+The cpp_main binding materializes vectors through the Dataset VectorAccessor and pinned
+`retrieve_shard_data_from_ids` path in map order. This materialization is B0 preparation, not P0
+output, and the temporary file cannot be labeled as a P0 shard-vector payload. The generic public
+contract remains backward-compatible with other Partition producers that include shard vectors;
+this binding does not use that optional shortcut.
 
 Because the pinned retrieval callable streams Dataset rows in ascending GlobalNodeId order, B0 also
 requires a capability asserting that the selected map is already in that consumable order. The
@@ -173,4 +183,5 @@ The B0 gate does not require or imply:
 - adjacency equality with a graph built inside the top-level composite process;
 - equivalent process state, allocation history, OpenMP interleaving, or thread scheduling;
 - repeated runs, determinism statistics, Graph Parity, Recall, QPS, or latency;
-- P0/M0 availability or `validated_graph_baseline` registration.
+- proof that P0/M0 executed successfully, formal Graph Parity, or
+  `validated_graph_baseline` registration.

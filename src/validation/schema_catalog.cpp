@@ -4,10 +4,14 @@
 
 namespace diskann_pipeline::validation_detail {
 
-const SchemaRule& schema_rule(ArtifactType artifact_type) {
+const SchemaRule& schema_rule(ArtifactType artifact_type,
+                              std::string_view format_version) {
   static const SchemaRule dataset{ArtifactType::kDataset,
                                   "fake-dataset-json/v1", IdSpace::kNone,
                                   "dataset.vector_access/v1"};
+  static const SchemaRule cpp_main_dataset{
+      ArtifactType::kDataset, "diskann-float32-dataset/v1", IdSpace::kNone,
+      "dataset.diskann_float32_bin/v1"};
   static const SchemaRule partition{
       ArtifactType::kPartition, "partition-artifact/v1", IdSpace::kLocal,
       "partition.complete_local_to_global_map/v1"};
@@ -19,13 +23,28 @@ const SchemaRule& schema_rule(ArtifactType artifact_type) {
                                  "graph.global_adjacency/v1"};
   switch (artifact_type) {
     case ArtifactType::kDataset:
-      return dataset;
+      if (format_version == dataset.format_version) {
+        return dataset;
+      }
+      if (format_version == cpp_main_dataset.format_version) {
+        return cpp_main_dataset;
+      }
+      break;
     case ArtifactType::kPartition:
-      return partition;
+      if (format_version == partition.format_version) {
+        return partition;
+      }
+      break;
     case ArtifactType::kLocalGraph:
-      return local;
+      if (format_version == local.format_version) {
+        return local;
+      }
+      break;
     case ArtifactType::kGlobalGraph:
-      return global;
+      if (format_version == global.format_version) {
+        return global;
+      }
+      break;
   }
   throw PipelineError(ErrorCategory::kUnsupportedVersion,
                       "Artifact type has no registered schema");

@@ -8,30 +8,35 @@ project(
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(
+  DISKANN_CPP_MAIN_BASELINE
+  "Build the fixed cpp_main Baseline wrapper and its tests"
+  OFF)
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Dependencies)
 include(CompilerOptions)
 
 execute_process(
-  COMMAND git rev-parse --show-toplevel
+  COMMAND git -c safe.directory=${CMAKE_SOURCE_DIR} rev-parse --show-toplevel
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   OUTPUT_VARIABLE DISKANN_PIPELINE_SOURCE_REPOSITORY
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET)
 execute_process(
-  COMMAND git branch --show-current
+  COMMAND git -c safe.directory=${CMAKE_SOURCE_DIR} branch --show-current
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   OUTPUT_VARIABLE DISKANN_PIPELINE_SOURCE_BRANCH
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET)
 execute_process(
-  COMMAND git rev-parse HEAD
+  COMMAND git -c safe.directory=${CMAKE_SOURCE_DIR} rev-parse HEAD
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   OUTPUT_VARIABLE DISKANN_PIPELINE_SOURCE_COMMIT
   OUTPUT_STRIP_TRAILING_WHITESPACE
   ERROR_QUIET)
 execute_process(
-  COMMAND git status --porcelain=v1 --untracked-files=all
+  COMMAND git -c safe.directory=${CMAKE_SOURCE_DIR} status --porcelain=v1 --untracked-files=all
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   OUTPUT_VARIABLE DISKANN_PIPELINE_SOURCE_STATUS
   OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -39,12 +44,12 @@ execute_process(
 if(DISKANN_PIPELINE_SOURCE_STATUS)
   set(DISKANN_PIPELINE_SOURCE_DIRTY 1)
   execute_process(
-    COMMAND git diff --binary HEAD
+    COMMAND git -c safe.directory=${CMAKE_SOURCE_DIR} diff --binary HEAD
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     OUTPUT_VARIABLE DISKANN_PIPELINE_TRACKED_DIFF
     ERROR_QUIET)
   execute_process(
-    COMMAND git ls-files --others --exclude-standard
+    COMMAND git -c safe.directory=${CMAKE_SOURCE_DIR} ls-files --others --exclude-standard
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     OUTPUT_VARIABLE DISKANN_PIPELINE_UNTRACKED_FILES
     OUTPUT_STRIP_TRAILING_WHITESPACE
@@ -74,6 +79,11 @@ endif()
 
 add_subdirectory(include/diskann_pipeline)
 add_subdirectory(src)
+
+if(DISKANN_CPP_MAIN_BASELINE)
+  include(CppMainBaseline)
+  diskann_configure_cpp_main_baseline()
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
