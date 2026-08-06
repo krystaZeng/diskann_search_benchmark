@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/baseline-v1/cpp-main-m0-parameters.schema.json",
+  "$defs": {
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["R", "use_filters"],
+      "properties": {
+        "R": {"type": "integer", "const": 16},
+        "use_filters": {"type": "boolean", "const": false}
+      }
+    }
+  }
+}

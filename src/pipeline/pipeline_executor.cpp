@@ -526,9 +526,20 @@ PipelineExecutionResult PipelineExecutor::execute(
       result.stage_order.push_back(StageKind::kLocalBuild);
       const auto stage = local->build(
           validated_partition->reference(), id, {parameter_path}, context);
+      std::vector<ArtifactRef> local_inputs;
+      const auto declares_dataset = std::any_of(
+          local_descriptor.requires.input_artifacts.begin(),
+          local_descriptor.requires.input_artifacts.end(),
+          [](const ArtifactRequirement& requirement) {
+            return requirement.artifact_type == ArtifactType::kDataset;
+          });
+      if (declares_dataset) {
+        local_inputs.push_back(request.dataset);
+      }
+      local_inputs.push_back(validated_partition->reference());
       auto manifest = base_manifest(
           request, context, "local_build", local_descriptor, dataset.dataset(),
-          parameters, {validated_partition->reference()}, stage_started_at);
+          parameters, std::move(local_inputs), stage_started_at);
       const bool terminal_output_valid =
           (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
           ((stage.status == StageStatus::kFailed ||

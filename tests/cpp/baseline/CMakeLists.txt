@@ -34,3 +34,20 @@ endif()
 if(TARGET diskann_cpp_main_upstream)
   target_link_libraries(cpp_main_link_smoke PRIVATE diskann_cpp_main_upstream)
 endif()
+
+foreach(_phase2_test IN ITEMS
+        cpp_main_descriptors_preflight
+        cpp_main_p0
+        cpp_main_b0
+        cpp_main_m0)
+  add_cpp_main_baseline_test(
+    "${_phase2_test}"
+    "test_${_phase2_test}.cpp")
+  target_link_libraries(
+    "${_phase2_test}"
+    PRIVATE diskann_cpp_main_stages nlohmann_json::nlohmann_json)
+  set_tests_properties("${_phase2_test}" PROPERTIES LABELS "cpp-main-baseline;phase2")
+endforeach()
+target_compile_definitions(
+  cpp_main_descriptors_preflight
+  PRIVATE CPP_MAIN_TEST_REPOSITORY_ROOT="${PROJECT_SOURCE_DIR}")

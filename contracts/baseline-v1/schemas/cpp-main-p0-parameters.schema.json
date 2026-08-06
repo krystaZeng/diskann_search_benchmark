@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/baseline-v1/cpp-main-p0-parameters.schema.json",
+  "$defs": {
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["R", "build_DRAM_budget_gib", "replication_factor", "sample_probability"],
+      "properties": {
+        "R": {"type": "integer", "const": 16},
+        "build_DRAM_budget_gib": {"type": "number", "const": 0.6},
+        "replication_factor": {"type": "integer", "const": 2},
+        "sample_probability": {"type": "number"}
+      }
+    }
+  }
+}

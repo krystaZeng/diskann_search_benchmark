@@ -114,77 +114,77 @@ no cross-Partition concurrency is introduced.
 callable path, output structure, ID space, lineage, checksum, failure behavior, and lack of
 downstream publication for invalid output.
 
-- [ ] T011 [P] [US2] Add failing descriptor, parameter-schema, Registry, and preflight tests in tests/cpp/baseline/test_cpp_main_descriptors_preflight.cpp
+- [x] T011 [P] [US2] Add failing descriptor, parameter-schema, Registry, and preflight tests in tests/cpp/baseline/test_cpp_main_descriptors_preflight.cpp
   - **输入**: contracts/stage-bindings.md descriptor declarations and existing C++17 Registry/capability checker.
   - **输出**: `cpp_main_descriptors_preflight` target and same-name CTest; tests for exact stable IDs, test_only=false, parameter_schema_path, P0 Dataset requires/Partition provides, B0 Dataset+Partition requires/LocalGraph provides, M0 Partition+LocalGraph requires/GlobalGraph+medoids provides, ID spaces, runtime services, kProduction admission, and zero factory calls on incompatibility.
   - **依赖**: T010.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_descriptors_preflight` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_descriptors_preflight$' --output-on-failure`; record the intended pre-implementation failure before descriptors/schemas exist.
   - **完成条件**: Tests include missing input, wrong version, wrong ID space, missing capability/service, invalid parameters, duplicate identity, and prohibited fallback cases.
 
-- [ ] T012 [P] [US2] Add failing P0 callable and Artifact tests in tests/cpp/baseline/test_cpp_main_p0.cpp
+- [x] T012 [P] [US2] Add failing P0 callable and Artifact tests in tests/cpp/baseline/test_cpp_main_p0.cpp
   - **输入**: contracts/stage-bindings.md P0 boundary, native format readers, small temporary float32 Dataset, source-derived parameters.
   - **输出**: `cpp_main_p0` target and same-name CTest; tests proving the actual partition_with_ram_budget<float> path returns Partition count/maps/centroids, publishes a map-only aggregate PartitionArtifact, preserves Dataset ownership/lineage, and rejects missing centroids/maps, invalid IDs/counts, shard-vector claims, cancellation, or invalid source/Profile.
   - **依赖**: T010.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_p0` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_p0$' --output-on-failure`; record the intended pre-implementation failure before p0_partition.cpp exists.
   - **完成条件**: Assertions are structural only, do not freeze random Partition bytes/count, do not set a seed, and confirm no B0 invocation after invalid P0 output.
 
-- [ ] T013 [P] [US2] Add failing B0 callable, local-ID, degree, and lineage tests in tests/cpp/baseline/test_cpp_main_b0.cpp
+- [x] T013 [P] [US2] Add failing B0 callable, local-ID, degree, and lineage tests in tests/cpp/baseline/test_cpp_main_b0.cpp
   - **输入**: contracts/b0-callable-wrapper.md, one small native Dataset, aggregate map-only PartitionArtifact, explicit valid/invalid PartitionIds, R/L/T profile values.
   - **输出**: `cpp_main_b0` target and same-name CTest; tests proving retrieve_shard_data_from_ids<float> row order, native parameter construction, Index<float>::build/save, .data lifecycle validation, LocalGraph node count/LocalNodeId/degree bounds, exact Dataset/Partition/map lineage, cancellation gates, and no normal output on failure.
   - **依赖**: T010.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_b0` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_b0$' --output-on-failure`; record the intended pre-implementation failure before the native-backed accessor and B0 binding exist.
   - **完成条件**: Tests reject absent/wrong native Dataset binding, invalid PartitionId, incomplete/non-ascending/out-of-range map, shard row mismatch, invalid neighbor/count/degree/checksum/lineage, and assert no byte-identical Native-composite expectation.
 
-- [ ] T014 [P] [US2] Add failing M0 complete-set, global-ID, medoid, and lineage tests in tests/cpp/baseline/test_cpp_main_m0.cpp
+- [x] T014 [P] [US2] Add failing M0 complete-set, global-ID, medoid, and lineage tests in tests/cpp/baseline/test_cpp_main_m0.cpp
   - **输入**: contracts/stage-bindings.md M0 boundary, small aggregate PartitionArtifact, native local graphs and maps.
   - **输出**: `cpp_main_m0` target and same-name CTest; tests proving byte-preserving input staging, actual merge_shards call, GlobalNodeId range/degree/node count, required medoids and graph+medoids aggregate checksum, plus missing/duplicate/extra/wrong-owner/wrong-map/wrong-Dataset/wrong-source/version/ID-space/capability negatives.
   - **依赖**: T010.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_m0` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_m0$' --output-on-failure`; record the intended pre-implementation failure before m0_merge.cpp exists.
   - **完成条件**: Tests do not assert deterministic adjacency, never describe M0 as pruning/refinement/connectivity repair, and ensure invalid input prevents merge invocation.
 
-- [ ] T015 [US2] Implement the three formal descriptors and parameter contracts in src/baseline/cpp_main/descriptors.cpp and contracts/baseline-v1/schemas/cpp-main-p0-parameters.schema.json, cpp-main-b0-parameters.schema.json, and cpp-main-m0-parameters.schema.json
+- [x] T015 [US2] Implement the three formal descriptors and parameter contracts in src/baseline/cpp_main/descriptors.cpp and contracts/baseline-v1/schemas/cpp-main-p0-parameters.schema.json, cpp-main-b0-parameters.schema.json, and cpp-main-m0-parameters.schema.json
   - **输入**: T011 tests, exact declarations in contracts/stage-bindings.md, fixed profile modes and derived/default parameter rules.
   - **输出**: three static factories with exact implementation identities, multi-input requires, single-output provides, ID spaces, capabilities, services, repository-relative schema paths, and test_only=false; schemas reject missing/additional/wrong-type/unsupported fields before factory creation.
   - **依赖**: T011, T010.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_descriptors_preflight registry_selection compatibility_preflight` and `ctest --test-dir build/cpp-main-baseline -R '^(cpp_main_descriptors_preflight|registry_selection|compatibility_preflight)$' --output-on-failure`.
   - **完成条件**: All descriptors/schema cases pass in kProduction, no factory is created on admission failure, and nothing is registered in the installed Feature 001 production runner or validated_graph_baseline catalog.
 
-- [ ] T016 [P] [US2] Implement P0 as a thin pinned callable in src/baseline/cpp_main/p0_partition.cpp
+- [x] T016 [P] [US2] Implement P0 as a thin pinned callable in src/baseline/cpp_main/p0_partition.cpp
   - **输入**: T012 tests, validated native Dataset ArtifactRef, M, derived sample probability/local degree, replication factor 2, StageContext temporary storage and cancellation.
   - **输出**: one partition_with_ram_budget<float> invocation; validated returned count, centroids, and contiguous ID maps; immutable aggregate map-only PartitionArtifact with Dataset/ownership/map/centroid lineage and no shard_vectors_role.
   - **依赖**: T012, T015, T008.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_p0` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_p0$' --output-on-failure`.
   - **完成条件**: All P0 positive/negative tests pass, invalid candidates do not reach B0, upstream randomness/control flow remain unchanged, and no partitioning algorithm is copied or rewritten.
 
-- [ ] T017 [P] [US2] Implement the private native Dataset binding in src/baseline/cpp_main/cpp_main_vector_accessor.cpp
+- [x] T017 [P] [US2] Implement the private native Dataset binding in src/baseline/cpp_main/cpp_main_vector_accessor.cpp
   - **输入**: T013 tests, validated cpp_main Dataset metadata/payload/checksum, existing public VectorAccessor interface and workspace confinement.
   - **输出**: Feature-local float32 accessor retaining the exact confined read-only native payload identity for B0, without a public API change, parameter path, process-global lookup, normalization, or Dataset rewrite.
   - **依赖**: T013, T008.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_b0 cpp_main_native_formats` and `ctest --test-dir build/cpp-main-baseline -R '^(cpp_main_b0|cpp_main_native_formats)$' --output-on-failure`.
   - **完成条件**: Correct Dataset rows/identity are exposed; mismatched/generic accessors fail before retrieval; no native-path method leaks into include/diskann_pipeline/.
 
-- [ ] T018 [US2] Implement B0 retrieval, native parameter construction, build/save, and LocalGraph publication in src/baseline/cpp_main/b0_local_build.cpp
+- [x] T018 [US2] Implement B0 retrieval, native parameter construction, build/save, and LocalGraph publication in src/baseline/cpp_main/b0_local_build.cpp
   - **输入**: T013 tests, T015 descriptor/schema, T017 accessor, aggregate PartitionArtifact, explicit PartitionId, LocalToGlobalIdMap, R/L/T.
   - **输出**: sequential single-Partition binding that calls retrieve_shard_data_from_ids<float>, validates the temporary shard, constructs upstream parameters with L, floor(2R/3), saturation=false, T and unchanged defaults, calls Index<float>::build/save, validates graph/.data, and publishes one LocalGraphArtifact.
   - **依赖**: T013, T015, T017, T008.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_b0` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_b0$' --output-on-failure`.
   - **完成条件**: Every B0 test passes; LocalNodeId/count/degree/checksum and Dataset/Partition/map lineage are exact; temporary shard/.data lifecycle is recorded; no Vamana code is copied; no cross-Partition thread pool exists.
 
-- [ ] T019 [P] [US2] Implement M0 complete-set staging, merge, and GlobalGraph publication in src/baseline/cpp_main/m0_merge.cpp
+- [x] T019 [P] [US2] Implement M0 complete-set staging, merge, and GlobalGraph publication in src/baseline/cpp_main/m0_merge.cpp
   - **输入**: T014 tests, T015 descriptor/schema, one validated aggregate PartitionArtifact, complete validated LocalGraphArtifact collection, R.
   - **输出**: exact PartitionId coverage validation, byte-preserving native map/local-graph staging, one merge_shards invocation, validated merged graph and required medoids, and one GlobalGraphArtifact whose aggregate identity covers both payloads.
   - **依赖**: T014, T015, T008.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_m0` and `ctest --test-dir build/cpp-main-baseline -R '^cpp_main_m0$' --output-on-failure`.
   - **完成条件**: All M0 structural/negative tests pass, missing or invalid medoids are rejected, no invalid input reaches merge_shards, and no project-owned merge/prune/refinement/connectivity algorithm is added.
 
-- [ ] T020 [P] [US2] Record B0's declared Dataset and Partition inputs without changing public APIs in src/pipeline/pipeline_executor.cpp
+- [x] T020 [P] [US2] Record B0's declared Dataset and Partition inputs without changing public APIs in src/pipeline/pipeline_executor.cpp
   - **输入**: B0 multi-input descriptor, existing PipelineExecutionRequest Dataset ArtifactRef, aggregate Partition ArtifactRef, BuildManifest v1.
   - **输出**: each B0 BuildManifest lists both actual input ArtifactRefs while LocalGraphArtifact source lineage remains the exact aggregate Partition plus DatasetIdentity; execution remains PartitionId-sequential.
   - **依赖**: T013, T015.
   - **最小测试**: Execute `cmake --build build/cpp-main-baseline --target cpp_main_b0 pipeline_orchestration document_codecs` and `ctest --test-dir build/cpp-main-baseline -R '^(cpp_main_b0|pipeline_orchestration|document_codecs)$' --output-on-failure`.
   - **完成条件**: Manifest inputs match declared requirements, existing Fake pipeline behavior remains valid, no terminal-manifest redesign or other Feature 001 deferred hardening is introduced.
 
-- [ ] T021 [US2] Complete the Phase 2 stage-binding gate and retain logs under build/cpp-main-baseline/test-results/phase2/
+- [x] T021 [US2] Complete the Phase 2 stage-binding gate and retain logs under build/cpp-main-baseline/test-results/phase2/
   - **输入**: T015–T020 and all Phase 2 tests.
   - **输出**: build/CTest logs for descriptors, P0, B0, M0, relevant existing Registry/compatibility/Artifact/pipeline tests, git diff --check, upstream before/after state, and a diff review confirming no upstream algorithm copy.
   - **依赖**: T015, T016, T017, T018, T019, T020.

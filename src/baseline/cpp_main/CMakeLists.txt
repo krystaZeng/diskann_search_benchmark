@@ -3,6 +3,22 @@ target_sources(
   PRIVATE
     native_formats.cpp
     source_build_identity.cpp)
+
+add_library(
+  diskann_cpp_main_stages STATIC
+  descriptors.cpp
+  cpp_main_vector_accessor.cpp
+  p0_partition.cpp
+  b0_local_build.cpp
+  m0_merge.cpp)
+target_link_libraries(
+  diskann_cpp_main_stages
+  PUBLIC diskann_pipeline::core
+  PRIVATE diskann_cpp_main_upstream nlohmann_json::nlohmann_json)
+target_include_directories(
+  diskann_cpp_main_stages
+  PRIVATE "${PROJECT_SOURCE_DIR}/src")
+diskann_pipeline_apply_cxx17(diskann_cpp_main_stages)
 target_compile_definitions(
   diskann_pipeline_core
   PRIVATE
