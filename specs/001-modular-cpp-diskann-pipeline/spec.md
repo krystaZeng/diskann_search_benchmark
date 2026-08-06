@@ -211,26 +211,29 @@ verify successful reuse and pre-execution rejection respectively.
   Partition, with legal range `0 <= id < local_node_count` for that Partition.
 - **FR-003**: The system MUST define PartitionId as unique within one pipeline run, with legal
   range `0 <= id < partition_count`.
-- **FR-004**: Every standard PartitionRecord shard payload and LocalGraphArtifact MUST reference a
-  complete LocalToGlobalIdMap whose length equals `local_node_count` and whose values are legal
-  GlobalNodeIds.
+- **FR-004**: Every standard PartitionRecord and LocalGraphArtifact MUST reference a complete
+  LocalToGlobalIdMap whose length equals `local_node_count` and whose values are legal
+  GlobalNodeIds. A PartitionRecord MAY reference shard vectors, but the map remains mandatory when
+  shard vectors are absent.
 - **FR-005**: Every LocalGraphArtifact adjacency MUST contain only LocalNodeIds valid in its owning
   Partition; every GlobalGraphArtifact adjacency MUST contain only legal GlobalNodeIds.
 
 #### Stage Artifacts and Provenance
 
 - **FR-006**: The system MUST define a versioned PartitionArtifact that identifies the dataset,
-  dataset checksum, global node count, Partition count, each Partition's local node count, and the
-  references and checksums for each shard payload and complete LocalToGlobalIdMap, plus declared
-  capabilities and an integrity checksum.
+  dataset checksum, global node count, Partition count, each Partition's local node count, the
+  mandatory references and checksums for every complete LocalToGlobalIdMap, optional shard-vector
+  references, and an optional aggregate centroids payload, plus declared capabilities and an
+  integrity checksum.
 - **FR-007**: The system MUST define a versioned LocalGraphArtifact that identifies its owning
   Partition, declares `id_space: local`, references its graph and LocalToGlobalIdMap, records its
   explicit owning PartitionId and the aggregate checksum of the PartitionArtifact containing that
   Partition record, declares maximum and observed degree and capabilities, and carries an integrity
   checksum.
 - **FR-008**: The system MUST define a versioned GlobalGraphArtifact that declares
-  `id_space: global`, records global node count, references the global graph and source Artifacts,
-  declares maximum and observed degree and capabilities, and carries an integrity checksum.
+  `id_space: global`, records global node count, references the required global graph, permits an
+  optional medoids payload, references source Artifacts, declares maximum and observed degree and
+  capabilities, and carries an integrity checksum over every present payload.
 - **FR-009**: Every stage data Artifact MUST be immutable and addressed through an ArtifactRef that
   contains `artifact_type`, `format_version`, SHA-256 `aggregate_checksum`, and `metadata_path`.
   `ArtifactRef.metadata_path` MUST resolve to the immutable Artifact metadata document and MUST NOT
@@ -423,12 +426,12 @@ verify successful reuse and pre-execution rejection respectively.
 - **ArtifactRef**: Immutable reference containing `artifact_type`, `format_version`,
   `aggregate_checksum`, and `metadata_path`; `metadata_path` points only to the immutable Artifact
   metadata document, never to a BuildManifest or EvaluationReport.
-- **PartitionArtifact**: Dataset-bound description of all Partitions, their local sizes, shard
-  references, and LocalToGlobal mappings.
+- **PartitionArtifact**: Dataset-bound description of all Partitions, their local sizes, mandatory
+  LocalToGlobal mappings, optional shard-vector references, and optional aggregate centroids.
 - **LocalGraphArtifact**: Partition-bound local-ID graph plus its mapping, source identity, entry
   information, and degree declarations.
-- **GlobalGraphArtifact**: Dataset-wide global-ID graph with source references and degree
-  declarations.
+- **GlobalGraphArtifact**: Dataset-wide global-ID graph with source references, degree
+  declarations, and optional medoids.
 - **BuildManifest**: Trace of how a stage output was produced or reused.
 - **EvaluationReport**: Independent validation, integrity, and quality findings for an Artifact.
 - **Quarantined Artifact**: Immutable INVALID_OUTPUT payload and evidence stored outside normal

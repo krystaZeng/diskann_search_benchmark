@@ -298,7 +298,7 @@ Pipeline/Adapter/Harness 运行”在统计意义上保持一致。
 4.1 第一层：核心流水线规范
 
   specs/
- └── 000-modular-cpp-diskann-pipeline/
+ └── 001-modular-cpp-diskann-pipeline/
    ├── spec.md
    ├── plan.md
    ├── data-model.md
@@ -320,8 +320,9 @@ Pipeline/Adapter/Harness 运行”在统计意义上保持一致。
 
 4.2 第二层：cpp_main 原始 Baseline
 
-  specs/
- └── 001-cpp-main-upstream-baseline/
+  Feature short name: cpp-main-upstream-baseline
+  Feature directory: 由 Spec Kit 创建后返回的实际目录
+  Feature contents:
    ├── spec.md
    ├── plan.md
    ├── research.md
@@ -330,6 +331,14 @@ Pipeline/Adapter/Harness 运行”在统计意义上保持一致。
    ├── parity-checklist.md
    └── tasks.md
 
+
+  创建前不得为该 Feature 预占或硬编码数字前缀。应先按 short name 检查 specs/；若已存在唯一
+匹配项则复用，若存在多个匹配项或语义等价的 Baseline Feature 则停止并人工消歧。创建完成后，
+所有路径引用必须采用 Spec Kit 实际生成并持久化的目录。
+
+  随附的 framework.pdf 是本原始设计的历史静态快照，其中出现的数字化 Feature 目录仅为旧版
+示意，不是可执行路径，也不得用于创建或定位 Baseline Feature；当前路径治理以本节、仓库
+AGENTS.md、short name 和 Spec Kit 实际生成结果为准。
 
   该 Feature 冻结仓库、分支、commit、构建工具链、原始命令、参数、阶段产物与结果。它必须准确
 描述 build_merged_vamana_index、partition_with_ram_budget、Index::build 和 merge_shards，而
@@ -1379,9 +1388,9 @@ paper-analysis.md
  │  └── diskann-cpp-main/
  │
  ├── specs/
- │  ├── 000-modular-cpp-diskann-pipeline/
- │  ├── 001-cpp-main-upstream-baseline/
- │  ├── 002-cpp-main-instrumented-baseline/
+ │  ├── 001-modular-cpp-diskann-pipeline/
+ │  ├── [Spec Kit 实际生成目录；short name: cpp-main-upstream-baseline]
+ │  ├── [未来按需由 Spec Kit 生成的 instrumented Baseline Feature]
  │  ├── 010-paper-a-partition/
  │  ├── 020-paper-b-local-build/
  │  ├── 030-paper-c-merge/

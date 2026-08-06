@@ -3,6 +3,7 @@
 #include "diskann_pipeline/artifact_ref.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -11,11 +12,17 @@ namespace diskann_pipeline {
 inline constexpr const char* kArtifactSchemaVersion = "1.0.0";
 inline constexpr const char* kArtifactCanonicalization =
     "diskann-artifact-c14n-v1";
+inline constexpr const char* kPartitionCentroidsPayloadRole = "centroids";
+inline constexpr const char* kPartitionCentroidsCapability =
+    "partition.centroids/v1";
+inline constexpr const char* kGlobalGraphMedoidsPayloadRole = "medoids";
+inline constexpr const char* kGlobalGraphMedoidsCapability =
+    "graph.medoids/v1";
 
 struct PartitionRecord {
   PartitionId partition_id;
   NodeCount local_node_count;
-  std::string shard_vectors_role;
+  std::optional<std::string> shard_vectors_role;
   std::string local_to_global_map_role;
 };
 
@@ -63,4 +70,3 @@ struct GlobalGraphArtifactMetadata {
 };
 
 }  // namespace diskann_pipeline
-

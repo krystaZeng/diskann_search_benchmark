@@ -9,7 +9,7 @@
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/checksum-canonicalization.md",
       "target": "contracts/v1/checksum-canonicalization.md",
-      "sha256": "83b7801312a76f1917382f603f20fa8d2976ce48eb9b0ff73d8b332a044caf9c"
+      "sha256": "d7ad97553801d3b3ac649c0e66bca190e677d6cb9076c4ebeda58e5f29726f96"
     },
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/artifact-ref.schema.json",
@@ -44,7 +44,7 @@
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/global-graph-artifact.schema.json",
       "target": "contracts/v1/schemas/global-graph-artifact.schema.json",
-      "sha256": "851550a33a016bd4d0b7018fcab567155af4dc17b90d7369296c0657f61eddb5"
+      "sha256": "2ca8e99abbb94893045d13730d99041078ec2a4c767f845f4c41e47f8d98e34a"
     },
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/implementation-descriptor.schema.json",
@@ -59,7 +59,7 @@
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/partition-artifact.schema.json",
       "target": "contracts/v1/schemas/partition-artifact.schema.json",
-      "sha256": "65555ac43fc898f0b61c0548d92410391a1321a2c126acc5e1cfbc478de1f3e0"
+      "sha256": "40295e7a09c6c8504301be862cb818b582447c07f6e9551b7034b31d802e1ea8"
     },
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/quarantine-record.schema.json",

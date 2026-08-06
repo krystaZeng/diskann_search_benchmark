@@ -55,6 +55,18 @@ struct ArtifactValidationResult {
   bool valid() const noexcept { return validated_artifact.has_value(); }
 };
 
+enum class PartitionVectorSource {
+  kArtifactPayload,
+  kVectorAccessor,
+};
+
+PartitionVectorSource resolve_partition_vector_source(
+    const ValidatedArtifact& partition_artifact, PartitionId partition_id);
+
+void require_partition_vector_source(
+    const ValidatedArtifact& partition_artifact, PartitionId partition_id,
+    const VectorAccessor* vector_accessor);
+
 class Validator {
  public:
   explicit Validator(WorkspaceRef workspace);

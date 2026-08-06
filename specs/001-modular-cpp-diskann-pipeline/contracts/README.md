@@ -94,6 +94,18 @@ ArtifactRef plus an explicit in-range PartitionId and does not consume a separat
 The resulting LocalGraphArtifact records the owning PartitionId and the aggregate source
 PartitionArtifact checksum.
 
+Every Partition record has a required complete LocalToGlobal map and an optional
+`shard_vectors_role`; existing vector-bearing Artifacts remain valid. An optional final
+`centroids` payload represents aggregate P0 output and is paired with
+`partition.centroids/v1`. If a selected record has no shard vectors, a Local Build that needs them
+uses the validated Dataset-backed `StageContext::vector_accessor` in map order; this is Local Build
+preparation and is never represented as P0 output.
+
+Every GlobalGraphArtifact starts with the required `global_graph` payload and may add one
+`medoids` payload. Generic Merge remains graph-only-capable. A producer that declares
+`graph.medoids/v1` must produce medoids, and medoids may not be present without that capability.
+The existing aggregate projection covers every present payload role, byte length, and SHA-256.
+
 Determinism comparison applies to the EvaluationReport findings projection defined in
 `data-model.md`, not to byte-for-byte equality of complete report documents. Report identity,
 timestamps, paths, run provenance, and non-deterministic metrics remain independent.

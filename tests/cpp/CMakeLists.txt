@@ -71,6 +71,9 @@ add_diskann_pipeline_phase2_test(
   valid_artifacts
   contract/test_valid_artifacts.cpp)
 add_diskann_pipeline_phase2_test(
+  artifact_contract_amendment
+  contract/test_artifact_contract_amendment.cpp)
+add_diskann_pipeline_phase2_test(
   invalid_artifact_metadata
   contract/test_invalid_artifact_metadata.cpp)
 add_diskann_pipeline_phase2_test(

@@ -66,6 +66,9 @@ Rules for projection fields:
 - `capabilities` is sorted by unsigned UTF-8 bytes and contains no duplicates.
 - `payloads` preserves the role order defined by the concrete Artifact schema. `path` and
   `media_type` are deliberately absent; role, length, and exact digest are present.
+- Optional payloads participate whenever present. In particular, Partition centroids and
+  GlobalGraph medoids contribute their role, byte length, and exact SHA-256, so changing medoids
+  bytes necessarily changes the aggregate identity.
 - `source_artifacts` preserves the semantic order defined by the concrete Artifact: dataset first,
   Partition next, then LocalGraph sources by ascending PartitionId.
 - `structural` contains every field that changes interpretation or validator invariants, including

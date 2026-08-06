@@ -102,6 +102,12 @@ NodeCount partition_count(const ValidatedArtifact& partition) {
   return structural.at("partition_count").get<NodeCount>();
 }
 
+bool has_capability(const AdmittedArtifact& artifact,
+                    const std::string& capability) {
+  return std::find(artifact.capabilities.begin(), artifact.capabilities.end(),
+                   capability) != artifact.capabilities.end();
+}
+
 }  // namespace
 
 void validate_payload_identity(const WorkspaceRef&, AdmittedArtifact& artifact) {
@@ -183,6 +189,7 @@ void validate_artifact_semantics(
       throw PipelineError(ErrorCategory::kNodeCountMismatch,
                           "partition_count does not match Partition records");
     }
+    std::vector<std::string> expected_payload_roles;
     for (std::size_t index = 0; index < records.size(); ++index) {
       const auto& record = records[index];
       const auto id = record.at("partition_id").get<PartitionId>();
@@ -192,22 +199,53 @@ void validate_artifact_semantics(
         throw PipelineError(ErrorCategory::kIdRangeInvalid,
                             "PartitionId is absent, non-contiguous, or out of range");
       }
-      const auto vector_role =
-          record.at("shard_vectors_role").get<std::string>();
       const auto map_role =
           record.at("local_to_global_map_role").get<std::string>();
-      const auto& vectors = require_payload(artifact, vector_role);
+      if (map_role == kPartitionCentroidsPayloadRole) {
+        throw PipelineError(ErrorCategory::kSchemaInvalid,
+                            "centroids is reserved for the aggregate P0 payload");
+      }
+      if (record.contains("shard_vectors_role")) {
+        const auto vector_role =
+            record.at("shard_vectors_role").get<std::string>();
+        if (vector_role == kPartitionCentroidsPayloadRole) {
+          throw PipelineError(
+              ErrorCategory::kSchemaInvalid,
+              "centroids is reserved for the aggregate P0 payload");
+        }
+        const auto& vectors = require_payload(artifact, vector_role);
+        validate_vector_payload(artifact, vectors, local_count);
+        expected_payload_roles.push_back(vector_role);
+      }
       const auto& map = require_payload(artifact, map_role);
-      validate_vector_payload(artifact, vectors, local_count);
       validate_local_to_global_map(payload_path(artifact, map), local_count,
                                    artifact.dataset.global_node_count);
-      const auto expected_offset = index * 2;
-      if (expected_offset + 1 >= artifact.payloads.size() ||
-          artifact.payloads[expected_offset].role != vector_role ||
-          artifact.payloads[expected_offset + 1].role != map_role) {
-        throw PipelineError(ErrorCategory::kSchemaInvalid,
-                            "Partition shard/map payload order mismatches PartitionId");
-      }
+      expected_payload_roles.push_back(map_role);
+    }
+    const bool centroids_present =
+        artifact.payloads.size() == expected_payload_roles.size() + 1 &&
+        artifact.payloads.back().role == kPartitionCentroidsPayloadRole;
+    const bool centroids_declared =
+        has_capability(artifact, kPartitionCentroidsCapability);
+    if (centroids_present != centroids_declared) {
+      throw PipelineError(
+          centroids_declared ? ErrorCategory::kPayloadMissing
+                             : ErrorCategory::kCapabilityUnsatisfied,
+          "Partition centroids payload and capability must be declared together");
+    }
+    if (centroids_present) {
+      expected_payload_roles.push_back(kPartitionCentroidsPayloadRole);
+    }
+    if (artifact.payloads.size() != expected_payload_roles.size() ||
+        !std::equal(expected_payload_roles.begin(),
+                    expected_payload_roles.end(), artifact.payloads.begin(),
+                    [](const std::string& expected, const PayloadRef& actual) {
+                      return expected == actual.role;
+                    })) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "Partition payload order must follow each optional shard vector, "
+          "required map, then optional centroids");
     }
     return;
   }
@@ -303,10 +341,25 @@ void validate_artifact_semantics(
                           "GlobalGraph LocalGraph source ownership is invalid");
     }
   }
-  if (artifact.payloads.size() != 1 ||
+  if (artifact.payloads.empty() || artifact.payloads.size() > 2 ||
       artifact.payloads[0].role != "global_graph") {
     throw PipelineError(ErrorCategory::kPayloadMissing,
                         "GlobalGraph payload role is missing");
+  }
+  const bool medoids_present =
+      artifact.payloads.size() == 2 &&
+      artifact.payloads[1].role == kGlobalGraphMedoidsPayloadRole;
+  const bool medoids_declared =
+      has_capability(artifact, kGlobalGraphMedoidsCapability);
+  if (artifact.payloads.size() == 2 && !medoids_present) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "GlobalGraph optional second payload must be medoids");
+  }
+  if (medoids_present != medoids_declared) {
+    throw PipelineError(
+        medoids_declared ? ErrorCategory::kPayloadMissing
+                         : ErrorCategory::kCapabilityUnsatisfied,
+        "GlobalGraph medoids payload and capability must be declared together");
   }
   const auto declared =
       structural.at("declared_max_degree").get<std::uint32_t>();

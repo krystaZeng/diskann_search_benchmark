@@ -43,6 +43,13 @@ struct StageResult {
   std::filesystem::path build_manifest_path;
 };
 
+struct PartitionRecord {
+  PartitionId partition_id;
+  NodeCount local_node_count;
+  std::optional<std::string> shard_vectors_role;
+  std::string local_to_global_map_role;
+};
+
 }  // namespace diskann_pipeline
 ```
 
@@ -156,6 +163,15 @@ Hard API rules:
   configuration, or graph object.
 - Every LocalGraphArtifact output records the selected owning PartitionId and the aggregate checksum
   of the exact PartitionArtifact supplied to the invocation.
+- `PartitionRecord.local_to_global_map_role` is mandatory and
+  `PartitionRecord.shard_vectors_role` is optional. Local Build uses the Artifact payload when it is
+  present; otherwise an implementation that needs vectors must use the validated Dataset-backed
+  `StageContext::vector_accessor` in map order. Missing both sources is rejected. Runtime
+  materialization is Local Build preparation and cannot be published as a P0 output.
+- An optional aggregate Partition payload role `centroids` is paired with
+  `partition.centroids/v1`. A GlobalGraphArtifact always contains `global_graph` and may contain a
+  second `medoids` payload paired with `graph.medoids/v1`. Descriptor output matching makes the
+  latter mandatory for any implementation, including cpp_main M0, that declares that capability.
 - Other stage Manifest paths likewise identify immutable normalized JSON parameter documents.
 - Fake Partition, Local Build, and Merge check cancellation at stage start, after input
   resolution/validation, and before output publication; future implementations declare and test

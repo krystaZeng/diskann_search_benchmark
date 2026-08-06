@@ -110,9 +110,16 @@ void validate_structural_shape(ArtifactType type, const Json& structural) {
                             "partitions must be an array");
       }
       for (const auto& record : structural.at("partitions")) {
-        detail::require_object_shape(
-            record, {"partition_id", "local_node_count", "shard_vectors_role",
-                     "local_to_global_map_role"});
+        if (record.contains("shard_vectors_role")) {
+          detail::require_object_shape(
+              record,
+              {"partition_id", "local_node_count", "shard_vectors_role",
+               "local_to_global_map_role"});
+        } else {
+          detail::require_object_shape(
+              record, {"partition_id", "local_node_count",
+                       "local_to_global_map_role"});
+        }
       }
       break;
     case ArtifactType::kLocalGraph:

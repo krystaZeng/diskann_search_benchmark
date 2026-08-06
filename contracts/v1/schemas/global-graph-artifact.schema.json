@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://diskann-repro.local/contracts/v1/global-graph-artifact.schema.json",
   "title": "GlobalGraphArtifact Metadata v1",
+  "description": "A required global graph payload plus an optional medoids payload. Implementations that declare graph.medoids/v1 must produce medoids.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -57,12 +58,18 @@
     "payloads": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 1,
+      "maxItems": 2,
       "prefixItems": [
         {
           "allOf": [
             {"$ref": "common.schema.json#/$defs/payloadRef"},
             {"type": "object", "properties": {"role": {"const": "global_graph"}}}
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "common.schema.json#/$defs/payloadRef"},
+            {"type": "object", "properties": {"role": {"const": "medoids"}}}
           ]
         }
       ]

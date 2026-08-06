@@ -110,3 +110,114 @@ def test_base_manifest_schema_accepts_complete_provenance() -> None:
     }
     _validator("build-manifest.schema.json").validate(manifest)
 
+
+def _artifact_base(artifact_type: str, format_version: str, id_space: str) -> dict:
+    return {
+        "schema_version": "1.0.0",
+        "canonicalization": "diskann-artifact-c14n-v1",
+        "artifact_type": artifact_type,
+        "format_version": format_version,
+        "dataset": {
+            "dataset_id": "dataset",
+            "dataset_checksum": "a" * 64,
+            "global_node_count": 6,
+            "vector_dimension": 2,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        },
+        "id_space": id_space,
+        "capabilities": [],
+        "source_artifacts": [],
+        "payloads": [],
+        "aggregate_checksum": "b" * 64,
+    }
+
+
+def _payload(role: str) -> dict:
+    return {
+        "role": role,
+        "path": f"{role}.bin",
+        "media_type": "application/octet-stream",
+        "byte_length": 1,
+        "sha256": "c" * 64,
+    }
+
+
+def test_partition_schema_accepts_optional_vectors_and_centroids() -> None:
+    document = _artifact_base("partition", "partition-artifact/v1", "local")
+    document["capabilities"] = ["partition.complete_local_to_global_map/v1"]
+    document["source_artifacts"] = [
+        {
+            "artifact_type": "dataset",
+            "format_version": "dataset/v1",
+            "aggregate_checksum": "d" * 64,
+        }
+    ]
+    document["structural"] = {
+        "partition_count": 1,
+        "partitions": [
+            {
+                "partition_id": 0,
+                "local_node_count": 1,
+                "local_to_global_map_role": "partition/0/map",
+            }
+        ],
+    }
+    document["payloads"] = [_payload("partition/0/map")]
+    validator = _validator("partition-artifact.schema.json")
+    validator.validate(document)
+
+    with_vectors = json.loads(json.dumps(document))
+    with_vectors["structural"]["partitions"][0]["shard_vectors_role"] = (
+        "partition/0/vectors"
+    )
+    with_vectors["payloads"] = [
+        _payload("partition/0/vectors"),
+        _payload("partition/0/map"),
+    ]
+    validator.validate(with_vectors)
+
+    with_centroids = json.loads(json.dumps(document))
+    with_centroids["capabilities"] = [
+        "partition.centroids/v1",
+        "partition.complete_local_to_global_map/v1",
+    ]
+    with_centroids["payloads"].append(_payload("centroids"))
+    validator.validate(with_centroids)
+
+    missing_map = json.loads(json.dumps(document))
+    del missing_map["structural"]["partitions"][0]["local_to_global_map_role"]
+    with pytest.raises(ValidationError):
+        validator.validate(missing_map)
+
+
+def test_global_graph_schema_accepts_graph_with_optional_medoids() -> None:
+    document = _artifact_base(
+        "global_graph", "global-graph-artifact/v1", "global"
+    )
+    source_partition = {
+        "artifact_type": "partition",
+        "format_version": "partition-artifact/v1",
+        "aggregate_checksum": "d" * 64,
+    }
+    source_local = {
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "aggregate_checksum": "e" * 64,
+    }
+    document["structural"] = {
+        "global_node_count": 6,
+        "declared_max_degree": 3,
+        "observed_max_degree": 2,
+        "source_partition_artifact": source_partition,
+        "source_local_graph_artifacts": [source_local],
+    }
+    document["capabilities"] = ["graph.global_adjacency/v1"]
+    document["source_artifacts"] = [source_partition, source_local]
+    document["payloads"] = [_payload("global_graph")]
+    validator = _validator("global-graph-artifact.schema.json")
+    validator.validate(document)
+
+    document["capabilities"].append("graph.medoids/v1")
+    document["payloads"].append(_payload("medoids"))
+    validator.validate(document)

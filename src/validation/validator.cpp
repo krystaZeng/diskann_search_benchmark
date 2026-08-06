@@ -26,13 +26,52 @@ ValidatedArtifact::ValidatedArtifact(
       structural_json_(std::move(structural_json)),
       partition_id_(partition_id) {}
 
+PartitionVectorSource resolve_partition_vector_source(
+    const ValidatedArtifact& partition_artifact, PartitionId partition_id) {
+  if (partition_artifact.reference().artifact_type != ArtifactType::kPartition) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "partition vector source requires a PartitionArtifact");
+  }
+  const auto structural =
+      detail::parse_json_strict(partition_artifact.structural_json());
+  const auto& records = structural.at("partitions");
+  const auto record =
+      std::find_if(records.begin(), records.end(), [&](const auto& value) {
+        return value.at("partition_id").template get<PartitionId>() ==
+               partition_id;
+      });
+  if (record == records.end()) {
+    throw PipelineError(ErrorCategory::kIdRangeInvalid,
+                        "selected Partition record does not exist");
+  }
+  return record->contains("shard_vectors_role")
+             ? PartitionVectorSource::kArtifactPayload
+             : PartitionVectorSource::kVectorAccessor;
+}
+
+void require_partition_vector_source(
+    const ValidatedArtifact& partition_artifact, PartitionId partition_id,
+    const VectorAccessor* vector_accessor) {
+  if (resolve_partition_vector_source(partition_artifact, partition_id) ==
+      PartitionVectorSource::kArtifactPayload) {
+    return;
+  }
+  if (vector_accessor == nullptr ||
+      vector_accessor->dimension() !=
+          partition_artifact.dataset().vector_dimension) {
+    throw PipelineError(
+        ErrorCategory::kCapabilityUnsatisfied,
+        "Partition has no shard vectors and no matching Dataset VectorAccessor");
+  }
+}
+
 Validator::Validator(WorkspaceRef workspace) : workspace_(std::move(workspace)) {}
 
 ArtifactValidationResult Validator::validate(
     const ArtifactRef& reference,
     const std::vector<ValidatedArtifact>& validated_sources) const {
   ValidationEvidence evidence;
-  evidence.validator_version = "artifact-contract-validator/1.0.0";
+  evidence.validator_version = "artifact-contract-validator/1.1.0";
   evidence.artifact_candidate = {reference.artifact_type,
                                  reference.format_version,
                                  reference.metadata_path,

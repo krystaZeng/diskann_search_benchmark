@@ -96,11 +96,19 @@ three stage output Artifact types.
 | `capabilities` | set | Includes complete-map capability after validation |
 | `source_artifacts` | array | Contains the DatasetArtifact identity |
 
-`PartitionRecord` contains `partition_id`, `local_node_count`, a shard-vector `PayloadRef`, and a
-complete LocalToGlobal-map `PayloadRef`. The decoded map length equals `local_node_count`; every
-value is a legal GlobalNodeId. Duplicate GlobalNodeIds across different Partitions are valid. The
-PartitionArtifact is one aggregate Artifact containing every Partition record; a record and its
-payloads are not a separate ArtifactRef or a `PartitionShardArtifact`.
+`PartitionRecord` contains `partition_id`, `local_node_count`, a mandatory complete
+LocalToGlobal-map `PayloadRef`, and an optional shard-vector `PayloadRef`. The decoded map length
+equals `local_node_count`; every value is a legal GlobalNodeId. Duplicate GlobalNodeIds across
+different Partitions are valid. The aggregate Artifact may additionally carry one final
+`centroids` payload and declare `partition.centroids/v1`. The PartitionArtifact is one aggregate
+Artifact containing every Partition record; a record and its payloads are not a separate
+ArtifactRef or a `PartitionShardArtifact`.
+
+Local Build uses a selected record's shard-vector payload when present. When it is absent and the
+implementation needs vectors, it must materialize them from the validated Dataset-backed
+`StageContext::vector_accessor` in exact LocalToGlobal-map order. That temporary materialization is
+Local Build preparation, not Partition output, and cannot be published or described as a native P0
+shard-vector payload. Missing both sources rejects Local Build before algorithm execution.
 
 For each Local Build invocation, the executor passes the validated aggregate PartitionArtifact
 ArtifactRef and one explicit `PartitionId`. The argument is mandatory, must satisfy
@@ -136,10 +144,12 @@ for that invocation. A present empty adjacency list is valid.
 | `observed_max_degree` | non-negative integer | Recomputed and not above declaration |
 | `source_partition_artifact` | source identity | Exact validated PartitionArtifact |
 | `source_local_graph_artifacts` | ordered identities | One validated local graph per selected Partition |
-| `payloads` | ordered array | Required role `global_graph` |
+| `payloads` | ordered array | Required role `global_graph`, followed by optional `medoids` |
 
 The graph has exactly one adjacency list for every GlobalNodeId in `0..global_node_count-1`. No
-LocalNodeId, unresolved replica identity, or out-of-range neighbor may remain.
+LocalNodeId, unresolved replica identity, or out-of-range neighbor may remain. Generic Merge may
+produce graph-only output. An implementation that declares `graph.medoids/v1` must also produce the
+`medoids` payload, and the payload may not appear without that capability.
 
 ## 4. Provenance and Evaluation Objects
 

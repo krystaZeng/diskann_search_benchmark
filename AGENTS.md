@@ -19,6 +19,13 @@
 
 目录尚未存在或当前为空时，仅在本次任务需要时创建内容；不得为了“补齐架构”生成与任务无关的占位文件。
 
+### Baseline Feature 路径治理
+
+- 新的 Upstream Baseline Feature 以 short name `cpp-main-upstream-baseline` 作为语义身份；在 Spec Kit 创建它之前，不得在文档、脚本或命令中预先写死数字前缀。
+- 创建前必须按 short name 检查 `specs/`：没有匹配项时只允许 Spec Kit 创建一次；恰有一个匹配项时必须复用该 Feature；存在多个匹配项或语义等价的 Baseline Feature 时必须停止并人工消歧，不得再创建一个冲突 Feature。
+- Feature 创建后，所有必须使用目录路径的命令和引用都必须采用 Spec Kit 返回并写入 `.specify/feature.json` 的实际目录。不得根据当前最大编号、历史架构示例或 Feature short name 自行拼接数字路径。
+- 现有 `specs/001-modular-cpp-diskann-pipeline/` 的目录和编号保持不变；Baseline Feature 不得占用、迁移或重命名该目录。
+
 ## 固定 Baseline 与上游保护
 
 当前固定 Baseline 身份为：
@@ -39,7 +46,7 @@ source_path: upstream/diskann-cpp-main
 
 ## `merge_shards` 的 Baseline 语义边界
 
-对当前固定 commit，Baseline `merge_shards` 的描述必须同时与 `upstream/diskann-cpp-main/src/disk_utils.cpp` 中的实现及 `specs/001-cpp-main-upstream-baseline/source-mapping.md` 中绑定该 commit 的映射一致。如 source mapping 尚未建立，必须先建立并审查，不得以推测代替源码映射。
+对当前固定 commit，Baseline `merge_shards` 的描述必须同时与 `upstream/diskann-cpp-main/src/disk_utils.cpp` 中的实现及 short name 为 `cpp-main-upstream-baseline` 的 Feature 内 `source-mapping.md` 中绑定该 commit 的映射一致。该 Feature 创建后必须使用 Spec Kit 实际生成的目录定位；如 Feature 或 source mapping 尚未建立，必须先建立并审查，不得以推测或预设数字路径代替源码映射。
 
 M0 只包含以下语义：
 
