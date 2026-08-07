@@ -1,7 +1,6 @@
 target_sources(
   diskann_pipeline_core
   PRIVATE
-    native_formats.cpp
     source_build_identity.cpp)
 
 add_library(
@@ -19,6 +18,22 @@ target_include_directories(
   diskann_cpp_main_stages
   PRIVATE "${PROJECT_SOURCE_DIR}/src")
 diskann_pipeline_apply_cxx17(diskann_cpp_main_stages)
+
+add_executable(
+  cpp_main_baseline_runner
+  cpp_main_baseline_runner.cpp)
+target_link_libraries(
+  cpp_main_baseline_runner
+  PRIVATE diskann_cpp_main_stages nlohmann_json::nlohmann_json)
+target_include_directories(
+  cpp_main_baseline_runner
+  PRIVATE "${PROJECT_SOURCE_DIR}/src")
+set_target_properties(
+  cpp_main_baseline_runner
+  PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY
+      "${CMAKE_BINARY_DIR}/src/baseline/cpp_main")
+diskann_pipeline_apply_cxx17(cpp_main_baseline_runner)
 target_compile_definitions(
   diskann_pipeline_core
   PRIVATE

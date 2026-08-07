@@ -131,6 +131,10 @@ profile:
   build_pq_bytes: 0
   disk_pq_bytes: 0
   opq_enabled: false
+execution:
+  workspace: build/cpp-main-baseline/runs/sift1m-unified
+  runner: build/cpp-main-baseline/src/baseline/cpp_main/cpp_main_baseline_runner
+  report: specs/002-cpp-main-upstream-baseline/unified-sharded-report.json
 ~~~
 
 The implementation-specific P0/B0/M0 parameter documents also record every derived/default value

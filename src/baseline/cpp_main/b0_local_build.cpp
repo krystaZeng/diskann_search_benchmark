@@ -92,7 +92,8 @@ void validate_parameters(const Json& parameters) {
   detail::require_object_shape(
       parameters,
       {"L", "R", "alpha", "build_pq_bytes", "max_occlusion_size",
-       "num_threads", "saturation", "use_opq"});
+       "num_threads", "saturation", "use_opq"},
+      {"partition_id"});
   if (parameters.at("L").get<std::uint32_t>() != 32 ||
       parameters.at("R").get<std::uint32_t>() != 16 ||
       std::abs(parameters.at("alpha").get<double>() - 1.2) > 1e-6 ||
@@ -111,20 +112,39 @@ void verify_shard_rows(const CppMainVectorAccessor& accessor,
                        const std::filesystem::path& shard) {
   validate_float32_matrix(shard, static_cast<NodeCount>(map.size()),
                           static_cast<std::uint32_t>(accessor.dimension()));
-  std::ifstream input(shard, std::ios::binary);
-  input.seekg(8);
-  std::vector<float> expected;
-  std::vector<float> observed(accessor.dimension());
-  for (const auto id : map) {
-    accessor.read(id, expected);
-    input.read(reinterpret_cast<char*>(observed.data()),
-               static_cast<std::streamsize>(observed.size() * sizeof(float)));
-    if (!input || expected.size() != observed.size() ||
-        std::memcmp(expected.data(), observed.data(),
-                    observed.size() * sizeof(float)) != 0) {
+  std::ifstream dataset(accessor.native_payload_path(), std::ios::binary);
+  std::ifstream selected(shard, std::ios::binary);
+  dataset.seekg(8);
+  selected.seekg(8);
+  const auto row_bytes = accessor.dimension() * sizeof(float);
+  std::vector<char> dataset_row(row_bytes);
+  std::vector<char> selected_row(row_bytes);
+  std::size_t selected_index = 0;
+  for (GlobalNodeId global_id = 0;
+       global_id < accessor.dataset_identity().global_node_count;
+       ++global_id) {
+    dataset.read(dataset_row.data(),
+                 static_cast<std::streamsize>(dataset_row.size()));
+    if (!dataset) {
+      throw PipelineError(ErrorCategory::kPayloadLengthMismatch,
+                          "B0 Dataset ended during shard row verification");
+    }
+    if (selected_index < map.size() && map[selected_index] == global_id) {
+      selected.read(selected_row.data(),
+                    static_cast<std::streamsize>(selected_row.size()));
+      if (!selected ||
+          std::memcmp(dataset_row.data(), selected_row.data(), row_bytes) != 0) {
+        throw PipelineError(
+            ErrorCategory::kSourceMismatch,
+            "B0 shard row order differs from LocalToGlobalIdMap");
+      }
+      ++selected_index;
+    }
+  }
+  if (selected_index != map.size() ||
+      selected.peek() != std::char_traits<char>::eof()) {
       throw PipelineError(ErrorCategory::kSourceMismatch,
                           "B0 shard row order differs from LocalToGlobalIdMap");
-    }
   }
 }
 
@@ -153,6 +173,12 @@ class CppMainB0 final : public LocalGraphBuilder {
       }
       const auto parameters = read_json(config.stage_manifest_path);
       validate_parameters(parameters);
+      if (parameters.contains("partition_id") &&
+          parameters.at("partition_id").get<PartitionId>() != partition_id) {
+        throw PipelineError(
+            ErrorCategory::kSourceMismatch,
+            "B0 manifest PartitionId differs from the explicit interface input");
+      }
 
       const auto metadata_path = resolve_normal_artifact_metadata(
           context.workspace, partition_artifact.metadata_path);

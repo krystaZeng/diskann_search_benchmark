@@ -40,3 +40,7 @@ derived:
   b0_alpha: 1.2
   b0_max_occlusion_size: 750
   m0_degree_bound: 16
+execution:
+  workspace: build/cpp-main-baseline/runs/sift1m-unified
+  runner: build/cpp-main-baseline/src/baseline/cpp_main/cpp_main_baseline_runner
+  report: specs/002-cpp-main-upstream-baseline/unified-sharded-report.json

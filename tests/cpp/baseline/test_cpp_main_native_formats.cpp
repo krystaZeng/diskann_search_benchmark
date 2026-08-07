@@ -198,6 +198,12 @@ int main() {
       native::validate_merged_global_graph(global_path, 3, 2)
           .observed_max_degree,
       std::uint32_t{2});
+  const auto sparse_global_path = temporary.path / "sparse-global.graph";
+  write_bytes(sparse_global_path, graph(2, 1, {{1}, {0}, {1}}));
+  DP_EXPECT_EQ(
+      native::validate_merged_global_graph(sparse_global_path, 3, 2)
+          .observed_max_degree,
+      std::uint32_t{1});
 
   const auto medoids_path = temporary.path / "medoids.bin";
   write_bytes(medoids_path, uint32_matrix({0, 2}));

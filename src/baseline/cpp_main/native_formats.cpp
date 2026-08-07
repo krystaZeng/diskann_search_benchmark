@@ -147,7 +147,7 @@ std::vector<GlobalNodeId> read_u32_vector(
 
 GraphFacts validate_graph(const std::filesystem::path& path,
                           NodeCount node_count, std::uint32_t degree_bound,
-                          bool local) {
+                          bool local, bool header_is_observed_maximum) {
   if (!is_valid_count(node_count)) {
     throw PipelineError(ErrorCategory::kNodeCountMismatch,
                         "native graph node count is invalid");
@@ -201,7 +201,7 @@ GraphFacts validate_graph(const std::filesystem::path& path,
     throw PipelineError(ErrorCategory::kPayloadLengthMismatch,
                         "native graph contains trailing bytes");
   }
-  if (observed_max != header_max) {
+  if (header_is_observed_maximum && observed_max != header_max) {
     throw PipelineError(ErrorCategory::kDegreeExceeded,
                         "native graph header maximum differs from adjacency");
   }
@@ -246,7 +246,7 @@ MatrixFacts validate_centroids(const std::filesystem::path& path,
 GraphFacts validate_local_graph(const std::filesystem::path& path,
                                 NodeCount local_node_count,
                                 std::uint32_t degree_bound) {
-  return validate_graph(path, local_node_count, degree_bound, true);
+  return validate_graph(path, local_node_count, degree_bound, true, true);
 }
 
 MatrixFacts validate_local_graph_data(const std::filesystem::path& path,
@@ -258,7 +258,10 @@ MatrixFacts validate_local_graph_data(const std::filesystem::path& path,
 GraphFacts validate_merged_global_graph(const std::filesystem::path& path,
                                         NodeCount global_node_count,
                                         std::uint32_t degree_bound) {
-  return validate_graph(path, global_node_count, degree_bound, false);
+  // merge_shards writes the requested output width R in the header. Unlike
+  // Index::save, that field is a bound and need not equal the maximum degree
+  // observed in a small merged graph.
+  return validate_graph(path, global_node_count, degree_bound, false, false);
 }
 
 std::vector<GlobalNodeId> validate_medoids(

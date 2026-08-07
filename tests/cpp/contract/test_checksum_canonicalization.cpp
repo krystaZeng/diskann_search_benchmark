@@ -22,6 +22,10 @@ constexpr const char* kLocal1Aggregate =
     "ca02d15d4709d62aea8f404de57d2143be1205f6fa517b4d2d550fe2dab265f6";
 constexpr const char* kGlobalAggregate =
     "443e732732f559249248d749c1fac19af9f1986fc44dbdf25f3c2ed7de59a0fe";
+constexpr const char* kSift1mDatasetChecksum =
+    "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e";
+constexpr const char* kSift1mDatasetAggregate =
+    "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e";
 
 dp::SourceArtifactIdentity source(dp::ArtifactType type,
                                   const std::string& format,
@@ -39,6 +43,18 @@ dp::AggregateIdentityProjection dataset_projection() {
       {{"vectors", 49, kDatasetChecksum}},
       {},
       R"({"global_node_count":6,"vector_dimension":2,"scalar_type":"float32","distance_metric":"l2"})"};
+}
+
+dp::AggregateIdentityProjection sift1m_dataset_projection() {
+  return {
+      dp::ArtifactType::kDataset,
+      "diskann-float32-dataset/v1",
+      kSift1mDatasetChecksum,
+      dp::IdSpace::kNone,
+      {"dataset.diskann_float32_bin/v1"},
+      {{"vectors", 512000008, kSift1mDatasetChecksum}},
+      {},
+      R"({"global_node_count":1000000,"vector_dimension":128,"scalar_type":"float32","distance_metric":"l2"})"};
 }
 
 dp::AggregateIdentityProjection partition_projection() {
@@ -126,6 +142,22 @@ int main() {
 
   DP_EXPECT_EQ(dp::aggregate_checksum(dataset_projection()),
                std::string(kDatasetAggregate));
+  DP_EXPECT_EQ(
+      dp::make_aggregate_projection_json(sift1m_dataset_projection()),
+      std::string(
+          "{\"artifact_type\":\"dataset\",\"canonicalization\":\"diskann-"
+          "artifact-c14n-v1\",\"capabilities\":[\"dataset.diskann_"
+          "float32_bin/v1\"],\"dataset_checksum\":\"" +
+          std::string(kSift1mDatasetChecksum) +
+          "\",\"format_version\":\"diskann-float32-dataset/v1\",\"id_space\":"
+          "\"none\",\"payloads\":[{\"byte_length\":512000008,\"role\":"
+          "\"vectors\",\"sha256\":\"" +
+          std::string(kSift1mDatasetChecksum) +
+          "\"}],\"schema_version\":\"1.0.0\",\"source_artifacts\":[],"
+          "\"structural\":{\"distance_metric\":\"l2\",\"global_node_count\":"
+          "1000000,\"scalar_type\":\"float32\",\"vector_dimension\":128}}"));
+  DP_EXPECT_EQ(dp::aggregate_checksum(sift1m_dataset_projection()),
+               std::string(kSift1mDatasetAggregate));
   DP_EXPECT_EQ(dp::aggregate_checksum(partition_projection()),
                std::string(kPartitionAggregate));
   DP_EXPECT_EQ(
@@ -144,4 +176,3 @@ int main() {
                dp::aggregate_checksum(dataset_projection()));
   return dp::test::finish();
 }
-

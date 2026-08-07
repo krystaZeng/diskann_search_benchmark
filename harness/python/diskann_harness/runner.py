@@ -289,6 +289,17 @@ def execute_configuration(
         and identities[0]["report_id"] != identities[1]["report_id"]
         and identities[0]["generated_at"] != identities[1]["generated_at"]
     )
+    runner_path = Path(runner).resolve()
+    build_manifest_path = next(
+        (
+            parent / "build-manifest.json"
+            for parent in runner_path.parents
+            if (parent / "build-manifest.json").is_file()
+        ),
+        None,
+    )
+    if build_manifest_path is None:
+        raise RunnerError("runner build manifest is missing")
     summary = {
         "summary_version": "1.0.0",
         "source_config": {
@@ -299,6 +310,10 @@ def execute_configuration(
         "retained_runs": retained,
         "deterministic_equal": deterministic_equal,
         "distinct_run_provenance": distinct_provenance,
+        "build_manifest": {
+            "path": build_manifest_path.as_posix(),
+            "sha256": _sha256(build_manifest_path),
+        },
     }
     summary_path = resolve_confined_path(
         roots["report_root"], f"summaries/{base_id}.json"
@@ -437,19 +452,22 @@ def build_project(
         status = subprocess.run(
             ["git", "-C", str(git_root), "status", "--porcelain=v1", "--untracked-files=all"],
             capture_output=True,
+            text=True,
             shell=False,
             check=True,
-        ).stdout
+        ).stdout.rstrip()
         dirty = bool(status)
-        dirty_material = bytearray(status)
+        tracked_diff = ""
         if dirty:
-            dirty_material.extend(
-                subprocess.run(
-                    ["git", "-C", str(git_root), "diff", "--binary", "HEAD"],
-                    capture_output=True,
-                    shell=False,
-                    check=True,
-                ).stdout
+            tracked_diff = subprocess.run(
+                ["git", "-C", str(git_root), "diff", "--binary", "HEAD"],
+                capture_output=True,
+                text=True,
+                shell=False,
+                check=True,
+            ).stdout
+            dirty_material = bytearray(
+                f"status:\n{status}\ntracked:\n{tracked_diff}".encode("utf-8")
             )
             untracked = subprocess.run(
                 ["git", "-C", str(git_root), "ls-files", "--others", "--exclude-standard"],

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <set>
 
@@ -411,7 +412,8 @@ class CppMainM0 final : public GraphMerger {
                           "global-graph-artifact/v1",
                           output.at("aggregate_checksum").get<std::string>()},
               {}};
-    } catch (const std::exception&) {
+    } catch (const std::exception& error) {
+      std::cerr << "cpp_main M0 failed: " << error.what() << '\n';
       return {StageStatus::kFailed, std::nullopt, {}};
     }
   }

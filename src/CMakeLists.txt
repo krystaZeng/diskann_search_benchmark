@@ -19,6 +19,7 @@ add_library(
   validation/schema_catalog.cpp
   validation/validation_gate.cpp
   validation/artifact_validator.cpp
+  baseline/cpp_main/native_formats.cpp
   validation/mapping_validator.cpp
   validation/graph_validator.cpp
   validation/validator.cpp

@@ -13,7 +13,8 @@
     "dataset",
     "implementations",
     "profile",
-    "derived"
+    "derived",
+    "execution"
   ],
   "properties": {
     "study_class": {"const": "baseline_validation"},
@@ -86,6 +87,16 @@
         "b0_alpha": {"const": 1.2},
         "b0_max_occlusion_size": {"const": 750},
         "m0_degree_bound": {"const": 16}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspace", "runner", "report"],
+      "properties": {
+        "workspace": {"const": "build/cpp-main-baseline/runs/sift1m-unified"},
+        "runner": {"const": "build/cpp-main-baseline/src/baseline/cpp_main/cpp_main_baseline_runner"},
+        "report": {"const": "specs/002-cpp-main-upstream-baseline/unified-sharded-report.json"}
       }
     }
   }

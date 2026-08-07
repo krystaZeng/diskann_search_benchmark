@@ -13,6 +13,10 @@ namespace diskann_pipeline {
 namespace {
 
 using Json = nlohmann::json;
+constexpr const char* kFakeGlobalGraphMediaType =
+    "application/json";
+constexpr const char* kCppMainGlobalGraphMediaType =
+    "application/vnd.diskann.cpp-main.global-graph;version=1";
 
 Json read_json(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
@@ -48,6 +52,55 @@ EvaluationReport evaluate_validated_global_graph(
       structural.at("global_node_count").get<NodeCount>();
   const auto declared_max_degree =
       structural.at("declared_max_degree").get<std::uint32_t>();
+
+  const auto graph_payload = std::find_if(
+      artifact.payloads().begin(), artifact.payloads().end(),
+      [](const PayloadRef& payload) { return payload.role == "global_graph"; });
+  if (graph_payload == artifact.payloads().end()) {
+    throw PipelineError(ErrorCategory::kPayloadMissing,
+                        "global graph payload role is missing");
+  }
+
+  if (graph_payload->media_type == kCppMainGlobalGraphMediaType) {
+    if (!artifact.has_capability("graph.medoids/v1")) {
+      throw PipelineError(
+          ErrorCategory::kCapabilityUnsatisfied,
+          "cpp_main native evaluator requires the medoids capability");
+    }
+    const auto evidence_path = resolve_confined_path(
+        workspace.root, validation_evidence_path);
+    const auto evidence = read_json(evidence_path);
+    const auto& candidate = evidence.at("artifact_candidate");
+    if (evidence.at("result") != "VALID" ||
+        candidate.at("artifact_type") != "global_graph" ||
+        candidate.at("format_version") !=
+            artifact.reference().format_version ||
+        !candidate.contains("claimed_aggregate_checksum") ||
+        candidate.at("claimed_aggregate_checksum") !=
+            artifact.reference().aggregate_checksum) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "cpp_main native evaluator requires matching VALID evidence");
+    }
+    const auto observed_max_degree =
+        structural.at("observed_max_degree").get<std::uint32_t>();
+    const bool degree_within_bound =
+        observed_max_degree <= declared_max_degree;
+    const bool passed = degree_within_bound;
+    return {report_id,
+            artifact.reference(),
+            validation_evidence_path,
+            {"cpp_main_native_graph_integrity_evaluator", "1.0.0"},
+            generated_at,
+            {passed ? "VALID" : "INVALID", logical_node_count, 0,
+             declared_max_degree, observed_max_degree, passed},
+            "{}"};
+  }
+
+  if (graph_payload->media_type != kFakeGlobalGraphMediaType) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "global graph media type is not evaluator-reviewed");
+  }
 
   const auto metadata_path = resolve_normal_artifact_metadata(
       workspace, artifact.reference().metadata_path);

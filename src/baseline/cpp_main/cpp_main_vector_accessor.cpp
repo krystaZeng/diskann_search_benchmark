@@ -15,8 +15,13 @@ CppMainVectorAccessor::CppMainVectorAccessor(const WorkspaceRef& workspace,
     : dataset_reference_(dataset) {
   const auto validation = Validator(workspace).validate(dataset);
   if (!validation.valid()) {
+    const auto detail = validation.evidence.checks.empty()
+                            ? std::string{"validation evidence is empty"}
+                            : validation.evidence.checks.front().message;
     throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
-                        "cpp_main VectorAccessor requires a validated native DatasetArtifact");
+                        "cpp_main VectorAccessor requires a validated native "
+                        "DatasetArtifact: " +
+                            detail);
   }
   validated_dataset_ = validation.validated_artifact;
   dataset_identity_ = validated_dataset_->dataset();
