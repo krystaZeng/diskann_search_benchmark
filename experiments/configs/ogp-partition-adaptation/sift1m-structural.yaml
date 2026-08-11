@@ -1,0 +1,87 @@
+study_class: single_paper_reproduction
+reproduction_mode: faithful_adaptation
+replacement_scope: partition
+status: frozen
+dataset:
+  dataset_id: sift1m-base-float32-v1
+  path: sift1M_dataset/base_vector.bin
+  checksum: 8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e
+  global_node_count: 1000000
+  vector_dimension: 128
+  byte_length: 512000008
+  scalar_type: float32
+  metric: l2
+sources:
+  partition:
+    repository: https://github.com/larsgottesbueren/gp-ann.git
+    branch: main
+    commit: df5efb4a6b303011c795666ed267f29d994b558c
+    source_path: build/ogp-partition-adaptation/gp-ann-formal-source
+    require_clean: true
+    dependencies:
+      parlaylib: ea671f6fbae17e6d6cd25fe9b48134d3c0601787
+      kaminpar: a9e4b1f6d92b4110d4d4a31ee2e7dee5a0761b05
+      hnswlib: 359b2ba87358224963986f709e593d799064ace6
+      message_queue: f9b0856dde02248cc91a63077f7b6d5267004f25
+    build_identity: build/ogp-partition-adaptation/linux/gp-ann-ogp-build-identity.cmake
+    executable: build/ogp-partition-adaptation/linux/gp-ann-official/Partition
+    executable_sha256: f77f19242ae170332f829053c528b56fb5c10df05ff2bb47822c90a146c70bcb
+  local_build:
+    repository: https://github.com/microsoft/DiskANN.git
+    branch: cpp_main
+    commit: 78256bbab4685e1774e78d331e081a153be26823
+    source_path: upstream/diskann-cpp-main
+    require_clean: true
+    build_identity: build/ogp-partition-adaptation/linux/cpp-main-baseline-build-identity.cmake
+  merge:
+    repository: https://github.com/microsoft/DiskANN.git
+    branch: cpp_main
+    commit: 78256bbab4685e1774e78d331e081a153be26823
+    source_path: upstream/diskann-cpp-main
+    require_clean: true
+    build_identity: build/ogp-partition-adaptation/linux/cpp-main-baseline-build-identity.cmake
+implementations:
+  partition: gp_ann_ogp_partition_v1
+  local_build: cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1
+  merge: cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1
+stage_parameters:
+  partition:
+    requested_num_clusters: 40
+    requested_overlap: 0.2
+    partitioning_mode: default
+  local_build:
+    L: 32
+    R: 16
+    alpha: 1.2
+    build_pq_bytes: 0
+    max_occlusion_size: 750
+    num_threads: 6
+    saturation: false
+    use_opq: false
+  merge:
+    R: 16
+    use_filters: false
+effective_constants:
+  epsilon: 0.05
+  epsilon_source: upstream_cli_constant
+resources:
+  memory_budget_bytes: 644245095
+  thread_budget: 6
+  configured_environment:
+    PARLAY_NUM_THREADS: "6"
+execution:
+  parameter_sweep: false
+  retention: retain_all
+  max_dataset_nodes: 1000000
+  allowed_retry_reasons:
+    - infrastructure_failure
+    - external_execution_failure
+  workspace: build/ogp-partition-adaptation/runs/sift1m-structural
+  runner: build/ogp-partition-adaptation/linux/src/papers/gp_ann/ogp/ogp_experiment_runner
+  container_image: diskann-native-probe:jammy
+  container_image_id: sha256:7b2782df15ca76874f902fd6336c66cab7b077f8eeb788adf148165c65f9dfcb
+outputs:
+  request: requests/ogp-request.json
+  attempt_result: reports/runner/result.json
+  runner_stdout: reports/runner/stdout.log
+  runner_stderr: reports/runner/stderr.log

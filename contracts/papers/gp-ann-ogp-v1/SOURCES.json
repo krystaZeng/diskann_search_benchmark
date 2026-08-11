@@ -1,0 +1,10 @@
+{
+  "format_version": "diskann-paper-contract-sources-v1",
+  "entries": [
+    {
+      "source": "specs/003-ogp-partition-adaptation/contracts/ogp-parameters.schema.json",
+      "target": "contracts/papers/gp-ann-ogp-v1/schemas/ogp-parameters.schema.json",
+      "sha256": "a1643dce2112c8ed3455cc1ad35d2cb086a507d1ce60318f1a89c399b792117a"
+    }
+  ]
+}

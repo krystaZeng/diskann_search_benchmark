@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/003-ogp-partition-adaptation/ogp-parameters.schema.json",
+  "title": "GP-ANN OGP Partition Parameters",
+  "description": "Parameters exposed by the selected official Partition CLI subprocess. Epsilon is intentionally absent because the CLI fixes it to 0.05.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requested_num_clusters",
+    "requested_overlap",
+    "partitioning_mode"
+  ],
+  "properties": {
+    "requested_num_clusters": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "Semantic preflight additionally requires this value not to exceed the admitted Dataset global node count."
+    },
+    "requested_overlap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Must be finite under the repository JSON-compatible input rules. The official source declares no general upper bound; semantic preflight performs overflow-safe overlap*N arithmetic."
+    },
+    "partitioning_mode": {
+      "enum": ["default", "strong"]
+    }
+  }
+}
