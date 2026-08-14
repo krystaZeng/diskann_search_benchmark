@@ -1,6 +1,7 @@
 #include "diskann_pipeline/pipeline.hpp"
 
 #include "diskann_pipeline/compatibility.hpp"
+#include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/document_codec.hpp"
 #include "diskann_pipeline/quarantine.hpp"
 #include "diskann_pipeline/reuse.hpp"
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -52,6 +54,23 @@ std::string manifest_parameters(const PipelineExecutionRequest& request,
       .dump();
 }
 
+const SourceIdentity& source_for(const PipelineExecutionRequest& request,
+                                 StageKind stage) {
+  if (!request.stage_sources) {
+    return request.source;
+  }
+  switch (stage) {
+    case StageKind::kPartition:
+      return request.stage_sources->partition;
+    case StageKind::kLocalBuild:
+      return request.stage_sources->local_build;
+    case StageKind::kMerge:
+      return request.stage_sources->merge;
+  }
+  throw PipelineError(ErrorCategory::kSchemaInvalid,
+                      "unknown StageKind for source selection");
+}
+
 std::filesystem::path relative_to(const std::filesystem::path& path,
                                   const std::filesystem::path& root) {
   std::error_code error;
@@ -76,7 +95,7 @@ std::filesystem::path write_parameters(const WorkspaceRef& workspace,
 
 BuildManifest base_manifest(const PipelineExecutionRequest& request,
                             const StageContext& context,
-                            const std::string& stage,
+                            const std::string& stage, StageKind stage_kind,
                             const ImplementationDescriptor& descriptor,
                             const DatasetIdentity& dataset,
                             const std::string& parameters,
@@ -85,7 +104,7 @@ BuildManifest base_manifest(const PipelineExecutionRequest& request,
   return {request.run_id,
           stage,
           {descriptor.implementation_id, descriptor.implementation_version},
-          request.source,
+          source_for(request, stage_kind),
           request.toolchain,
           dataset,
           manifest_parameters(request, parameters),
@@ -99,6 +118,86 @@ BuildManifest base_manifest(const PipelineExecutionRequest& request,
           std::nullopt,
           std::nullopt,
           "{}"};
+}
+
+std::string read_immutable_input(const std::filesystem::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw PipelineError(ErrorCategory::kPayloadMissing,
+                        "stage-owned BuildManifest is missing");
+  }
+  std::ostringstream bytes;
+  bytes << input.rdbuf();
+  if (!input.eof() && input.fail()) {
+    throw PipelineError(ErrorCategory::kInternal,
+                        "unable to read stage-owned BuildManifest");
+  }
+  return bytes.str();
+}
+
+std::filesystem::path confined_stage_manifest_path(
+    const WorkspaceRef& workspace, const std::filesystem::path& path) {
+  std::error_code error;
+  const auto relative = path.is_absolute()
+                            ? std::filesystem::relative(path, workspace.root,
+                                                        error)
+                            : path;
+  if (error) {
+    throw PipelineError(ErrorCategory::kPathEscape,
+                        "unable to confine stage-owned BuildManifest path");
+  }
+  const auto confined = resolve_confined_path(workspace.root, relative);
+  if (!std::filesystem::is_regular_file(confined)) {
+    throw PipelineError(ErrorCategory::kPayloadMissing,
+                        "stage-owned BuildManifest is not a regular file");
+  }
+  return confined;
+}
+
+bool terminal_manifest_status(StageStatus status) {
+  return status != StageStatus::kPlanned && status != StageStatus::kRunning;
+}
+
+void attach_stage_execution_manifest(
+    const WorkspaceRef& workspace, const PipelineExecutionRequest& request,
+    const std::string& identity, const std::string& expected_stage,
+    const StageResult& stage_result, BuildManifest& parent) {
+  if (stage_result.build_manifest_path.empty()) {
+    return;
+  }
+  const auto source_path = confined_stage_manifest_path(
+      workspace, stage_result.build_manifest_path);
+  const auto bytes = read_immutable_input(source_path);
+  const auto subordinate = parse_build_manifest(bytes);
+  if (subordinate.run_id != request.run_id ||
+      subordinate.stage != expected_stage) {
+    throw PipelineError(
+        ErrorCategory::kSourceMismatch,
+        "stage-owned BuildManifest does not bind the current run and stage");
+  }
+  if (!terminal_manifest_status(subordinate.status)) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "stage-owned BuildManifest status is not terminal");
+  }
+  const bool requires_failure =
+      subordinate.status == StageStatus::kFailed ||
+      subordinate.status == StageStatus::kInvalidOutput;
+  if (requires_failure != subordinate.failure.has_value()) {
+    throw PipelineError(
+        ErrorCategory::kSchemaInvalid,
+        "stage-owned BuildManifest has inconsistent failure evidence");
+  }
+
+  const auto persisted = resolve_confined_path(
+      workspace.manifest_root,
+      std::filesystem::path(request.run_id) / "stage-execution" /
+          (identity + ".json"));
+  write_immutable_text(persisted, bytes);
+  auto parent_parameters = Json::parse(parent.parameters_json);
+  parent_parameters["stage_execution_manifest"] =
+      Json{{"path", relative_to(persisted, workspace.root).generic_string()},
+           {"sha256", sha256_file(persisted)}};
+  parent.parameters_json = parent_parameters.dump();
 }
 
 std::filesystem::path persist_stage_manifest(
@@ -361,6 +460,185 @@ PipelineExecutionResult PipelineExecutor::execute(
     }
     const auto dataset = *dataset_validation.validated_artifact;
 
+    if (request.merge_only_inputs) {
+      if (request.reused_partition) {
+        return terminal_failure(
+            std::move(result), StageStatus::kFailed,
+            ErrorCategory::kSchemaInvalid,
+            "merge_only_inputs and reused_partition are mutually exclusive");
+      }
+      const auto& merge_descriptor = registry_.resolve_descriptor(
+          request.merge_implementation_id,
+          request.merge_implementation_version, StageKind::kMerge);
+      detail::validate_implementation_parameters(
+          merge_descriptor, request.merge_parameters_json,
+          DISKANN_PIPELINE_PROJECT_ROOT);
+
+      const auto dataset_evidence = persist_validation_evidence(
+          workspace_, request.run_id + "-merge-only-dataset-valid",
+          dataset_validation.evidence);
+      result.validation_evidence_paths.push_back(dataset_evidence);
+
+      const auto partition_validation = validator.validate(
+          request.merge_only_inputs->partition, {dataset});
+      const auto partition_evidence = persist_validation_evidence(
+          workspace_, request.run_id + "-merge-only-partition-" +
+                          (partition_validation.valid() ? "valid" : "invalid"),
+          partition_validation.evidence);
+      result.validation_evidence_paths.push_back(partition_evidence);
+      if (!partition_validation.valid()) {
+        return terminal_failure(
+            std::move(result), StageStatus::kFailed,
+            partition_validation.evidence.failure_category.value_or(
+                ErrorCategory::kSchemaInvalid),
+            "Merge-only Partition failed fresh validation");
+      }
+      const auto partition = *partition_validation.validated_artifact;
+      const auto expected_ids = partition_ids(partition);
+      if (request.merge_only_inputs->local_graphs.size() !=
+          expected_ids.size()) {
+        return terminal_failure(std::move(result), StageStatus::kFailed,
+                                ErrorCategory::kSourceMismatch,
+                                "Merge-only LocalGraph set is incomplete");
+      }
+      std::vector<ValidatedArtifact> validated_locals;
+      validated_locals.reserve(expected_ids.size());
+      for (std::size_t index = 0; index < expected_ids.size(); ++index) {
+        const auto& reference =
+            request.merge_only_inputs->local_graphs[index];
+        const auto local_validation = validator.validate(reference, {partition});
+        const auto local_evidence = persist_validation_evidence(
+            workspace_, request.run_id + "-merge-only-local-" +
+                            std::to_string(index) + "-" +
+                            (local_validation.valid() ? "valid" : "invalid"),
+            local_validation.evidence);
+        result.validation_evidence_paths.push_back(local_evidence);
+        if (!local_validation.valid() ||
+            !local_validation.validated_artifact->partition_id() ||
+            *local_validation.validated_artifact->partition_id() !=
+                expected_ids[index]) {
+          return terminal_failure(
+              std::move(result), StageStatus::kFailed,
+              local_validation.evidence.failure_category.value_or(
+                  ErrorCategory::kSourceMismatch),
+              "Merge-only LocalGraph ownership/order failed fresh validation");
+        }
+        validated_locals.push_back(*local_validation.validated_artifact);
+      }
+
+      std::vector<AvailableArtifactContract> available{
+          available_contract(dataset), available_contract(partition)};
+      for (const auto& local : validated_locals) {
+        available.push_back(available_contract(local));
+      }
+      const auto compatibility = CompatibilityChecker{}.check(
+          merge_descriptor, available, executor_services());
+      if (!compatibility.compatible) {
+        return terminal_failure(std::move(result), StageStatus::kFailed,
+                                compatibility.failure->category,
+                                compatibility.failure->reason);
+      }
+
+      const auto merge_started_at = now_utc();
+      const auto merge_parameters = write_parameters(
+          workspace_, request.run_id, "merge", request.merge_parameters_json);
+      context.temporary_storage =
+          create_temporary_storage(workspace_, request.run_id + "-merge");
+      auto merge = registry_.resolve_merge_factory(
+          request.merge_implementation_id,
+          request.merge_implementation_version)();
+      ++result.invocations.merge;
+      result.stage_order.push_back(StageKind::kMerge);
+      const auto stage = merge->merge(
+          partition.reference(), request.merge_only_inputs->local_graphs,
+          merge_parameters, context);
+      std::vector<ArtifactRef> manifest_inputs{request.dataset,
+                                               partition.reference()};
+      manifest_inputs.insert(manifest_inputs.end(),
+                             request.merge_only_inputs->local_graphs.begin(),
+                             request.merge_only_inputs->local_graphs.end());
+      auto manifest = base_manifest(
+          request, context, "merge", StageKind::kMerge, merge_descriptor,
+          dataset.dataset(), request.merge_parameters_json,
+          std::move(manifest_inputs), merge_started_at);
+      attach_stage_execution_manifest(workspace_, request, "merge", "merge",
+                                      stage, manifest);
+      const bool terminal_output_valid =
+          (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
+          ((stage.status == StageStatus::kFailed ||
+            stage.status == StageStatus::kCancelled) &&
+           !stage.output_candidate);
+      if (!terminal_output_valid) {
+        return terminal_output_violation(
+            std::move(result), request, workspace_, context.temporary_storage,
+            "merge", merge_descriptor, manifest, stage);
+      }
+      if (stage.status != StageStatus::kSucceeded) {
+        manifest.status = stage.status;
+        if (stage.status == StageStatus::kFailed) {
+          manifest.failure = FailureInfo{ErrorCategory::kInternal,
+                                         "Merge implementation failed",
+                                         std::nullopt};
+        }
+        result.build_manifest_paths.push_back(persist_stage_manifest(
+            workspace_, request.run_id, "merge", manifest));
+        return terminal_failure(
+            std::move(result), stage.status,
+            stage.status == StageStatus::kCancelled
+                ? ErrorCategory::kCancelled
+                : ErrorCategory::kInternal,
+            stage.status == StageStatus::kCancelled
+                ? "Merge was cancelled"
+                : "Merge implementation failed");
+      }
+      std::vector<ValidatedArtifact> merge_sources{partition};
+      merge_sources.insert(merge_sources.end(), validated_locals.begin(),
+                           validated_locals.end());
+      auto publication = validate_and_publish(
+          workspace_, request.run_id, "merge", context.temporary_storage,
+          *stage.output_candidate, merge_sources, merge_descriptor, nullptr);
+      if (std::holds_alternative<PublicationFailure>(publication)) {
+        const auto& failure = std::get<PublicationFailure>(publication);
+        manifest.status = StageStatus::kInvalidOutput;
+        manifest.failure =
+            FailureInfo{failure.category, failure.reason, std::nullopt};
+        manifest.validation_evidence_path =
+            relative_to(failure.evidence_path, workspace_.root);
+        const auto manifest_path = persist_stage_manifest(
+            workspace_, request.run_id, "merge", manifest);
+        result.build_manifest_paths.push_back(manifest_path);
+        const auto quarantine_id = request.run_id + "-merge-invalid";
+        QuarantineManager(workspace_).publish(
+            quarantine_id,
+            context.temporary_storage.stage_root / "candidate",
+            context.temporary_storage.stage_root / "candidate/artifact.json",
+            manifest_path, failure.evidence_path,
+            {failure.category, failure.reason, std::nullopt}, now_utc());
+        result.quarantine_id = quarantine_id;
+        result.validation_evidence_paths.push_back(failure.evidence_path);
+        return terminal_failure(std::move(result),
+                                StageStatus::kInvalidOutput,
+                                failure.category, failure.reason);
+      }
+      auto published = std::get<PublishedArtifact>(std::move(publication));
+      result.artifact = published.reference;
+      result.validation_evidence_paths.push_back(published.evidence_path);
+      manifest.status = StageStatus::kSucceeded;
+      manifest.output_artifacts = {published.reference};
+      manifest.validation_evidence_path =
+          relative_to(published.evidence_path, workspace_.root);
+      result.build_manifest_paths.push_back(persist_stage_manifest(
+          workspace_, request.run_id, "merge", manifest));
+      const auto report = evaluate_validated_global_graph(
+          workspace_, published.validated,
+          relative_to(published.evidence_path, workspace_.root),
+          request.run_id + "-evaluation", now_utc());
+      result.evaluation_report_path =
+          persist_evaluation_report(workspace_, report);
+      result.status = StageStatus::kSucceeded;
+      return result;
+    }
+
     const auto& partition_descriptor = registry_.resolve_descriptor(
         request.partition_implementation_id,
         request.partition_implementation_version, StageKind::kPartition);
@@ -401,6 +679,7 @@ PipelineExecutionResult PipelineExecutor::execute(
           reused.validation_evidence);
       result.validation_evidence_paths.push_back(evidence_path);
       auto manifest = base_manifest(request, context, "partition",
+                                    StageKind::kPartition,
                                     partition_descriptor, dataset.dataset(),
                                     request.partition_parameters_json,
                                     {request.dataset}, stage_started_at);
@@ -437,9 +716,12 @@ PipelineExecutionResult PipelineExecutor::execute(
       result.stage_order.push_back(StageKind::kPartition);
       const auto stage = partition->run(request.dataset, parameter_path, context);
       auto manifest = base_manifest(request, context, "partition",
+                                    StageKind::kPartition,
                                     partition_descriptor, dataset.dataset(),
                                     request.partition_parameters_json,
                                     {request.dataset}, stage_started_at);
+      attach_stage_execution_manifest(workspace_, request, "partition",
+                                      "partition", stage, manifest);
       const bool terminal_output_valid =
           (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
           ((stage.status == StageStatus::kFailed ||
@@ -538,8 +820,11 @@ PipelineExecutionResult PipelineExecutor::execute(
       }
       local_inputs.push_back(validated_partition->reference());
       auto manifest = base_manifest(
-          request, context, "local_build", local_descriptor, dataset.dataset(),
+          request, context, "local_build", StageKind::kLocalBuild,
+          local_descriptor, dataset.dataset(),
           parameters, std::move(local_inputs), stage_started_at);
+      attach_stage_execution_manifest(workspace_, request, identity,
+                                      "local_build", stage, manifest);
       const bool terminal_output_valid =
           (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
           ((stage.status == StageStatus::kFailed ||
@@ -621,10 +906,12 @@ PipelineExecutionResult PipelineExecutor::execute(
     std::vector<ArtifactRef> merge_inputs{validated_partition->reference()};
     merge_inputs.insert(merge_inputs.end(), result.local_artifacts.begin(),
                         result.local_artifacts.end());
-    auto manifest = base_manifest(request, context, "merge", merge_descriptor,
-                                  dataset.dataset(),
+    auto manifest = base_manifest(request, context, "merge", StageKind::kMerge,
+                                  merge_descriptor, dataset.dataset(),
                                   request.merge_parameters_json, merge_inputs,
                                   merge_started_at);
+    attach_stage_execution_manifest(workspace_, request, "merge", "merge",
+                                    stage, manifest);
     const bool terminal_output_valid =
         (stage.status == StageStatus::kSucceeded && stage.output_candidate) ||
         ((stage.status == StageStatus::kFailed ||

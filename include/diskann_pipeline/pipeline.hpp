@@ -19,6 +19,17 @@ struct StageInvocationCounts {
   std::size_t merge{0};
 };
 
+struct StageSourceIdentities {
+  SourceIdentity partition;
+  SourceIdentity local_build;
+  SourceIdentity merge;
+};
+
+struct MergeOnlyInputSet {
+  ArtifactRef partition;
+  std::vector<ArtifactRef> local_graphs;
+};
+
 struct PipelineExecutionRequest {
   std::string run_id;
   ArtifactRef dataset;
@@ -33,7 +44,9 @@ struct PipelineExecutionRequest {
   std::string merge_parameters_json{"{}"};
   std::string source_config_json{"{}"};
   std::optional<ArtifactRef> reused_partition;
+  std::optional<MergeOnlyInputSet> merge_only_inputs;
   SourceIdentity source;
+  std::optional<StageSourceIdentities> stage_sources;
   ToolchainIdentity toolchain;
   std::string started_at;
   std::string ended_at;

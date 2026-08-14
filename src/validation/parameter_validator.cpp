@@ -112,17 +112,24 @@ void validate_implementation_parameters(
   const auto path = confined_schema_path(repository_root,
                                          descriptor.parameter_schema_path);
   const auto document = read_schema(path);
-  if (!document.is_object() || !document.contains("$defs") ||
-      !document.at("$defs").is_object()) {
-    reject("parameter schema has no $defs object");
+  if (!document.is_object()) {
+    reject("parameter schema is not an object");
   }
-  const auto definition_name = std::string(to_string(descriptor.stage));
-  if (!document.at("$defs").contains(definition_name)) {
-    reject("parameter schema has no definition for selected stage");
+  const Json* selected_schema = &document;
+  if (document.contains("$defs")) {
+    if (!document.at("$defs").is_object()) {
+      reject("parameter schema $defs is not an object");
+    }
+    const auto definition_name = std::string(to_string(descriptor.stage));
+    if (!document.at("$defs").contains(definition_name)) {
+      reject("parameter schema has no definition for selected stage");
+    }
+    selected_schema = &document.at("$defs").at(definition_name);
   }
   const auto parameters = parse_json_strict(normalized_parameters_json);
-  validate_value(parameters, document.at("$defs").at(definition_name),
-                 "stage_parameters." + definition_name);
+  validate_value(parameters, *selected_schema,
+                 "stage_parameters." +
+                     std::string(to_string(descriptor.stage)));
 }
 
 }  // namespace diskann_pipeline::detail

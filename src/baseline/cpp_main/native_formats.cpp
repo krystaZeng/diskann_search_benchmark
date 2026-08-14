@@ -195,6 +195,10 @@ GraphFacts validate_graph(const std::filesystem::path& path,
         throw PipelineError(ErrorCategory::kIdRangeInvalid,
                             "native graph neighbor is outside its ID space");
       }
+      if (!local && neighbor == node) {
+        throw PipelineError(ErrorCategory::kSchemaInvalid,
+                            "native global graph contains a self edge");
+      }
     }
   }
   if (input.peek() != std::char_traits<char>::eof()) {

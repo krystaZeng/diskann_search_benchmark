@@ -2,6 +2,7 @@
 #include "diskann_pipeline/artifacts.hpp"
 #include "diskann_pipeline/evaluation.hpp"
 #include "diskann_pipeline/implementation.hpp"
+#include "diskann_pipeline/pipeline.hpp"
 #include "diskann_pipeline/provenance.hpp"
 #include "diskann_pipeline/registry.hpp"
 #include "diskann_pipeline/stage_context.hpp"
@@ -56,6 +57,16 @@ int main() {
   static_assert(std::is_same_v<
                 decltype(std::declval<dp::ContractProvide>().artifact_type),
                 dp::ArtifactType>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<dp::StageSourceIdentities>().partition),
+                dp::SourceIdentity>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<dp::PipelineExecutionRequest>()
+                             .stage_sources),
+                std::optional<dp::StageSourceIdentities>>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<dp::StageResult>().build_manifest_path),
+                std::filesystem::path>);
 
   const dp::ArtifactRef ref{
       "artifacts/example/metadata.json", dp::ArtifactType::kDataset,
@@ -72,4 +83,3 @@ int main() {
   static_cast<void>(builder);
   return dp::test::finish();
 }
-

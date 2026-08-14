@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/004-hnsw-merger-diskann-merge-adaptation/same-input-structural-comparison.schema.json",
+  "title": "Feature-local Same-input M0/M1 Structural Comparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "comparison_id",
+    "generated_at",
+    "study_class",
+    "reproduction_mode",
+    "replacement_scope",
+    "shared_inputs",
+    "m0",
+    "m1",
+    "shared_input_identity",
+    "structural_validation",
+    "formal_graph_parity",
+    "query_evaluation_performed"
+  ],
+  "properties": {
+    "schema_version": {"const": "same-input-structural-comparison/v1"},
+    "comparison_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "study_class": {"const": "single_paper_reproduction"},
+    "reproduction_mode": {"const": "faithful_adaptation"},
+    "replacement_scope": {"const": "merge"},
+    "shared_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset",
+        "partition",
+        "local_graphs",
+        "m0_validation_evidence",
+        "m1_validation_evidence"
+      ],
+      "properties": {
+        "dataset": {"$ref": "#/$defs/artifactRef"},
+        "partition": {"$ref": "#/$defs/artifactRef"},
+        "local_graphs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/ownedLocalRef"}
+        },
+        "m0_validation_evidence": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/relativePath"}
+        },
+        "m1_validation_evidence": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/relativePath"}
+        }
+      }
+    },
+    "m0": {"$ref": "#/$defs/mergeRun"},
+    "m1": {"$ref": "#/$defs/mergeRun"},
+    "shared_input_identity": {"enum": ["PASS", "FAIL"]},
+    "structural_validation": {"enum": ["PASS", "FAIL", "NOT_REACHED"]},
+    "formal_graph_parity": {"const": false},
+    "query_evaluation_performed": {"const": false}
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_type",
+        "format_version",
+        "aggregate_checksum",
+        "metadata_path"
+      ],
+      "properties": {
+        "artifact_type": {"type": "string", "minLength": 1},
+        "format_version": {"type": "string", "minLength": 1},
+        "aggregate_checksum": {"$ref": "#/$defs/sha256"},
+        "metadata_path": {"$ref": "#/$defs/relativePath"}
+      }
+    },
+    "ownedLocalRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partition_id", "artifact"],
+      "properties": {
+        "partition_id": {"type": "integer", "minimum": 0},
+        "artifact": {"$ref": "#/$defs/artifactRef"}
+      }
+    },
+    "mergeRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "implementation_id",
+        "implementation_version",
+        "status",
+        "build_manifest_path"
+      ],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "implementation_id": {"type": "string", "minLength": 1},
+        "implementation_version": {"const": "1.0.0"},
+        "status": {"enum": ["SUCCEEDED", "FAILED", "INVALID_OUTPUT", "CANCELLED"]},
+        "build_manifest_path": {"$ref": "#/$defs/relativePath"},
+        "global_graph": {"$ref": "#/$defs/artifactRef"},
+        "validation_evidence_path": {"$ref": "#/$defs/relativePath"},
+        "evaluation_report_path": {"$ref": "#/$defs/relativePath"},
+        "structural_findings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "node_count",
+            "invalid_neighbor_count",
+            "self_edge_count",
+            "observed_max_degree",
+            "degree_bound_pass",
+            "lineage_pass"
+          ],
+          "properties": {
+            "node_count": {"type": "integer", "minimum": 0},
+            "invalid_neighbor_count": {"type": "integer", "minimum": 0},
+            "self_edge_count": {"type": "integer", "minimum": 0},
+            "observed_max_degree": {"type": "integer", "minimum": 0},
+            "degree_bound_pass": {"type": "boolean"},
+            "lineage_pass": {"type": "boolean"}
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"status": {"const": "SUCCEEDED"}},
+            "required": ["status"]
+          },
+          "then": {
+            "required": [
+              "global_graph",
+              "validation_evidence_path",
+              "evaluation_report_path",
+              "structural_findings"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

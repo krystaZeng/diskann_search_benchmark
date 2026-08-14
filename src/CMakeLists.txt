@@ -55,4 +55,12 @@ diskann_pipeline_apply_cxx17(diskann_pipeline_core)
 
 add_subdirectory(cli)
 
+if(DISKANN_GP_ANN_OGP)
+  add_subdirectory(papers/gp_ann/ogp)
+endif()
+
+if(DISKANN_HNSW_MERGER)
+  add_subdirectory(papers/hnsw_merger/vamana)
+endif()
+
 install(TARGETS diskann_pipeline_core)

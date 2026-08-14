@@ -1,0 +1,87 @@
+status: draft
+request_id: hnsw-merger-sift1m-structural
+study_class: single_paper_reproduction
+reproduction_mode: faithful_adaptation
+replacement_scope: merge
+
+dataset:
+  path: sift1M_dataset/base_vector.bin
+  global_node_count: 1000000
+  vector_dimension: 128
+  byte_length: 512000008
+  checksum: 8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e
+
+shared_inputs:
+  dataset:
+    artifact_type: dataset
+    format_version: diskann-float32-dataset/v1
+    aggregate_checksum: 4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e
+    metadata_path: datasets/sift1m/artifact.json
+  partition:
+    artifact_type: partition
+    format_version: partition-artifact/v1
+    aggregate_checksum: afc492868685683e102a3908d5524d01eb01c5793a93134550d05c9f1992e0c1
+    metadata_path: cpp-main-sift1m-20260807T023200Z/partition/artifact.json
+  local_graphs:
+    - artifact_type: local_graph
+      format_version: local-graph-artifact/v1
+      aggregate_checksum: db2f34439a030dcdcd946412217986c5c59d8e3ae92100b0c66c47f9eec640e1
+      metadata_path: cpp-main-sift1m-20260807T023200Z/local-0/artifact.json
+    - artifact_type: local_graph
+      format_version: local-graph-artifact/v1
+      aggregate_checksum: fec50a8a95d3340115315a3bb89f6de66db7d907af362b0d8b4c33cd155011ec
+      metadata_path: cpp-main-sift1m-20260807T023200Z/local-1/artifact.json
+    - artifact_type: local_graph
+      format_version: local-graph-artifact/v1
+      aggregate_checksum: 69dd394a5218da4d2f44e3eaf54ac50bd1c558bffe3b145692d5e3ef049197fb
+      metadata_path: cpp-main-sift1m-20260807T023200Z/local-2/artifact.json
+
+merges:
+  m0:
+    implementation_id: cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1
+    implementation_version: 1.0.0
+    parameters:
+      R: 16
+      use_filters: false
+  m1:
+    implementation_id: hnsw_merger_vamana_merge_v1
+    implementation_version: 1.0.0
+    parameters:
+      R: 16
+      alpha: 1.2
+      max_candidate_size: 750
+      metric: l2
+      use_filters: false
+      multi_shard_strategy: large_first_pairwise_v1
+      lambda_policy: paper_adaptive_log_v1
+
+source_admission:
+  toolchain:
+    os: Linux
+    compiler_path: /usr/bin/c++
+    compiler_version: 11.4.0
+    cmake_version: 3.22.1
+    generator: Unix Makefiles
+    build_type: Release
+    effective_cmake_definitions:
+      - BUILD_TESTING=ON
+      - DISKANN_CPP_MAIN_BASELINE=ON
+      - DISKANN_HNSW_MERGER=ON
+    compile_commands:
+      - cmake --build build/hnsw-merger-merge-adaptation --target hnsw_merger_experiment_runner diskann_pipeline_runner
+    link_commands:
+      - cmake --build build/hnsw-merger-merge-adaptation --target hnsw_merger_experiment_runner
+
+execution:
+  memory_budget_bytes: 34359738368
+  thread_budget: 1
+  parameter_sweep: false
+  automatic_tuning: false
+  best_result_selection: false
+
+retry_policy:
+  planned_attempts: 1
+  infrastructure_retry: identical_configuration_only
+  changed_configuration_retry: false
+
+query_evaluation_performed: false

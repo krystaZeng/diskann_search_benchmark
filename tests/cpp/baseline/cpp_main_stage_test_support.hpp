@@ -326,6 +326,62 @@ inline ArtifactRef materialize_local(
           metadata.at("aggregate_checksum").get<std::string>()};
 }
 
+inline ArtifactRef materialize_global(
+    const WorkspaceRef& workspace, const NativeDatasetFixture& dataset,
+    const ArtifactRef& partition, const std::vector<ArtifactRef>& locals,
+    const std::vector<std::vector<std::uint32_t>>& adjacency,
+    const std::vector<GlobalNodeId>& medoids = {0}) {
+  const auto directory = workspace.normal_root / "global-native";
+  const auto graph_path = directory / "graph.index";
+  const auto medoids_path = directory / "medoids.bin";
+  write_bytes(graph_path, native_graph(0, adjacency));
+  write_bytes(medoids_path, id_matrix(medoids));
+
+  std::uint32_t observed = 0;
+  for (const auto& neighbors : adjacency) {
+    observed = std::max(observed,
+                        static_cast<std::uint32_t>(neighbors.size()));
+  }
+  Json sources = Json::array({source(partition)});
+  Json local_sources = Json::array();
+  for (const auto& local : locals) {
+    sources.push_back(source(local));
+    local_sources.push_back(source(local));
+  }
+  const Json dataset_json{{"dataset_id", dataset.identity.dataset_id},
+                          {"dataset_checksum", dataset.identity.dataset_checksum},
+                          {"global_node_count", dataset.identity.global_node_count},
+                          {"vector_dimension", dataset.identity.vector_dimension},
+                          {"scalar_type", "float32"},
+                          {"distance_metric", "l2"}};
+  Json metadata{
+      {"schema_version", "1.0.0"},
+      {"canonicalization", "diskann-artifact-c14n-v1"},
+      {"artifact_type", "global_graph"},
+      {"format_version", "global-graph-artifact/v1"},
+      {"dataset", dataset_json},
+      {"id_space", "global"},
+      {"structural",
+       {{"global_node_count", dataset.identity.global_node_count},
+        {"declared_max_degree", observed},
+        {"observed_max_degree", observed},
+        {"source_partition_artifact", source(partition)},
+        {"source_local_graph_artifacts", local_sources}}},
+      {"capabilities",
+       Json::array({"graph.global_adjacency/v1", "graph.medoids/v1"})},
+      {"source_artifacts", sources},
+      {"payloads",
+       Json::array({payload("global_graph", "graph.index",
+                            kGlobalGraphMediaType, graph_path),
+                    payload(kGlobalGraphMedoidsPayloadRole, "medoids.bin",
+                            kMedoidsMediaType, medoids_path)})}};
+  metadata["aggregate_checksum"] = aggregate_for(metadata);
+  write_text(directory / "artifact.json", metadata.dump());
+  return {"global-native/artifact.json", ArtifactType::kGlobalGraph,
+          "global-graph-artifact/v1",
+          metadata.at("aggregate_checksum").get<std::string>()};
+}
+
 class TestMetrics final : public MetricsSink {
  public:
   void event(const std::string& name) override { events.push_back(name); }

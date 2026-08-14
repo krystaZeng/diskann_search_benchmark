@@ -102,6 +102,9 @@ add_diskann_pipeline_phase3_test(
   pipeline_orchestration
   integration/test_pipeline_orchestration.cpp)
 add_diskann_pipeline_phase3_test(
+  stage_source_provenance
+  integration/test_stage_source_provenance.cpp)
+add_diskann_pipeline_phase3_test(
   pipeline_failure_gates
   integration/test_pipeline_failure_gates.cpp)
 

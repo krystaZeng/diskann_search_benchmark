@@ -12,6 +12,22 @@ option(
   DISKANN_CPP_MAIN_BASELINE
   "Build the fixed cpp_main Baseline wrapper and its tests"
   OFF)
+option(
+  DISKANN_GP_ANN_OGP
+  "Build the fixed official GP-ANN OGP Partition integration"
+  OFF)
+option(
+  DISKANN_HNSW_MERGER
+  "Build the HNSW-Merger Vamana Merge faithful adaptation"
+  OFF)
+
+set(DISKANN_HNSW_MERGER_REPOSITORY
+    "https://github.com/Kimchuls/HNSWMerger.git")
+set(DISKANN_HNSW_MERGER_BRANCH "main")
+set(DISKANN_HNSW_MERGER_COMMIT
+    "88f6b7179f651cf5f284bd4e52249a4b1323b5af")
+set(DISKANN_HNSW_MERGER_INTEGRATION_MODE "source_mapping_only")
+set(DISKANN_HNSW_MERGER_OFFICIAL_BINARY_LINKED 0)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Dependencies)
@@ -77,7 +93,18 @@ else()
   set(DISKANN_PIPELINE_RECORDED_BUILD_TYPE "unspecified")
 endif()
 
+if(DISKANN_HNSW_MERGER)
+  include(HnswMergerProjectIdentity)
+  diskann_resolve_hnsw_merger_project_identity("${CMAKE_SOURCE_DIR}")
+endif()
+
 add_subdirectory(include/diskann_pipeline)
+
+if(DISKANN_GP_ANN_OGP)
+  include(GpAnnOgp)
+  diskann_configure_gp_ann_ogp()
+endif()
+
 add_subdirectory(src)
 
 if(DISKANN_CPP_MAIN_BASELINE)

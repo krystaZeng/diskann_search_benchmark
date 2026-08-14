@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/papers/hnsw-merger-v1/hnsw-merger-vamana-parameters.schema.json",
+  "title": "HNSW-Merger Vamana Merge v1 Parameters",
+  "$defs": {
+    "merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "R",
+        "alpha",
+        "max_candidate_size",
+        "metric",
+        "use_filters",
+        "multi_shard_strategy",
+        "lambda_policy"
+      ],
+      "properties": {
+        "R": {"type": "integer", "const": 16},
+        "alpha": {"type": "number", "const": 1.2},
+        "max_candidate_size": {"type": "integer", "const": 750},
+        "metric": {"type": "string", "const": "l2"},
+        "use_filters": {"type": "boolean", "const": false},
+        "multi_shard_strategy": {
+          "type": "string",
+          "const": "large_first_pairwise_v1"
+        },
+        "lambda_policy": {
+          "type": "string",
+          "const": "paper_adaptive_log_v1"
+        }
+      }
+    }
+  }
+}

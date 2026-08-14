@@ -12,6 +12,14 @@
 #include <sstream>
 
 namespace diskann_pipeline::validation_detail {
+
+bool same_artifact_identity(const SourceArtifactIdentity& source,
+                            const ArtifactRef& reference) noexcept {
+  return source.artifact_type == reference.artifact_type &&
+         source.format_version == reference.format_version &&
+         source.aggregate_checksum == reference.aggregate_checksum;
+}
+
 namespace {
 
 bool same_dataset(const DatasetIdentity& lhs, const DatasetIdentity& rhs) {
@@ -23,11 +31,11 @@ bool same_dataset(const DatasetIdentity& lhs, const DatasetIdentity& rhs) {
          lhs.distance_metric == rhs.distance_metric;
 }
 
-bool same_source(const SourceArtifactIdentity& source,
-                 const ArtifactRef& reference) {
-  return source.artifact_type == reference.artifact_type &&
-         source.format_version == reference.format_version &&
-         source.aggregate_checksum == reference.aggregate_checksum;
+SourceArtifactIdentity structural_source_identity(const detail::Json& source) {
+  return {artifact_type_from_string(
+              source.at("artifact_type").get<std::string>()),
+          source.at("format_version").get<std::string>(),
+          source.at("aggregate_checksum").get<std::string>()};
 }
 
 const PayloadRef& require_payload(const AdmittedArtifact& artifact,
@@ -56,8 +64,8 @@ void validate_sources(
                         "validated source count differs from source_artifacts");
   }
   for (std::size_t index = 0; index < artifact.source_artifacts.size(); ++index) {
-    if (!same_source(artifact.source_artifacts[index],
-                     validated_sources[index].reference()) ||
+    if (!same_artifact_identity(artifact.source_artifacts[index],
+                                validated_sources[index].reference()) ||
         !same_dataset(artifact.dataset, validated_sources[index].dataset())) {
       throw PipelineError(ErrorCategory::kSourceMismatch,
                           "source Artifact identity or dataset does not match");
@@ -451,18 +459,19 @@ void validate_artifact_semantics(
   }
   const auto& source_partition = structural.at("source_partition_artifact");
   const auto& source_locals = structural.at("source_local_graph_artifacts");
-  if (source_partition.at("aggregate_checksum") !=
-          validated_sources[0].reference().aggregate_checksum ||
+  if (!same_artifact_identity(structural_source_identity(source_partition),
+                              validated_sources[0].reference()) ||
       !source_locals.is_array() ||
       source_locals.size() != expected_locals) {
     throw PipelineError(ErrorCategory::kSourceMismatch,
                         "GlobalGraph structural source identities are inconsistent");
   }
   for (std::size_t index = 0; index < source_locals.size(); ++index) {
-    if (source_locals[index].at("aggregate_checksum") !=
-        validated_sources[index + 1].reference().aggregate_checksum) {
+    if (!same_artifact_identity(
+            structural_source_identity(source_locals[index]),
+            validated_sources[index + 1].reference())) {
       throw PipelineError(ErrorCategory::kSourceMismatch,
-                          "GlobalGraph LocalGraph source checksum differs");
+                          "GlobalGraph LocalGraph source identity differs");
     }
   }
 }

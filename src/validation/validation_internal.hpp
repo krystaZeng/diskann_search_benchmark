@@ -30,6 +30,8 @@ const SchemaRule& schema_rule(ArtifactType artifact_type,
                               std::string_view format_version);
 AdmittedArtifact admit_artifact(const WorkspaceRef& workspace,
                                 const ArtifactRef& reference);
+bool same_artifact_identity(const SourceArtifactIdentity& source,
+                            const ArtifactRef& reference) noexcept;
 void validate_payload_identity(const WorkspaceRef& workspace,
                                AdmittedArtifact& artifact);
 void validate_artifact_semantics(

@@ -1,7 +1,9 @@
 #include "fakes/fake_pipeline.hpp"
 
 #include "support/test_assert.hpp"
+#include "validation/parameter_validator.hpp"
 
+#include <filesystem>
 #include <functional>
 #include <string>
 
@@ -67,9 +69,42 @@ void expect_rejected_before_factory(
   DP_EXPECT_EQ(result.invocations.merge, std::size_t{0});
 }
 
+void test_top_level_implementation_schema_and_legacy_defs() {
+  const auto repository_root =
+      std::filesystem::path(DISKANN_PIPELINE_TEST_SOURCE_DIR).parent_path();
+  auto ogp = dp::test::fake_partition_descriptor();
+  ogp.parameter_schema_path =
+      "contracts/papers/gp-ann-ogp-v1/schemas/ogp-parameters.schema.json";
+  dp::detail::validate_implementation_parameters(
+      ogp,
+      R"({"requested_num_clusters":4,"requested_overlap":0.2,"partitioning_mode":"default"})",
+      repository_root);
+  DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
+      ogp,
+      R"({"requested_overlap":0.2,"partitioning_mode":"default"})",
+      repository_root));
+  DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
+      ogp,
+      R"({"requested_num_clusters":4,"requested_overlap":0.2,"partitioning_mode":"default","epsilon":0.05})",
+      repository_root));
+  DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
+      ogp,
+      R"({"requested_num_clusters":"4","requested_overlap":0.2,"partitioning_mode":"default"})",
+      repository_root));
+
+  const auto legacy = dp::test::fake_partition_descriptor();
+  dp::detail::validate_implementation_parameters(
+      legacy,
+      R"({"partition_count":2,"local_to_global_maps":[[0,1,2,3],[2,3,4,5]]})",
+      repository_root);
+  DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
+      legacy, R"({"partition_count":2})", repository_root));
+}
+
 }  // namespace
 
 int main() {
+  test_top_level_implementation_schema_and_legacy_defs();
   Counts valid_counts;
   const auto valid = execute(
       "parameter-valid", [](auto&, auto&, auto&, auto&) {}, &valid_counts);
