@@ -103,7 +103,10 @@ def test_real_feature_runner_executes_m0_and_m1_once_from_same_inputs() -> None:
 
 def test_formal_source_admission_fails_without_canonical_remote() -> None:
     with pytest.raises(feature.HnswMergerHarnessError, match="canonical project Git remote"):
-        feature._project_source_admission(ROOT)
+        feature._project_source_admission(
+            ROOT,
+            git_reader=_git_reader({("remote",): ""}),
+        )
 
 
 def _git_reader(values: dict[tuple[str, ...], str]) -> Callable[..., str]:
@@ -233,12 +236,7 @@ def test_fixture_preflight_fresh_validates_complete_chain_before_request(
     request = json.loads(emitted.read_text(encoding="utf-8"))
     workspace = emitted.parent
     profile = _fixture_profile(request, workspace / "fixture-profile.json")
-    project = {
-        "repository": "https://example.test/project.git",
-        "branch": "feature/merge-adaptation",
-        "commit": "1" * 40,
-        "dirty_worktree": False,
-    }
+    project = request["source_admission"]["project_adaptation"]
     monkeypatch.setattr(feature, "_project_source_admission", lambda _: project)
 
     result = feature.preflight(
@@ -262,7 +260,125 @@ def test_fixture_preflight_fresh_validates_complete_chain_before_request(
     ]
     for item in result["fresh_validation_evidence"]:
         assert (workspace / item["path"]).is_file()
-    assert (workspace / feature.FORMAL_REQUEST_RELATIVE).is_file()
+    normalized_request_path = workspace / feature.FORMAL_REQUEST_RELATIVE
+    assert normalized_request_path.is_file()
+    normalized_request = json.loads(
+        normalized_request_path.read_text(encoding="utf-8")
+    )
+    assert normalized_request["workspace"]["root"] == _container_path(workspace)
+
+    outcome = feature.execute(
+        normalized_request_path,
+        RUNNER,
+        repository_root=ROOT,
+        container_image=IMAGE,
+    )
+    assert outcome["result"]["outcome"] == "SUCCEEDED"
+    assert outcome["result"]["stage_invocations"] == {
+        "partition": 0,
+        "local_build": 0,
+        "merge": 2,
+    }
+
+
+def test_fixture_preflight_without_container_keeps_host_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    emitted = _small_request("local-preflight-path")
+    request = json.loads(emitted.read_text(encoding="utf-8"))
+    workspace = emitted.parent
+    profile = _fixture_profile(request, workspace / "fixture-profile.json")
+    monkeypatch.setattr(
+        feature,
+        "_project_source_admission",
+        lambda _: request["source_admission"]["project_adaptation"],
+    )
+    monkeypatch.setattr(
+        feature,
+        "_fresh_validate_shared_inputs",
+        lambda *args, **kwargs: [],
+    )
+
+    result = feature.preflight(profile, workspace, repository_root=ROOT)
+    normalized_request = json.loads(Path(result["request"]).read_text(encoding="utf-8"))
+    assert normalized_request["workspace"]["root"] == str(workspace.resolve())
+    assert Path(result["request"]).is_relative_to(workspace.resolve())
+
+
+def test_cli_forwards_validation_runner_and_container_image(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: dict[str, object] = {}
+
+    def fake_preflight(
+        config: str,
+        workspace: str,
+        *,
+        validation_runner: str | None,
+        container_image: str | None,
+    ) -> dict[str, str]:
+        calls["preflight"] = {
+            "config": config,
+            "workspace": workspace,
+            "validation_runner": validation_runner,
+            "container_image": container_image,
+        }
+        return {"outcome": "SUCCEEDED"}
+
+    def fake_execute(
+        request: str,
+        runner: str,
+        *,
+        container_image: str | None,
+    ) -> dict[str, str]:
+        calls["execute"] = {
+            "request": request,
+            "runner": runner,
+            "container_image": container_image,
+        }
+        return {"outcome": "SUCCEEDED"}
+
+    monkeypatch.setattr(feature, "preflight", fake_preflight)
+    monkeypatch.setattr(feature, "execute", fake_execute)
+
+    assert feature.main(
+        [
+            "preflight",
+            "--config",
+            "fixture.yaml",
+            "--workspace",
+            "build/fixture",
+            "--validation-runner",
+            "build/diskann_pipeline_runner",
+            "--container-image",
+            IMAGE,
+        ]
+    ) == 0
+    assert calls["preflight"] == {
+        "config": "fixture.yaml",
+        "workspace": "build/fixture",
+        "validation_runner": "build/diskann_pipeline_runner",
+        "container_image": IMAGE,
+    }
+    capsys.readouterr()
+
+    assert feature.main(
+        [
+            "execute",
+            "--request",
+            "build/fixture/request.json",
+            "--runner",
+            "build/hnsw_merger_experiment_runner",
+            "--container-image",
+            IMAGE,
+        ]
+    ) == 0
+    assert calls["execute"] == {
+        "request": "build/fixture/request.json",
+        "runner": "build/hnsw_merger_experiment_runner",
+        "container_image": IMAGE,
+    }
 
 
 def test_fixture_preflight_validation_failure_writes_no_comparison_request(
@@ -294,9 +410,9 @@ def test_fixture_preflight_validation_failure_writes_no_comparison_request(
     assert not (workspace / feature.FORMAL_REQUEST_RELATIVE).exists()
 
 
-def test_sift1m_profile_is_predeclared_draft_and_not_formally_admitted() -> None:
+def test_sift1m_profile_is_frozen_without_performance_or_search_scope() -> None:
     profile = feature.load_yaml_file(DRAFT_PROFILE)
-    assert profile["status"] == "draft"
+    assert profile["status"] == "frozen"
     assert profile["dataset"] == {
         "path": "sift1M_dataset/base_vector.bin",
         "global_node_count": 1_000_000,
@@ -306,5 +422,7 @@ def test_sift1m_profile_is_predeclared_draft_and_not_formally_admitted() -> None
     }
     assert len(profile["shared_inputs"]["local_graphs"]) == 3
     assert profile["execution"]["parameter_sweep"] is False
-    with pytest.raises(feature.HnswMergerHarnessError, match="not frozen"):
-        feature._validate_preflight_profile(profile)
+    assert profile["execution"]["automatic_tuning"] is False
+    assert profile["execution"]["best_result_selection"] is False
+    assert profile["query_evaluation_performed"] is False
+    feature._validate_preflight_profile(profile)

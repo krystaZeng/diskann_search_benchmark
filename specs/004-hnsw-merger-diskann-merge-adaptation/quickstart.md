@@ -1,20 +1,21 @@
 # Quickstart: HNSW-Merger Vamana Merge Structural Validation
 
-This guide records the implemented T001-T008 validation surface and the observed T009 admission
-blocker. The guide stops at structural SIFT1M and never runs Query/Search or performance
+This guide records the implemented T001-T008 validation surface and the T009 preflight preparation.
+The guide stops at structural SIFT1M and never runs Query/Search or performance
 evaluation.
 
-## Current observed status (2026-08-13)
+## Current observed status (2026-08-14)
 
 - T001-T008 passed in the local Linux builder image
   `diskann-cpp-main-baseline-builder:jammy`
   (`sha256:7b2782df15ca76874f902fd6336c66cab7b077f8eeb788adf148165c65f9dfcb`).
 - The blocking CTest selection passed 13/13, including real small P0+B0+M1 and exact-same-input
   M0/M1 execution. The blocking pytest selection passed 21/21.
-- Formal T009 preflight was invoked with the command in section 7 and failed before workspace
-  mutation with `canonical project Git remote is missing or ambiguous`.
-- Consequently no formal SIFT1M profile/request/evidence was generated, human review has not
-  occurred, and SIFT1M execution was not run. T009 remains incomplete.
+- An earlier T009 preflight attempt failed before workspace mutation because no canonical project
+  Git remote was configured. The single predeclared SIFT1M structural configuration is now frozen;
+  a new formal preflight over the final clean revision has not yet been run.
+- Consequently no formal request or fresh-validation evidence exists yet, human review has not
+  occurred, and SIFT1M execution has not run. T009 remains incomplete.
 
 ## 1. Verify immutable source identities
 
@@ -187,16 +188,15 @@ execution:
 
 The full configuration also contains exact M0/M1 source/build identities, one immutable reusable
 Dataset/Partition/ordered Local Artifact set, workspace, retention and identical-config
-infrastructure retry policy. It becomes frozen before execute; changed-config retry is prohibited.
+infrastructure retry policy. It is frozen before preflight/execute; changed-config retry is prohibited.
 The M1 parent stage `source` is the actual project adaptation repository identity. Every actual M1
 invocation returns one existing stage-owned BuildManifest/v1 through
 `StageResult.build_manifest_path`; that document retains `paper_source_identity`,
 `diskann_source_identity`, evidence classes, effective policy and `PairwiseMergeDecision[]`. The
 parent only references its immutable copy through
 `parameters.stage_execution_manifest {path, sha256}`. M0 keeps its empty-path legacy behavior, and
-Artifact validity still comes only from the existing Validator. The current checkout has no
-configured canonical remote, so formal preflight must stop until that identity and a committed
-adaptation revision are available; an absolute local path is not accepted.
+Artifact validity still comes only from the existing Validator. Formal preflight requires one
+canonical remote and a clean committed adaptation revision; an absolute local path is not accepted.
 
 ## 7. SIFT1M preflight
 
@@ -205,7 +205,9 @@ The future thin Harness command is:
 ```sh
 .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation preflight \
   --config experiments/configs/hnsw-merger-diskann-merge-adaptation/sift1m-structural.yaml \
-  --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural
+  --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural \
+  --validation-runner build/hnsw-merger-merge-adaptation/src/cli/diskann_pipeline_runner \
+  --container-image diskann-cpp-main-baseline-builder:jammy
 ```
 
 Preflight must:
@@ -240,7 +242,8 @@ has been reviewed, launch the formal main path once:
 ```sh
 .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation execute \
   --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json \
-  --runner build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner
+  --runner build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner \
+  --container-image diskann-cpp-main-baseline-builder:jammy
 ```
 
 That Python command starts one Feature runner process with the existing argv contract:

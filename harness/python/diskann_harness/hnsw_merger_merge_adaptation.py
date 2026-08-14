@@ -222,6 +222,7 @@ def execute(
     repository_root: str | Path | None = None,
     container_image: str | None = None,
 ) -> dict[str, Any]:
+    container_image = container_image or None
     repository = (
         Path(repository_root).resolve()
         if repository_root is not None
@@ -562,6 +563,7 @@ def preflight(
     validation_runner: str | Path | None = None,
     container_image: str | None = None,
 ) -> dict[str, Any]:
+    container_image = container_image or None
     repository = (
         Path(repository_root).resolve()
         if repository_root is not None
@@ -607,7 +609,11 @@ def preflight(
             "normalized_json_sha256": _canonical_digest(config),
         },
         "workspace": {
-            "root": roots["root"],
+            "root": (
+                _container_path(workspace_path, repository)
+                if container_image is not None
+                else roots["root"]
+            ),
             "memory_budget_bytes": config["execution"]["memory_budget_bytes"],
             "thread_budget": config["execution"]["thread_budget"],
         },
@@ -640,9 +646,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     preflight_parser = commands.add_parser("preflight")
     preflight_parser.add_argument("--config", required=True)
     preflight_parser.add_argument("--workspace", required=True)
+    preflight_parser.add_argument("--validation-runner")
+    preflight_parser.add_argument("--container-image")
     execute_parser = commands.add_parser("execute")
     execute_parser.add_argument("--request", required=True)
     execute_parser.add_argument("--runner", required=True)
+    execute_parser.add_argument("--container-image")
     return parser
 
 
@@ -650,9 +659,18 @@ def main(argv: list[str] | None = None) -> int:
     arguments = build_argument_parser().parse_args(argv)
     try:
         if arguments.command == "preflight":
-            result = preflight(arguments.config, arguments.workspace)
+            result = preflight(
+                arguments.config,
+                arguments.workspace,
+                validation_runner=arguments.validation_runner,
+                container_image=arguments.container_image,
+            )
         else:
-            result = execute(arguments.request, arguments.runner)
+            result = execute(
+                arguments.request,
+                arguments.runner,
+                container_image=arguments.container_image,
+            )
     except (
         HnswMergerHarnessError,
         RunnerError,

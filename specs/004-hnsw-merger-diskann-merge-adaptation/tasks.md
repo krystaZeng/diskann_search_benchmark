@@ -344,7 +344,9 @@ SIFT1M preflight or Merge may start before every listed small-real and regressio
     ```sh
     .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation preflight \
       --config experiments/configs/hnsw-merger-diskann-merge-adaptation/sift1m-structural.yaml \
-      --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural
+      --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural \
+      --validation-runner build/hnsw-merger-merge-adaptation/src/cli/diskann_pipeline_runner \
+      --container-image diskann-cpp-main-baseline-builder:jammy
     ```
     It must perform admission, fresh validation and profile normalization exactly once and write
     the one immutable Feature-private
@@ -360,7 +362,8 @@ SIFT1M preflight or Merge may start before every listed small-real and regressio
     ```sh
     .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation execute \
       --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json \
-      --runner build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner
+      --runner build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner \
+      --container-image diskann-cpp-main-baseline-builder:jammy
     ```
     This is one reviewed immutable request -> one Feature runner process -> one M0 Merge -> one M1
     Merge. The Python execute path starts exactly one runner process; internally that runner invokes
