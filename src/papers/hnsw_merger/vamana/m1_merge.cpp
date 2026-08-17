@@ -298,7 +298,8 @@ class HnswMergerVamanaMerge final : public GraphMerger {
       auto merged = merge_large_first(
           std::move(loaded.graphs), parameters.r, parameters.alpha,
           parameters.max_candidate_size, *context.vector_accessor,
-          *context.distance_function, context.cancellation_token,
+          *context.distance_function, dataset.global_node_count,
+          context.memory_budget_bytes, context.cancellation_token,
           context.metrics_sink);
       if (context.cancellation_token->is_cancelled()) {
         manifest.status = StageStatus::kCancelled;

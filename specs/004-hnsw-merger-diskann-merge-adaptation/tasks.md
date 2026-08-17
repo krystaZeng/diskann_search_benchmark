@@ -333,7 +333,7 @@ SIFT1M preflight or Merge may start before every listed small-real and regressio
     Runner-level test coverage, if needed beyond T008, MUST use a deterministic or small-real
     fixture request and prove that M0/M1 receive the same parsed tuple and execute once while P0/B0
     remain zero. It MUST NOT launch or otherwise consume
-    `build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json`.
+    `build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json`.
     Run these tests before creating the formal request; T008 already supplies the blocking real
     small-runner/composed-closure gate.
   - **Preflight**: create and review exactly one predeclared configuration with fixed Dataset
@@ -344,14 +344,14 @@ SIFT1M preflight or Merge may start before every listed small-real and regressio
     ```sh
     .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation preflight \
       --config experiments/configs/hnsw-merger-diskann-merge-adaptation/sift1m-structural.yaml \
-      --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural \
+      --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix \
       --validation-runner build/hnsw-merger-merge-adaptation/src/cli/diskann_pipeline_runner \
       --container-image diskann-cpp-main-baseline-builder:jammy
     ```
     It must perform admission, fresh validation and profile normalization exactly once and write
     the one immutable Feature-private
     request defined by `contracts/merge-only-execution.md` at
-    `build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json`
+    `build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json`
     for human review. Preflight MUST NOT start the Feature runner or execute any Merge and must leave
     P0/B0/M0/M1 factory invocation counts all zero. Candidate inputs under
     `build/cpp-main-baseline/runs/sift1m-unified/` are not trusted until this passes. A missing
@@ -361,7 +361,7 @@ SIFT1M preflight or Merge may start before every listed small-real and regressio
     human review of that exact immutable request, run the formal main path once:
     ```sh
     .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation execute \
-      --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json \
+      --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json \
       --runner build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner \
       --container-image diskann-cpp-main-baseline-builder:jammy
     ```

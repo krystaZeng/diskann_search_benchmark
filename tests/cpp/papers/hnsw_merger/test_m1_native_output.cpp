@@ -29,6 +29,31 @@ std::vector<std::vector<std::uint32_t>> ring(std::size_t count) {
   return result;
 }
 
+class CancelOnFirstRead final : public dp::VectorAccessor {
+ public:
+  CancelOnFirstRead(const dp::VectorAccessor& source,
+                    fixture::TestCancellation& cancellation)
+      : source_(source), cancellation_(cancellation) {}
+
+  std::size_t dimension() const noexcept override {
+    return source_.dimension();
+  }
+
+  void read(dp::GlobalNodeId id,
+            std::vector<float>& destination) const override {
+    source_.read(id, destination);
+    ++reads_;
+    if (reads_ == 1) cancellation_.cancelled = true;
+  }
+
+  std::size_t reads() const noexcept { return reads_; }
+
+ private:
+  const dp::VectorAccessor& source_;
+  fixture::TestCancellation& cancellation_;
+  mutable std::size_t reads_{0};
+};
+
 }  // namespace
 
 int main() {
@@ -92,5 +117,35 @@ int main() {
     DP_EXPECT_TRUE(valid_global.validated_artifact->has_capability(
         "graph.medoids/v1"));
   }
+
+
+  fixture::TestContext cancelled_environment(workspace,
+                                             "hnsw-merger-m1-cancel");
+  CancelOnFirstRead cancelling_vectors(
+      vectors, cancelled_environment.cancellation);
+  cancelled_environment.context.vector_accessor = &cancelling_vectors;
+  const auto cancelled_parameter_path = dp::resolve_confined_path(
+      workspace.manifest_root, "native-output-cancel/parameters/merge.json");
+  dp::write_immutable_text(cancelled_parameter_path, kParameters);
+  const auto cancelled = m1::make_m1_merge()->merge(
+      partition, locals, cancelled_parameter_path,
+      cancelled_environment.context);
+  DP_EXPECT_EQ(cancelled.status, dp::StageStatus::kCancelled);
+  DP_EXPECT_TRUE(!cancelled.output_candidate.has_value());
+  DP_EXPECT_EQ(cancelling_vectors.reads(), std::size_t{1});
+
+  fixture::TestContext budget_environment(workspace,
+                                          "hnsw-merger-m1-budget");
+  CancelOnFirstRead budget_vectors(vectors, budget_environment.cancellation);
+  budget_environment.context.vector_accessor = &budget_vectors;
+  budget_environment.context.memory_budget_bytes = 1;
+  const auto budget_parameter_path = dp::resolve_confined_path(
+      workspace.manifest_root, "native-output-budget/parameters/merge.json");
+  dp::write_immutable_text(budget_parameter_path, kParameters);
+  const auto budget_rejected = m1::make_m1_merge()->merge(
+      partition, locals, budget_parameter_path, budget_environment.context);
+  DP_EXPECT_EQ(budget_rejected.status, dp::StageStatus::kFailed);
+  DP_EXPECT_TRUE(!budget_rejected.output_candidate.has_value());
+  DP_EXPECT_EQ(budget_vectors.reads(), std::size_t{0});
   return dp::test::finish();
 }

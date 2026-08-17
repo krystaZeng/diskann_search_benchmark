@@ -33,15 +33,31 @@ evaluation.
   applies the `(distance, GlobalNodeId)` ordering, and stops once the closest pending candidate is
   worse than the full top-lambda set's worst member. The adaptive lambda and pruning policies are
   unchanged.
-- Post-fix non-formal validation passed 13/13 applicable CTests and 28/28 applicable pytest cases.
-  The real small P0+B0+M1 plus same-input M0/M1 test completed in 4.05 seconds.
-- Corrected-source re-admission retains the exact frozen configuration, DatasetArtifact,
-  PartitionArtifact, ordered LocalGraphArtifact collection, M0/M1 parameters and resource/retry
-  policy. Only the project source revision changes to implement the already-approved bounded
-  Algorithm 1 semantics. The corrected execution is the frozen profile's sole eligible planned
-  attempt; this is not a changed-configuration retry, an added repetition or a result-selection
-  opportunity. The current authorization ends after generating a new immutable formal request;
-  formal execution remains unauthorized and T009 remains incomplete.
+- The immutable bounded-search request at
+  `build/hnsw-merger-merge-adaptation/runs/sift1m-structural-bounded-fix/requests/merge-comparison-request.json`
+  (SHA-256 `38a81597b912a642b21531e035c60357280e907401e548c18abbbd013eca63e1`)
+  was subsequently launched once. M0 completed and published a Validator/evaluator-accepted
+  GlobalGraph with aggregate checksum
+  `48bb9f19752e65f89696057fb44f097f8dfed8a0cc1ea5931907ed967a131045`.
+  M1 was manually stopped after diagnostic observation showed that every distance evaluation still
+  reopened/sought/read the Dataset through `CppMainVectorAccessor`, while candidate comparators
+  recalculated the same distances. The bounded Algorithm 1 semantics were correct, but the
+  implementation did not have acceptable SIFT1M vector-access scalability.
+- For Quickstart/final-audit description only, that second attempt is classified
+  **IMPLEMENTATION_SCALABILITY_DEFECT / MANUALLY_ABORTED**. It has no terminal RunnerResult, normal
+  M1 Artifact, M1 parent/stage-owned BuildManifest or comparison summary. Its immutable request,
+  M0 output, manifests, ValidationEvidence and existing host evidence remain retained; the attempt
+  is excluded from eligible result aggregation and its old request is ineligible for re-execution.
+- The M1-only scalability repair adds one invocation-private contiguous float32 cache sourced from
+  the existing VectorAccessor. Allocation is budget/overflow checked, rows populate lazily by
+  GlobalNodeId, each row reaches the underlying accessor at most once, cache misses observe the
+  existing CancellationToken, and two scratch vectors are reused for distance evaluation.
+  Candidate ordering now decorates each candidate once with `(distance, GlobalNodeId)` before
+  sorting. Algorithm 1, adaptive lambda, pruning and merge order are unchanged.
+- Post-repair non-formal validation passed 13/13 applicable CTests. The real small P0+B0+M1 plus
+  same-input M0/M1 CTest completed in 5.38 seconds; 28/28 applicable pytest cases passed after the
+  existing Linux fixture binaries were rebuilt. No formal SIFT1M preflight or execution was run for
+  this new source state, and T009 remains incomplete.
 
 ## 1. Verify immutable source identities
 
@@ -231,7 +247,7 @@ The future thin Harness command is:
 ```sh
 .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation preflight \
   --config experiments/configs/hnsw-merger-diskann-merge-adaptation/sift1m-structural.yaml \
-  --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural \
+  --workspace build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix \
   --validation-runner build/hnsw-merger-merge-adaptation/src/cli/diskann_pipeline_runner \
   --container-image diskann-cpp-main-baseline-builder:jammy
 ```
@@ -248,7 +264,7 @@ Preflight must:
 
 Admission and normalized-request tests use deterministic or small-real fixture requests. They must
 not launch the formal request at
-`build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json`.
+`build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json`.
 Preflight writes that request for review and performs no Merge.
 
 The request is the Feature-private wire contract in `contracts/merge-only-execution.md`. Python
@@ -267,7 +283,7 @@ has been reviewed, launch the formal main path once:
 
 ```sh
 .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation execute \
-  --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json \
+  --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json \
   --runner build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner \
   --container-image diskann-cpp-main-baseline-builder:jammy
 ```
@@ -277,8 +293,8 @@ That Python command starts one Feature runner process with the existing argv con
 ```sh
 build/hnsw-merger-merge-adaptation/src/papers/hnsw_merger/vamana/hnsw_merger_experiment_runner \
   execute \
-  --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural/requests/merge-comparison-request.json \
-  --result build/hnsw-merger-merge-adaptation/runs/sift1m-structural/reports/runner/result.json
+  --request build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json \
+  --result build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/reports/runner/result.json
 ```
 
 The runner validates the normalized request without establishing another profile-normalization

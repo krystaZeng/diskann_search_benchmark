@@ -23,6 +23,22 @@ namespace {
 
 using Json = nlohmann::json;
 
+std::uint64_t checked_multiply(std::uint64_t lhs, std::uint64_t rhs,
+                               const char* message) {
+  if (lhs != 0 && rhs > std::numeric_limits<std::uint64_t>::max() / lhs) {
+    throw PipelineError(ErrorCategory::kCapabilityUnsatisfied, message);
+  }
+  return lhs * rhs;
+}
+
+std::uint64_t checked_add(std::uint64_t lhs, std::uint64_t rhs,
+                          const char* message) {
+  if (rhs > std::numeric_limits<std::uint64_t>::max() - lhs) {
+    throw PipelineError(ErrorCategory::kCapabilityUnsatisfied, message);
+  }
+  return lhs + rhs;
+}
+
 Json read_json(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
@@ -171,16 +187,6 @@ PartitionData load_partition(const WorkspaceRef& workspace,
   return result;
 }
 
-double node_distance(GlobalNodeId lhs, GlobalNodeId rhs,
-                     const VectorAccessor& vectors,
-                     const DistanceFunction& distance) {
-  std::vector<float> left;
-  std::vector<float> right;
-  vectors.read(lhs, left);
-  vectors.read(rhs, right);
-  return distance.evaluate(left, right);
-}
-
 bool lineage_less(const LogicalGraph& lhs, const LogicalGraph& rhs) {
   return std::lexicographical_compare(
       lhs.lineage.begin(), lhs.lineage.end(), rhs.lineage.begin(),
@@ -226,6 +232,105 @@ std::vector<GlobalNodeId> normalize_candidates(
 }
 
 }  // namespace
+
+std::uint64_t m1_vector_cache_required_bytes(
+    NodeCount global_node_count, std::size_t vector_dimension) {
+  if (!is_valid_count(global_node_count) || vector_dimension == 0) {
+    throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
+                        "M1 vector cache shape is invalid");
+  }
+  if (vector_dimension > std::numeric_limits<std::uint64_t>::max()) {
+    throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
+                        "M1 vector cache dimension overflows uint64");
+  }
+  const auto dimension = static_cast<std::uint64_t>(vector_dimension);
+  const auto elements = checked_multiply(
+      global_node_count, dimension,
+      "M1 vector cache element count overflows uint64");
+  const auto flat_bytes = checked_multiply(
+      elements, sizeof(float),
+      "M1 vector cache flat storage size overflows uint64");
+  const auto loaded_bytes = checked_multiply(
+      global_node_count, sizeof(std::uint8_t),
+      "M1 vector cache loaded-state size overflows uint64");
+  const auto scratch_elements = checked_multiply(
+      2, dimension, "M1 vector cache scratch size overflows uint64");
+  const auto scratch_bytes = checked_multiply(
+      scratch_elements, sizeof(float),
+      "M1 vector cache scratch byte size overflows uint64");
+  return checked_add(
+      checked_add(flat_bytes, loaded_bytes,
+                  "M1 vector cache footprint overflows uint64"),
+      scratch_bytes, "M1 vector cache footprint overflows uint64");
+}
+
+M1VectorCache::M1VectorCache(const VectorAccessor& source,
+                             NodeCount global_node_count,
+                             std::uint64_t memory_budget_bytes,
+                             CancellationToken* cancellation)
+    : source_(source),
+      global_node_count_(global_node_count),
+      dimension_(source.dimension()),
+      cancellation_(cancellation),
+      footprint_bytes_(m1_vector_cache_required_bytes(global_node_count,
+                                                      dimension_)) {
+  if (footprint_bytes_ > memory_budget_bytes) {
+    throw PipelineError(
+        ErrorCategory::kCapabilityUnsatisfied,
+        "M1 vector cache footprint exceeds StageContext memory budget");
+  }
+  const auto element_count = checked_multiply(
+      global_node_count_, static_cast<std::uint64_t>(dimension_),
+      "M1 vector cache element count overflows uint64");
+  if (element_count > std::numeric_limits<std::size_t>::max() ||
+      global_node_count_ > std::numeric_limits<std::size_t>::max()) {
+    throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
+                        "M1 vector cache allocation exceeds addressable size");
+  }
+  storage_.resize(static_cast<std::size_t>(element_count));
+  loaded_.assign(static_cast<std::size_t>(global_node_count_), 0);
+  left_scratch_.resize(dimension_);
+  right_scratch_.resize(dimension_);
+}
+
+std::size_t M1VectorCache::row_offset(GlobalNodeId id) const {
+  if (!is_valid_global_node_id(id, global_node_count_)) {
+    throw PipelineError(ErrorCategory::kIdRangeInvalid,
+                        "M1 vector cache ID is out of range");
+  }
+  return static_cast<std::size_t>(id) * dimension_;
+}
+
+void M1VectorCache::ensure_loaded(GlobalNodeId id) {
+  const auto index = static_cast<std::size_t>(id);
+  const auto offset = row_offset(id);
+  if (loaded_[index] != 0) return;
+  if (cancellation_ && cancellation_->is_cancelled()) {
+    throw PipelineError(ErrorCategory::kCancelled,
+                        "M1 was cancelled before a vector cache miss read");
+  }
+  source_.read(id, left_scratch_);
+  if (left_scratch_.size() != dimension_) {
+    throw PipelineError(ErrorCategory::kPayloadLengthMismatch,
+                        "M1 VectorAccessor returned the wrong dimension");
+  }
+  std::copy(left_scratch_.begin(), left_scratch_.end(),
+            storage_.begin() + static_cast<std::ptrdiff_t>(offset));
+  loaded_[index] = 1;
+}
+
+double M1VectorCache::distance(GlobalNodeId lhs, GlobalNodeId rhs,
+                               const DistanceFunction& distance) {
+  ensure_loaded(lhs);
+  ensure_loaded(rhs);
+  const auto left_offset = row_offset(lhs);
+  const auto right_offset = row_offset(rhs);
+  std::copy_n(storage_.begin() + static_cast<std::ptrdiff_t>(left_offset),
+              dimension_, left_scratch_.begin());
+  std::copy_n(storage_.begin() + static_cast<std::ptrdiff_t>(right_offset),
+              dimension_, right_scratch_.begin());
+  return distance.evaluate(left_scratch_, right_scratch_);
+}
 
 LoadedMergeInput load_merge_inputs(
     const WorkspaceRef& workspace, const ArtifactRef& partition_reference,
@@ -312,7 +417,7 @@ LoadedMergeInput load_merge_inputs(
 
 std::vector<GlobalNodeId> hnsw_merger_single_layer_search(
     const LogicalGraph& immutable_target, GlobalNodeId query,
-    std::uint32_t result_count, const VectorAccessor& vectors,
+    std::uint32_t result_count, M1VectorCache& vectors,
     const DistanceFunction& distance) {
   using Ranked = std::pair<double, GlobalNodeId>;
   if (immutable_target.adjacency.empty() || result_count == 0 ||
@@ -324,8 +429,7 @@ std::vector<GlobalNodeId> hnsw_merger_single_layer_search(
       candidates;
   std::priority_queue<Ranked> top;
   std::set<GlobalNodeId> visited;
-  const Ranked entry{node_distance(query, immutable_target.entry, vectors,
-                                   distance),
+  const Ranked entry{vectors.distance(query, immutable_target.entry, distance),
                      immutable_target.entry};
   visited.insert(immutable_target.entry);
   candidates.push(entry);
@@ -341,7 +445,7 @@ std::vector<GlobalNodeId> hnsw_merger_single_layer_search(
                             "M1 target adjacency escapes target graph");
       }
       if (!visited.insert(neighbor).second) continue;
-      const Ranked ranked{node_distance(query, neighbor, vectors, distance),
+      const Ranked ranked{vectors.distance(query, neighbor, distance),
                           neighbor};
       if (top.size() < result_count || ranked < top.top()) {
         candidates.push(ranked);
@@ -366,7 +470,7 @@ std::vector<GlobalNodeId> hnsw_merger_single_layer_search(
 std::vector<GlobalNodeId> hnsw_merger_vamana_prune(
     GlobalNodeId node, const std::vector<GlobalNodeId>& candidates,
     std::uint32_t degree_bound, double alpha, std::uint32_t max_candidates,
-    const VectorAccessor& vectors, const DistanceFunction& distance) {
+    M1VectorCache& vectors, const DistanceFunction& distance) {
   using Ranked = std::pair<double, GlobalNodeId>;
   std::vector<Ranked> pool;
   pool.reserve(candidates.size());
@@ -375,8 +479,7 @@ std::vector<GlobalNodeId> hnsw_merger_vamana_prune(
       throw PipelineError(ErrorCategory::kSchemaInvalid,
                           "M1 pruning input contains a self edge");
     }
-    pool.push_back({node_distance(node, candidate, vectors, distance),
-                    candidate});
+    pool.push_back({vectors.distance(node, candidate, distance), candidate});
   }
   std::sort(pool.begin(), pool.end());
   if (pool.size() > max_candidates) pool.resize(max_candidates);
@@ -391,8 +494,8 @@ std::vector<GlobalNodeId> hnsw_merger_vamana_prune(
       result.push_back(pool[index].second);
       for (std::size_t later = index + 1; later < pool.size(); ++later) {
         if (occlusion[later] > alpha) continue;
-        const auto pair_distance = node_distance(
-            pool[later].second, pool[index].second, vectors, distance);
+        const auto pair_distance = vectors.distance(
+            pool[later].second, pool[index].second, distance);
         const auto factor = pair_distance == 0.0
                                 ? std::numeric_limits<double>::max()
                                 : pool[later].first / pair_distance;
@@ -407,7 +510,7 @@ std::vector<GlobalNodeId> hnsw_merger_vamana_prune(
 LogicalGraph merge_pair(
     const LogicalGraph& source, const LogicalGraph& target,
     std::uint32_t lambda, std::uint32_t degree_bound, double alpha,
-    std::uint32_t max_candidates, const VectorAccessor& vectors,
+    std::uint32_t max_candidates, M1VectorCache& vectors,
     const DistanceFunction& distance, PairwiseMergeDecision* decision) {
   std::map<GlobalNodeId, std::vector<GlobalNodeId>> forward;
   std::map<GlobalNodeId, std::vector<GlobalNodeId>> backward;
@@ -467,14 +570,21 @@ LogicalGraph merge_pair(
                         reverse->second.end());
     }
     candidates = normalize_candidates(node, std::move(candidates), global_count);
-    std::sort(candidates.begin(), candidates.end(), [&](auto lhs, auto rhs) {
-      return std::make_pair(node_distance(node, lhs, vectors, distance), lhs) <
-             std::make_pair(node_distance(node, rhs, vectors, distance), rhs);
-    });
     if (candidates.size() > degree_bound) {
       candidates = hnsw_merger_vamana_prune(
           node, candidates, degree_bound, alpha, max_candidates, vectors,
           distance);
+    } else {
+      std::vector<std::pair<double, GlobalNodeId>> ranked;
+      ranked.reserve(candidates.size());
+      for (const auto candidate : candidates) {
+        ranked.emplace_back(vectors.distance(node, candidate, distance),
+                            candidate);
+      }
+      std::sort(ranked.begin(), ranked.end());
+      candidates.clear();
+      candidates.reserve(ranked.size());
+      for (const auto& item : ranked) candidates.push_back(item.second);
     }
     output.adjacency.emplace(node, std::move(candidates));
   }
@@ -489,13 +599,16 @@ LogicalGraph merge_pair(
 MultiShardMergeResult merge_large_first(
     std::vector<LogicalGraph> graphs, std::uint32_t degree_bound,
     double alpha, std::uint32_t max_candidates, const VectorAccessor& vectors,
-    const DistanceFunction& distance, CancellationToken* cancellation,
+    const DistanceFunction& distance, NodeCount global_node_count,
+    std::uint64_t memory_budget_bytes, CancellationToken* cancellation,
     MetricsSink* metrics) {
   if (graphs.empty()) {
     throw PipelineError(ErrorCategory::kSourceMismatch,
                         "M1 requires at least one LocalGraph");
   }
   MultiShardMergeResult result;
+  M1VectorCache cache(vectors, global_node_count, memory_budget_bytes,
+                      cancellation);
   std::uint64_t epoch_n0 = 0;
   bool reset_epoch = true;
   while (graphs.size() > 1) {
@@ -544,7 +657,7 @@ MultiShardMergeResult merge_large_first(
     decision.lambda_policy = policy;
     decision.effective_lambda = effective;
     auto merged = merge_pair(*source, *target, effective, degree_bound, alpha,
-                             max_candidates, vectors, distance, &decision);
+                             max_candidates, cache, distance, &decision);
     if (metrics) metrics->increment("hnsw_merger.m1.pairwise_rounds", 1);
     result.decisions.push_back(std::move(decision));
     graphs.push_back(std::move(merged));
