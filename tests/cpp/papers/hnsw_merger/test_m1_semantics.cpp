@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace dp = diskann_pipeline;
@@ -27,6 +28,23 @@ class Vectors final : public dp::VectorAccessor {
   }
  private:
   std::vector<float> values_;
+};
+
+class CountingVectors final : public dp::VectorAccessor {
+ public:
+  explicit CountingVectors(std::vector<float> values)
+      : values_(std::move(values)), reads_(values_.size(), 0) {}
+  std::size_t dimension() const noexcept override { return 1; }
+  void read(dp::GlobalNodeId id,
+            std::vector<float>& destination) const override {
+    ++reads_.at(id);
+    destination = {values_.at(id)};
+  }
+  std::size_t reads(dp::GlobalNodeId id) const { return reads_.at(id); }
+
+ private:
+  std::vector<float> values_;
+  mutable std::vector<std::size_t> reads_;
 };
 
 class L2 final : public dp::DistanceFunction {
@@ -66,6 +84,38 @@ m1::LogicalGraph graph(std::initializer_list<dp::PartitionId> lineage,
   return value;
 }
 
+void test_bounded_algorithm_one_search() {
+  L2 distance;
+  CountingVectors vectors({0, 10, 9, 1, 2, 8, 7, 6});
+  const auto target = graph(
+      {0}, 1,
+      {{1, {2, 3}}, {2, {5}}, {3, {4}}, {4, {}},
+       {5, {6}},    {6, {7}}, {7, {}}});
+  const auto original_adjacency = target.adjacency;
+  const auto original_entry = target.entry;
+
+  const auto hits = m1::hnsw_merger_single_layer_search(
+      target, 0, 2, vectors, distance);
+
+  DP_EXPECT_EQ(hits, std::vector<dp::GlobalNodeId>({3, 4}));
+  DP_EXPECT_TRUE(hits.size() <= std::size_t{2});
+  DP_EXPECT_EQ(std::set<dp::GlobalNodeId>(hits.begin(), hits.end()).size(),
+               hits.size());
+  DP_EXPECT_TRUE(vectors.reads(target.entry) > 0);
+  DP_EXPECT_EQ(vectors.reads(5), std::size_t{0});
+  DP_EXPECT_EQ(vectors.reads(6), std::size_t{0});
+  DP_EXPECT_EQ(vectors.reads(7), std::size_t{0});
+  DP_EXPECT_EQ(target.entry, original_entry);
+  DP_EXPECT_EQ(target.adjacency, original_adjacency);
+
+  CountingVectors tied_vectors({0, 10, -1, 1});
+  const auto tied_target =
+      graph({1}, 1, {{1, {3, 2}}, {2, {}}, {3, {}}});
+  const auto tied_hits = m1::hnsw_merger_single_layer_search(
+      tied_target, 0, 1, tied_vectors, distance);
+  DP_EXPECT_EQ(tied_hits, std::vector<dp::GlobalNodeId>({2}));
+}
+
 void test_algorithm_semantics() {
   Vectors vectors({0, 1, 2, 3, 4, 5, 6, 7});
   L2 distance;
@@ -92,6 +142,29 @@ void test_algorithm_semantics() {
                                       1.2, 750, vectors, distance, nullptr);
   DP_EXPECT_EQ(overlap.adjacency.at(3),
                std::vector<dp::GlobalNodeId>({4, 5}));
+
+  const auto duplicate_source =
+      graph({4}, 0, {{0, {1, 1}}, {1, {0, 0}}});
+  const auto duplicate_target =
+      graph({5}, 2, {{2, {3, 3}}, {3, {2, 2}}});
+  const auto duplicate_merged = m1::merge_pair(
+      duplicate_source, duplicate_target, 2, 2, 1.2, 750, vectors,
+      distance, nullptr);
+  for (const auto& item : duplicate_merged.adjacency) {
+    DP_EXPECT_TRUE(item.second.size() <= std::size_t{2});
+    DP_EXPECT_TRUE(std::find(item.second.begin(), item.second.end(),
+                             item.first) == item.second.end());
+    DP_EXPECT_EQ(std::set<dp::GlobalNodeId>(item.second.begin(),
+                                            item.second.end()).size(),
+                 item.second.size());
+  }
+  const auto bounded_prune = m1::hnsw_merger_vamana_prune(
+      0, {1, 2, 3, 4, 5}, 2, 1.2, 750, vectors, distance);
+  DP_EXPECT_TRUE(bounded_prune.size() <= std::size_t{2});
+  DP_EXPECT_THROW(m1::hnsw_merger_vamana_prune(
+      0, {0, 1}, 2, 1.2, 750, vectors, distance));
+  DP_EXPECT_THROW(m1::hnsw_merger_single_layer_search(
+      graph({6}, 2, {{2, {99}}}), 0, 1, vectors, distance));
 
   const auto multi = m1::merge_large_first(
       {graph({0}, 0, {{0, {1}}, {1, {0}}, {2, {1}}, {3, {2}}}),
@@ -165,6 +238,7 @@ int main() {
       dp::sha256_file(repository_root /
                       "contracts/papers/hnsw-merger-v1/schemas/"
                       "hnsw-merger-vamana-parameters.schema.json"));
+  test_bounded_algorithm_one_search();
   test_algorithm_semantics();
   return dp::test::finish();
 }

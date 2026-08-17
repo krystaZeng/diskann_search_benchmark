@@ -320,35 +320,45 @@ std::vector<GlobalNodeId> hnsw_merger_single_layer_search(
     throw PipelineError(ErrorCategory::kSchemaInvalid,
                         "M1 target graph has no valid entry");
   }
-  auto compare = [](const Ranked& lhs, const Ranked& rhs) {
-    return lhs > rhs;
-  };
-  std::priority_queue<Ranked, std::vector<Ranked>, decltype(compare)> queue(
-      compare);
+  std::priority_queue<Ranked, std::vector<Ranked>, std::greater<Ranked>>
+      candidates;
+  std::priority_queue<Ranked> top;
   std::set<GlobalNodeId> visited;
-  std::vector<Ranked> ranked;
-  const auto push = [&](GlobalNodeId id, auto& pending, auto& seen) {
-    if (seen.insert(id).second) {
-      pending.push({node_distance(query, id, vectors, distance), id});
-    }
-  };
-  push(immutable_target.entry, queue, visited);
-  while (!queue.empty()) {
-    const auto current = queue.top();
-    queue.pop();
-    ranked.push_back(current);
+  const Ranked entry{node_distance(query, immutable_target.entry, vectors,
+                                   distance),
+                     immutable_target.entry};
+  visited.insert(immutable_target.entry);
+  candidates.push(entry);
+  top.push(entry);
+  while (!candidates.empty()) {
+    const auto current = candidates.top();
+    if (top.size() == result_count && current > top.top()) break;
+    candidates.pop();
     const auto& neighbors = immutable_target.adjacency.at(current.second);
     for (const auto neighbor : neighbors) {
       if (immutable_target.adjacency.count(neighbor) == 0) {
         throw PipelineError(ErrorCategory::kIdRangeInvalid,
                             "M1 target adjacency escapes target graph");
       }
-      push(neighbor, queue, visited);
+      if (!visited.insert(neighbor).second) continue;
+      const Ranked ranked{node_distance(query, neighbor, vectors, distance),
+                          neighbor};
+      if (top.size() < result_count || ranked < top.top()) {
+        candidates.push(ranked);
+        top.push(ranked);
+        if (top.size() > result_count) top.pop();
+      }
     }
   }
+  std::vector<Ranked> ranked;
+  ranked.reserve(top.size());
+  while (!top.empty()) {
+    ranked.push_back(top.top());
+    top.pop();
+  }
   std::sort(ranked.begin(), ranked.end());
-  if (ranked.size() > result_count) ranked.resize(result_count);
   std::vector<GlobalNodeId> result;
+  result.reserve(ranked.size());
   for (const auto& item : ranked) result.push_back(item.second);
   return result;
 }

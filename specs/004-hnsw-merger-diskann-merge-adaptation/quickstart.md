@@ -4,18 +4,44 @@ This guide records the implemented T001-T008 validation surface and the T009 pre
 The guide stops at structural SIFT1M and never runs Query/Search or performance
 evaluation.
 
-## Current observed status (2026-08-14)
+## Current observed status (2026-08-17)
 
 - T001-T008 passed in the local Linux builder image
   `diskann-cpp-main-baseline-builder:jammy`
   (`sha256:7b2782df15ca76874f902fd6336c66cab7b077f8eeb788adf148165c65f9dfcb`).
 - The blocking CTest selection passed 13/13, including real small P0+B0+M1 and exact-same-input
   M0/M1 execution. The blocking pytest selection passed 21/21.
-- An earlier T009 preflight attempt failed before workspace mutation because no canonical project
-  Git remote was configured. The single predeclared SIFT1M structural configuration is now frozen;
-  a new formal preflight over the final clean revision has not yet been run.
-- Consequently no formal request or fresh-validation evidence exists yet, human review has not
-  occurred, and SIFT1M execution has not run. T009 remains incomplete.
+- Formal preflight over clean project commit
+  `1f86330fa96a8b9ab75b8aa351840e1d03ecf03b` passed. Dataset, Partition and all three ordered
+  LocalGraph inputs fresh-validated, and the immutable formal request has SHA-256
+  `9baed481b1f2441326c378cf6b286a18e57393508440757850c13202856a6349`.
+- The reviewed request was launched exactly once. M0 completed, published GlobalGraph aggregate
+  checksum `4850d4cec344d0a7e7b98dd3c8a777c77c051ede5c3624d497c3b7d84dc090b5`, and passed the existing
+  Validator and native graph-integrity evaluator.
+- The execution was then manually and safely stopped while M1 was running because source review
+  showed `hnsw_merger_single_layer_search` traversing the complete target graph for every source
+  node and applying lambda truncation only after that traversal. This is not the approved bounded
+  Vamana forward-search semantics and makes the SIFT1M work unacceptable.
+- For Quickstart/final-audit description only, the old attempt is classified
+  **INVALID_IMPLEMENTATION / MANUALLY_ABORTED**. These are explanatory labels, not new
+  RunnerResult, StageStatus or schema values. No normal M1 Artifact, M1 parent BuildManifest,
+  terminal RunnerResult or same-input comparison summary was published or reconstructed. The old
+  workspace and all evidence actually emitted before termination remain intact, but the attempt is
+  excluded from eligible result aggregation.
+- The exposed forward-search defect has since been corrected without rerunning formal SIFT1M:
+  `hnsw_merger_single_layer_search` now maintains the bounded Algorithm 1 candidate/top queues,
+  applies the `(distance, GlobalNodeId)` ordering, and stops once the closest pending candidate is
+  worse than the full top-lambda set's worst member. The adaptive lambda and pruning policies are
+  unchanged.
+- Post-fix non-formal validation passed 13/13 applicable CTests and 28/28 applicable pytest cases.
+  The real small P0+B0+M1 plus same-input M0/M1 test completed in 4.05 seconds.
+- Corrected-source re-admission retains the exact frozen configuration, DatasetArtifact,
+  PartitionArtifact, ordered LocalGraphArtifact collection, M0/M1 parameters and resource/retry
+  policy. Only the project source revision changes to implement the already-approved bounded
+  Algorithm 1 semantics. The corrected execution is the frozen profile's sole eligible planned
+  attempt; this is not a changed-configuration retry, an added repetition or a result-selection
+  opportunity. The current authorization ends after generating a new immutable formal request;
+  formal execution remains unauthorized and T009 remains incomplete.
 
 ## 1. Verify immutable source identities
 
