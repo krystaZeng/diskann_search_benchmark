@@ -320,7 +320,7 @@ one-request/one-runner model then completes the admitted SIFT1M structural compa
 **Checkpoint**: T008 is the blocking pre-SIFT prerequisite for US3; it does not complete US3. No
 SIFT1M preflight or Merge may start before every listed small-real and regression result passes.
 
-- [ ] T009 [US3] Admit and execute one same-input SIFT1M M0/M1 structural comparison and final audit using `experiments/configs/hnsw-merger-diskann-merge-adaptation/sift1m-structural.yaml`, `harness/python/diskann_harness/hnsw_merger_merge_adaptation.py`, `specs/004-hnsw-merger-diskann-merge-adaptation/validation/same-input-structural-comparison.json`, and `specs/004-hnsw-merger-diskann-merge-adaptation/quickstart.md`
+- [x] T009 [US3] Admit and execute one same-input SIFT1M M0/M1 structural comparison and final audit using `experiments/configs/hnsw-merger-diskann-merge-adaptation/sift1m-structural.yaml`, `harness/python/diskann_harness/hnsw_merger_merge_adaptation.py`, `specs/004-hnsw-merger-diskann-merge-adaptation/validation/same-input-structural-comparison.json`, and `specs/004-hnsw-merger-diskann-merge-adaptation/quickstart.md`
   - **Depends on**: T008 PASS. The approved candidate inputs must be one fresh-validated
     DatasetArtifact, PartitionArtifact and complete ordered LocalGraphArtifact collection; do not
     rerun P0/B0.

@@ -1,6 +1,7 @@
 # Quickstart: HNSW-Merger Vamana Merge Structural Validation
 
-This guide records the implemented T001-T008 validation surface and the T009 preflight preparation.
+This guide records the implemented T001-T009 structural-validation surface, including the one
+reviewed formal SIFT1M comparison.
 The guide stops at structural SIFT1M and never runs Query/Search or performance
 evaluation.
 
@@ -8,9 +9,9 @@ evaluation.
 
 - T001-T008 passed in the local Linux builder image
   `diskann-cpp-main-baseline-builder:jammy`
-  (`sha256:7b2782df15ca76874f902fd6336c66cab7b077f8eeb788adf148165c65f9dfcb`).
+  (`sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf`).
 - The blocking CTest selection passed 13/13, including real small P0+B0+M1 and exact-same-input
-  M0/M1 execution. The blocking pytest selection passed 21/21.
+  M0/M1 execution. The final blocking pytest selection passed 28/28.
 - Formal preflight over clean project commit
   `1f86330fa96a8b9ab75b8aa351840e1d03ecf03b` passed. Dataset, Partition and all three ordered
   LocalGraph inputs fresh-validated, and the immutable formal request has SHA-256
@@ -56,8 +57,32 @@ evaluation.
   sorting. Algorithm 1, adaptive lambda, pruning and merge order are unchanged.
 - Post-repair non-formal validation passed 13/13 applicable CTests. The real small P0+B0+M1 plus
   same-input M0/M1 CTest completed in 5.38 seconds; 28/28 applicable pytest cases passed after the
-  existing Linux fixture binaries were rebuilt. No formal SIFT1M preflight or execution was run for
-  this new source state, and T009 remains incomplete.
+  existing Linux fixture binaries were rebuilt.
+- The vector-cache repair was admitted from clean project commit
+  `fb4c971c9adde172e5df862f5272e292f7e979fe`. Formal preflight fresh-validated the Dataset,
+  Partition and all three ordered LocalGraphs, invoked no stage, and emitted the immutable request
+  at
+  `build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json`
+  with SHA-256 `1285e928213955b1d5b69d72f1fd4c185d643d98c8b6437b6f406ff214e31871`.
+- After human review, that exact request was launched once. The terminal runner result is
+  `SUCCEEDED` with aggregate stage invocations `partition=0`, `local_build=0`, `merge=2`. M0 and M1
+  produced GlobalGraph aggregate checksums
+  `ae4d266202ee3fe49008b8012db050270ac9ddb1c3e9f7b5fe749748f0dcd4ef` and
+  `3c161de688956aaef691dff21a53038b4f17e7c857a9b7e4516cb837e14031a7`, respectively.
+- Both GlobalGraphs independently passed the existing Validator and native graph-integrity
+  evaluator with 1,000,000 nodes, maximum observed degree 16, zero invalid neighbors, zero self
+  edges and complete lineage. The comparison reports `shared_input_identity=PASS` and
+  `structural_validation=PASS`; `query_evaluation_performed=false` and
+  `formal_graph_parity=false` remain explicit.
+- Exactly one M0 parent Merge BuildManifest and one M1 parent Merge BuildManifest were retained.
+  M0 preserves the empty `build_manifest_path` legacy behavior. M1's parent references the valid
+  stage-owned BuildManifest at
+  `manifests/hnsw-merger-sift1m-structural-m1/stage-execution/merge.json` with SHA-256
+  `1a37eff69640100b3fae7d4dd47dc16831a9df1445e72c105bc4228fd7881229`.
+- Both historical manually aborted workspaces remain intact and excluded from valid comparison
+  aggregation. The successful comparison is persisted separately at
+  `validation/same-input-structural-comparison.json`; T009 is complete only for structural faithful
+  adaptation and makes no Query/Search, Recall, QPS, latency, performance or Graph Parity claim.
 
 ## 1. Verify immutable source identities
 
@@ -242,7 +267,7 @@ canonical remote and a clean committed adaptation revision; an absolute local pa
 
 ## 7. SIFT1M preflight
 
-The future thin Harness command is:
+The formal preflight command actually executed was:
 
 ```sh
 .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation preflight \
@@ -267,6 +292,10 @@ not launch the formal request at
 `build/hnsw-merger-merge-adaptation/runs/sift1m-structural-vector-cache-fix/requests/merge-comparison-request.json`.
 Preflight writes that request for review and performs no Merge.
 
+The observed preflight passed with stage invocations `partition=0`, `local_build=0`, `merge=0` and
+produced the immutable request with SHA-256
+`1285e928213955b1d5b69d72f1fd4c185d643d98c8b6437b6f406ff214e31871`.
+
 The request is the Feature-private wire contract in `contracts/merge-only-execution.md`. Python
 preflight is its only normalization owner. It contains one shared DatasetArtifactRef, one shared
 PartitionArtifactRef and one ordered LocalGraphArtifactRef array, plus the fixed M0/M1 identities,
@@ -278,8 +307,8 @@ this gate passes. A failure stops the run; preflight does not rebuild P0/B0.
 
 ## 8. One bounded SIFT1M execution
 
-Only after the small-real gate, admission tests and preflight pass and the exact immutable request
-has been reviewed, launch the formal main path once:
+After the small-real gate, admission tests and preflight passed and the exact immutable request was
+reviewed, the formal main path was launched once with:
 
 ```sh
 .venv/bin/python -m diskann_harness.hnsw_merger_merge_adaptation execute \
@@ -301,7 +330,7 @@ The runner validates the normalized request without establishing another profile
 policy, parses the shared tuple once, and invokes the existing PipelineExecutor once for M0 and once
 for M1. It does not run P0/B0, duplicate the tuple or pass M0 output to M1.
 
-Expected successful evidence:
+Observed successful evidence:
 
 - each individual M0/M1 executor result has invocation counts 0/0/1;
 - the unchanged enclosing runner-result has aggregate invocation counts 0/0/2;
