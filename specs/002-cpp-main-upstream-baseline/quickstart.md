@@ -1,8 +1,9 @@
 # Quickstart: Planned cpp_main P0+B0+M0 Structural Closure
 
-This is a post-implementation validation guide, not evidence that the Stage Bindings currently
-exist. It does not run formal Graph Parity or register a validated Baseline. All generated paths
-must remain outside upstream/diskann-cpp-main.
+This is a post-implementation validation guide. It does not run complete Graph Parity, Search
+Evaluation, or final Baseline certification. The fixed Feature-local Structural/Contract Gate is
+limited to Feature 002 P0+B0+M0 and never registers a validated Baseline. All generated paths must
+remain outside upstream/diskann-cpp-main.
 
 ## 1. Verify immutable inputs
 
@@ -249,3 +250,40 @@ Report all executed, failed, and applicable unexecuted tests separately. A valid
 must not be described as Graph Parity PASS, production-ready, complete DiskANN parity, or
 validated_graph_baseline. Do not run Recall, QPS, latency evaluation, a larger dataset, parameter
 search, or Feature 001 deferred hardening from this guide.
+
+## 8. Validate the fixed Structural/Contract Parity Gate
+
+The Feature-local role identities are fixed as:
+
+~~~text
+Reference: cpp_main_native_sharded_reference_v1
+Framework: cpp_main_p0_b0_m0_framework_candidate_v1
+Framework state: candidate
+~~~
+
+Validate the fixed Policy, four-state Gate derivation, report schema, current Policy checksum, and
+claim boundary with:
+
+~~~sh
+.venv/bin/python -m pytest tests/python/test_cpp_main_structural_parity.py -q
+sha256sum specs/002-cpp-main-upstream-baseline/contracts/structural-parity-policy.json
+.venv/bin/python -m json.tool \
+  specs/002-cpp-main-upstream-baseline/structural-parity-report.json >/dev/null
+~~~
+
+The expected Policy checksum is:
+
+~~~text
+fcc6310415bdae8ce62231c2e6edf3ed8330b8234b8e8a90cb708e830299bd1d
+~~~
+
+The current report result is `NOT_REACHED`, not `PASS`: the Native Probe completed successfully,
+but its transient merged graph was not retained as a complete immutable Reference graph with
+matching structural validation evidence. The native disk-layout output must not be substituted for
+that missing evidence. The completed Unified structural closure remains valid independent
+evidence, but it cannot fill the Reference side of this Gate.
+
+Even a future limited Gate `PASS` would prove only Feature 002 P0+B0+M0 structural-and-contract
+parity. It would not prove Search Semantics, Quality, Recall, full Native-versus-Framework parity,
+or final Framework Baseline certification, and the Framework role would remain `candidate` until
+separate Search Evaluation/S0 and later Search Semantics/Quality work complete.

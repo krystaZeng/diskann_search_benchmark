@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0.0",
+  "policy_id": "cpp-main-p0-b0-m0-structural-contract-parity-v1",
+  "status": "frozen",
+  "scope": "feature_002_p0_b0_m0_structural_and_contract",
+  "source": {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823"
+  },
+  "dataset": {
+    "sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+    "node_count": 1000000,
+    "dimension": 128,
+    "scalar_type": "float32",
+    "metric": "l2"
+  },
+  "profile": {
+    "path": "experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml",
+    "sha256": "6dc8009b9654b01ae61fb32ab3af6cff3c9465a5a4e0e821cfdea06793d74262",
+    "status": "draft",
+    "R": 16,
+    "L": 32,
+    "build_DRAM_budget_gib": 0.6,
+    "num_threads": 6
+  },
+  "reference_baseline": {
+    "role": "reference",
+    "baseline_id": "cpp_main_native_sharded_reference_v1",
+    "state": "reference"
+  },
+  "framework_baseline": {
+    "role": "framework",
+    "baseline_id": "cpp_main_p0_b0_m0_framework_candidate_v1",
+    "state": "candidate"
+  },
+  "controls": {
+    "branch_mode": "sharded",
+    "minimum_partition_count": 2,
+    "global_id_space": "global",
+    "maximum_degree": 16,
+    "medoids_required": true
+  },
+  "required_checks": [
+    "source_identity",
+    "dataset_identity",
+    "profile_controls",
+    "sharded_branch",
+    "partition_count",
+    "upstream_clean",
+    "native_stage_sequence",
+    "framework_stage_sequence",
+    "framework_artifact_handoffs",
+    "global_graph_contract",
+    "cross_role_controls"
+  ],
+  "outcome_rules": {
+    "PASS": "all mandatory checks are present and pass",
+    "FAIL": "all required executions and final-graph evidence are available and at least one mandatory check fails",
+    "INCONCLUSIVE": "the comparison was reached but at least one mandatory check is missing or ambiguous and none fails",
+    "NOT_REACHED": "a required Reference or Framework execution or final-graph evidence is unavailable"
+  },
+  "allowed_claim": "Feature 002 current P0+B0+M0 path has structural-and-contract parity with the fixed native Reference under this exact policy",
+  "forbidden_claims": [
+    "final Certified Framework Baseline",
+    "Search Semantics Parity",
+    "Quality Parity",
+    "Recall parity",
+    "complete Native-versus-Framework parity",
+    "performance certification"
+  ],
+  "excluded_comparisons": [
+    "adjacency_equality",
+    "cross_output_graph_checksum_equality",
+    "topology_statistics",
+    "repeated_run_statistics",
+    "recall",
+    "qps",
+    "latency",
+    "search_semantics",
+    "quality_metrics"
+  ]
+}

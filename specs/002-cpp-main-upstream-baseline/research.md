@@ -13,19 +13,21 @@
 | Sharded branch proven at runtime | **yes**; positive P0, three-B0, and M0 log sequence retained |
 | Native Partition count observed | **yes**; `3` |
 | Gate A decision | `PASS`; P0, B0, and M0 are separable, Contract-compatible, and planned |
-| Native Reference reachable | `yes` |
-| Unified Graph Parity reachable | `yes` at the approved design boundary; Stage Bindings are not implemented |
-| Formal Graph Parity gate | `not_reached`; no formal run has started |
-| Baseline registration | `prohibited`; no `validated_graph_baseline` registration |
-| Current Contract assessment | P0, B0 preparation, and M0 representation are `compatible` after the reviewed v1-compatible amendment; Stage Bindings remain unimplemented |
+| Native Reference reachable | `yes`; native sharded execution completed, but complete merged-graph structural evidence was not retained |
+| Unified structural closure | completed; P0+B0×3+M0 and final GlobalGraph validation passed |
+| Feature-local Structural/Contract Parity Gate | fixed policy implemented; current evidence result `NOT_REACHED` |
+| Framework Baseline role | `cpp_main_p0_b0_m0_framework_candidate_v1`, state `candidate` |
+| Final Baseline certification | deferred to Search Evaluation/S0 plus later Search Semantics and Quality Parity |
+| Current Contract assessment | P0, B0 preparation, and M0 representation are `compatible`; Stage Bindings are implemented and structurally validated |
 
 `source-mapping.md` is the commit-bound record of per-symbol source facts. This document keeps the
 derived parameter mapping, stage conclusions, Contract assessment, parity reachability, probe
 record, and open questions. Evidence labels have the following fixed meanings: `source_verified`
 means established from the pinned source; `probe_verified` means observed in the retained Native
 Probe; `uncertain` means not established by either; and `blocked_by_environment` means an attempted
-check could not execute in its stated environment. A successful Gate A decision is not a Graph
-Parity result and does not authorize Baseline registration.
+check could not execute in its stated environment. A successful Gate A decision is not a parity
+result and does not authorize final Baseline certification. The later limited Structural/Contract
+Gate has its own fixed Feature-local policy and never grants final certification.
 
 ## 1. Actual CMake target and native entry
 
@@ -351,8 +353,9 @@ formal_gate_status: not_reached
 baseline_registration: prohibited
 ```
 
-No Stage Binding has been implemented. The decision authorizes a minimal implementation plan, not
-Baseline registration or formal Graph Parity. The wrapper must call the pinned symbols in the
+At the time of this Gate A decision, no Stage Binding had been implemented. The decision authorized
+a minimal implementation plan, not Baseline registration or complete Graph Parity. The bindings
+were subsequently implemented and structurally validated; each must call the pinned symbols in the
 source-verified sequence, preserve their fixed parameters and defaults, and fail closed on invalid
 inputs or outputs; it does not need to reproduce the top-level composite process state, scheduling,
 or output bytes.
@@ -396,7 +399,7 @@ The comparison baseline is Feature 001's C++17 API, data model, checksum contrac
 | M0 consumes all maps and all local graphs | GraphMerger multi-input ContractRequirement and aggregate PartitionArtifact | compatible in input semantics |
 | M0 graph adjacency is in GlobalNodeId space | GlobalGraphArtifact `id_space: global` | compatible |
 | M0 emits merged graph plus separate medoids file | GlobalGraphArtifact requires `global_graph` and permits `medoids`; `graph.medoids/v1` pairs the implementation declaration with payload validation | compatible; cpp_main M0 must declare that capability and cannot publish graph-only output |
-| native files have DiskANN-specific binary headers | arbitrary payload media type plus exact payload checksum, with a format-specific semantic validator | compatible as a model; parser/validator implementation is absent and outside this research task |
+| native files have DiskANN-specific binary headers | arbitrary payload media type plus exact payload checksum, with a format-specific semantic validator | compatible; the later implementation added the scoped parser/validator outside upstream |
 
 Artifact data, BuildManifest provenance, and parity/evaluation findings remain separate. Native
 paths and timestamps belong in BuildManifest, not Artifact identity. The reviewed change is limited
@@ -416,10 +419,10 @@ The two confirmed representation gaps are closed by the reviewed v1-compatible a
 B0 is also compatible at the existing public execution boundary because a map-only Partition can
 be combined with the validated Dataset-backed `StageContext::vector_accessor`; materialization is
 B0 preparation. Native float32 Dataset and local-graph parsers, descriptors, build integration,
-and Stage Bindings remain unimplemented engineering work, not permission to change semantics. No
-`blocking_incompatible` fact has been proven. The Native Reference and Unified Graph Parity design
-are reachable; the formal gate remains `not_reached` until the planned Stage Bindings and frozen
-Parity Protocol exist and the formal run is actually executed.
+and Stage Bindings were later implemented without changing this Contract conclusion. No
+`blocking_incompatible` fact has been proven. The completed Framework structural closure remains
+valid evidence; the fixed limited Structural/Contract Gate is nevertheless `NOT_REACHED` until
+complete Reference merged-graph structural evidence exists.
 
 ## 18. Fields suitable for checksum identity
 
@@ -461,8 +464,8 @@ map; reconstructed shard rows in exact map order; local node count equal to map 
 LocalNodeId neighbors; maximum degree at most `floor(2R/3)`; and exact Dataset, Partition, map,
 parameter, source, and build lineage. Complete report equality, native-versus-wrapper graph bytes,
 logical adjacency parity, process-state equivalence, scheduling equivalence, repetitions, and
-statistical thresholds are outside this B0 plan. The broader formal Graph Parity protocol remains
-unresolved and `not_reached`.
+statistical thresholds are outside this B0 plan. The fixed limited Structural/Contract Policy does
+not add them; complete Search/Quality parity remains deferred.
 
 ## 20. Native-versus-Unified Source and Build Identity principles
 
@@ -709,38 +712,57 @@ dimension, and checksum are `not reached`, not omitted evidence. No experiment o
 All generated CMake probe files are under `/tmp/diskann-native-probe-78256-20260806-{a,b}`. No file
 was generated under `upstream/diskann-cpp-main`.
 
-## Parity Protocol strategy inputs and remaining implementation work
+## Structural/Contract Parity decision
 
-The following remain `uncertain`:
+The approved decision is a single fixed Structural/Contract Parity projection. It compares only:
 
-- the exact historical configure/build commands for the supplied Linux build tree, despite retained
-  generated target flags, link command, toolchain, executable, and runtime identities;
-- effective OpenMP/MKL placement, dynamic-team, and affinity state beyond explicit `T=6` and the
-  linked runtime identity;
-- whether formal parity should use exact-byte capture of the transient M0 merged graph or a
-  predeclared structural/logical projection;
-- whether an external complete-set capture has acceptable, predeclared timing/resource effects;
-- unimplemented native format validators and Stage Bindings for the three planned stages;
-- the final logical Graph Parity projection, repetitions, aggregation, and thresholds.
+- exact Reference/Framework role, pinned source, Dataset, and draft Profile/control identities;
+- clean upstream state, sharded branch, and at least two Partitions;
+- the observed native P0/B0/M0 sequence and Framework P0 once, B0 once per Partition, M0 once;
+- Framework Artifact handoff validation and lineage;
+- complete Reference and Framework final-graph structural evidence: GlobalNodeId coverage, legal
+  neighbors, no self edge, degree at most R, required medoids, Dataset lineage, and validation.
 
-Incomplete exact-byte capture, complete three-B0 capture, B0 repeat behavior, and equivalence of the
-wrapper to the composite loop at process, schedule, adjacency, or byte level are comparison-strategy
-questions for a later frozen Parity Protocol. They are not P0/B0/M0 implementation blockers.
+The decision explicitly excludes cross-output graph checksum or adjacency equality, topology
+statistics, repeated-run statistics, Search Semantics, Quality, Recall, QPS, latency, and
+performance. These exclusions resolve the earlier projection/repetition/aggregation uncertainty;
+they are not deferred knobs in this Feature.
 
-No current item is `blocked_by_environment` on the successful Linux runtime. The earlier macOS
-configure attempts remain historically `blocked_by_environment` because their dependencies were
-incomplete.
+The fixed Feature-local identities are:
 
-### Gate A final decision
+~~~yaml
+reference_baseline_id: cpp_main_native_sharded_reference_v1
+framework_baseline_id: cpp_main_p0_b0_m0_framework_candidate_v1
+framework_state: candidate
+~~~
 
-Gate A is `PASS`. The fixed native SIFT1M sharded graph-build path, three-Partition P0, three B0
-builds, M0 merge, exit `0`, immutable input identity, and clean pinned upstream state are
-reviewable. P0, B0, and M0 are each `separable`, `compatible`, and `planned`. B0 uses the approved
-`upstream_callable_wrapper` and `structural_and_contract` boundary; no byte-identical equivalence to
-the top-level loop is required and no Vamana code may be copied or rewritten.
+They are role labels, not Registry identities, certification IDs, or BuildIdentity replacements.
+The Gate derives `PASS`, `FAIL`, `INCONCLUSIVE`, or `NOT_REACHED` from the frozen Policy and cited
+evidence. A limited `PASS` could prove only Feature 002 P0+B0+M0 structural-and-contract parity and
+would leave the Framework state `candidate`. Search Evaluation/S0 plus later Search Semantics and
+Quality Parity are required before any final Baseline certification decision.
 
-Accordingly, `native_reference_reachable: yes` and
-`unified_graph_parity_reachable: yes`. Reachability is a final design/admission decision, not a
-claim that the Unified path has executed. Native format validators and Stage Bindings remain
-unimplemented, the Parity Protocol is not frozen, and no formal run has started. Therefore
-`formal_gate_status: not_reached` and `baseline_registration: prohibited` remain unchanged.
+### Current evidence decision
+
+The successful Native Probe proves the pinned source, exact Dataset and effective graph-build
+controls, sharded branch, three native Partitions, P0/three-B0/M0 call sequence, process success,
+and clean upstream. Its retained external capture contains all three P0 maps but only two of the
+three transient B0 graphs, and the transient native merged graph was consumed/removed before a
+complete immutable structural record was retained. The final native `index_disk.index` is the
+post-merge disk layout and must not be reclassified or reverse-inferred as that missing merged
+graph.
+
+The later Framework execution has complete P0+B0×3+M0 Artifacts, ValidationEvidence, a valid
+GlobalGraphArtifact, and a graph-integrity EvaluationReport. That does not fill the missing
+Reference evidence. Therefore the current policy-derived report is:
+
+~~~yaml
+structural_contract_gate: NOT_REACHED
+reason: complete Reference merged-GlobalGraph structural evidence unavailable
+framework_state: candidate
+final_framework_baseline_certified: false
+~~~
+
+No additional native or Unified execution was performed for this decision. The earlier macOS
+configure attempts remain historically `blocked_by_environment`; the successful Linux Native
+Probe itself is not environment-blocked.

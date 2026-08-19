@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "cpp-main-structural-contract-parity-current-evidence-20260819",
+  "generated_at": "2026-08-19T00:00:00+08:00",
+  "scope": "feature_002_p0_b0_m0_structural_and_contract",
+  "policy": {
+    "policy_id": "cpp-main-p0-b0-m0-structural-contract-parity-v1",
+    "path": "specs/002-cpp-main-upstream-baseline/contracts/structural-parity-policy.json",
+    "sha256": "fcc6310415bdae8ce62231c2e6edf3ed8330b8234b8e8a90cb708e830299bd1d"
+  },
+  "reference_baseline": {
+    "baseline_id": "cpp_main_native_sharded_reference_v1",
+    "state": "reference",
+    "execution_status": "SUCCEEDED",
+    "evidence_refs": [
+      "build/native-probe/runs/sift1m-sharded/argv.txt",
+      "build/native-probe/runs/sift1m-sharded/stdout.log",
+      "build/native-probe/runs/sift1m-sharded/exit-status.txt",
+      "build/native-probe/runs/sift1m-sharded/lifecycle-evidence.md",
+      "build/native-probe/runs/sift1m-sharded/upstream-status-before.log",
+      "build/native-probe/runs/sift1m-sharded/upstream-status-after.log"
+    ]
+  },
+  "framework_baseline": {
+    "baseline_id": "cpp_main_p0_b0_m0_framework_candidate_v1",
+    "state": "candidate",
+    "execution_status": "SUCCEEDED",
+    "evidence_refs": [
+      "specs/002-cpp-main-upstream-baseline/unified-sharded-report.json",
+      "build/cpp-main-baseline/runs/sift1m-unified/runner-results/cpp-main-sift1m-20260807T023200Z.json",
+      "build/cpp-main-baseline/runs/sift1m-unified/manifests/evidence/cpp-main-sift1m-20260807T023200Z-merge-valid.json",
+      "build/cpp-main-baseline/runs/sift1m-unified/reports/cpp-main-sift1m-20260807T023200Z-evaluation.json"
+    ]
+  },
+  "checks": [
+    {"id": "source_identity", "status": "PASS"},
+    {"id": "dataset_identity", "status": "PASS"},
+    {"id": "profile_controls", "status": "PASS"},
+    {"id": "sharded_branch", "status": "PASS"},
+    {"id": "partition_count", "status": "PASS"},
+    {"id": "upstream_clean", "status": "PASS"},
+    {"id": "native_stage_sequence", "status": "PASS"},
+    {"id": "framework_stage_sequence", "status": "PASS"},
+    {"id": "framework_artifact_handoffs", "status": "PASS"},
+    {"id": "global_graph_contract", "status": "MISSING"},
+    {"id": "cross_role_controls", "status": "PASS"}
+  ],
+  "gate": {
+    "status": "NOT_REACHED",
+    "result": "NOT_REACHED",
+    "reason": "the retained Native Probe completed, but a complete immutable Reference merged GlobalGraph and matching structural validation evidence were not captured before native cleanup"
+  },
+  "claims": {
+    "structural_and_contract_parity": false,
+    "search_semantics_parity": false,
+    "quality_parity": false,
+    "recall_parity": false,
+    "complete_native_framework_parity": false,
+    "final_framework_baseline_certified": false
+  },
+  "allowed_claim": "Feature 002 current P0+B0+M0 path has structural-and-contract parity with the fixed native Reference under this exact policy",
+  "forbidden_claims": [
+    "final Certified Framework Baseline",
+    "Search Semantics Parity",
+    "Quality Parity",
+    "Recall parity",
+    "complete Native-versus-Framework parity",
+    "performance certification"
+  ]
+}
