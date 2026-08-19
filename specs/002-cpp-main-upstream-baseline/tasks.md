@@ -3,9 +3,10 @@
 **Input**: specs/002-cpp-main-upstream-baseline/spec.md, plan.md, research.md,
 source-mapping.md, data-model.md, quickstart.md, contract-gap.md, and contracts/.
 
-**Implementation boundary**: This task list has exactly three implementation phases. It implements
-only fixed-commit native-format/build support, P0/B0/M0 bindings, and one SIFT1M Unified sharded
-structural closure. It does not freeze a Profile, execute Graph Parity, register
+**Implementation boundary**: The first three phases implement only fixed-commit native-format/build
+support, P0/B0/M0 bindings, and one SIFT1M Unified sharded structural closure. Phase 4 adds only the
+fixed Feature-local Structural/Contract Policy, derived Gate, and report. It does not freeze a
+Profile, execute complete Graph Parity, register
 validated_graph_baseline, evaluate Recall/QPS/latency/build time/memory/Artifact size, add
 cross-Partition concurrency, implement Loop Engine, introduce a generic Adapter or automatic
 tuning, or resume Feature 001 deferred hardening.
@@ -192,12 +193,12 @@ downstream publication for invalid output.
   - **完成条件**: All targeted tests pass, failures/unexecuted tests are reported, upstream is pinned and clean, and no Phase 3 runner or SIFT1M execution has started.
 
 **Phase 2 checkpoint**: Each stage is independently callable and structurally valid; execution is
-still limited to small fixtures and Formal Graph Parity remains outside the current delivery scope.
+still limited to small fixtures and complete Graph Parity remains outside the current delivery scope.
 
 ## Phase 3: SIFT1M Unified Sharded Closure
 
 **Story mapping**: US3 — Execute the complete Unified sharded structural closure without executing
-Formal Graph Parity.
+complete Graph Parity.
 
 **Goal**: Use the still-draft Profile to execute exactly one ordered P0 → B0 × N → M0 SIFT1M
 structural closure, validate every handoff, generate specs/002-cpp-main-upstream-baseline/unified-sharded-report.json, and retain a clean
@@ -275,6 +276,47 @@ validated_graph_baseline_registered: false.
 complete. It is not Graph Parity, the Profile remains draft, and Baseline registration is still
 prohibited.
 
+## Phase 4: Feature-local Structural/Contract Parity Gate
+
+**Goal**: Freeze and implement only the Reference/Framework role identities, Structural/Contract
+Parity Policy, policy-derived four-state Gate, and Feature-local report. This Phase does not add a
+public S0 stage, Registry entry, BuildIdentity, certification identity, claim-eligibility model,
+performance-certification system, repeated runs, adjacency equality, or topology statistics.
+
+**Story mapping**: US4 — Apply the fixed Structural/Contract Parity Gate.
+
+- [x] T031 [US4] Add test-first four-state Gate and claim-boundary coverage in tests/python/test_cpp_main_structural_parity.py
+  - **输入**: approved Structural/Contract policy choice, fixed source/Dataset/Profile controls, existing Native Probe evidence boundary, and completed Unified structural report.
+  - **输出**: failing-before-implementation tests for Feature-local policy/report schema validity, fixed role identities, `PASS`/`FAIL`/`INCONCLUSIVE`/`NOT_REACHED` derivation, Framework state `candidate`, forbidden broader claims, and absence of repeated-run/adjacency/topology/certification machinery.
+  - **依赖**: T030 and the approved scope decision.
+  - **最小测试**: Execute `.venv/bin/python -m pytest tests/python/test_cpp_main_structural_parity.py -q`; before implementation it must fail because the Feature-local Gate module and fixed documents do not exist.
+  - **完成条件**: The intended missing-module failure is recorded before implementation, and tests neither execute Native/Unified graph construction nor introduce public contracts.
+
+- [x] T032 [US4] Implement the fixed Feature-local Policy, report schema, and pure derived Gate in specs/002-cpp-main-upstream-baseline/contracts/structural-parity-policy.json, specs/002-cpp-main-upstream-baseline/contracts/structural-parity-policy.schema.json, specs/002-cpp-main-upstream-baseline/contracts/structural-parity-report.schema.json, and harness/python/diskann_harness/cpp_main_structural_parity.py
+  - **输入**: T031 tests and the approved exact claim boundary.
+  - **输出**: stable Feature-local Reference/Framework role labels; one frozen Policy; schema validation; deterministic four-state derivation from read-only evidence projections; exact allowed/forbidden claims. Existing Artifact validators remain the sole Artifact validity authority.
+  - **依赖**: T031.
+  - **最小测试**: Execute `.venv/bin/python -m pytest tests/python/test_cpp_main_structural_parity.py -q`.
+  - **完成条件**: All four results derive only from Policy/evidence; Framework remains `candidate`; no public schema catalog, Registry, Pipeline, S0, BuildIdentity, certification, claim-eligibility, performance, repeat, adjacency, or topology mechanism changes.
+
+- [x] T033 [US4] Derive and document the current evidence status in specs/002-cpp-main-upstream-baseline/structural-parity-report.json and synchronize spec.md, plan.md, research.md, data-model.md, and quickstart.md
+  - **输入**: frozen Policy, successful Native Probe evidence, successful Unified closure evidence, and the fact that no complete immutable native merged-graph structural record was retained.
+  - **输出**: schema-valid Feature-local report binding the exact Policy checksum and evidence references, with `gate.result: NOT_REACHED`, Framework `state: candidate`, and all broader certification/search/quality/Recall/full-parity claims false.
+  - **依赖**: T032.
+  - **最小测试**: Execute `.venv/bin/python -m pytest tests/python/test_cpp_main_structural_parity.py -q` and `.venv/bin/python -m json.tool specs/002-cpp-main-upstream-baseline/structural-parity-report.json`.
+  - **完成条件**: The report does not infer the missing native merged graph from disk-layout output or logs, does not modify existing Unified evidence, and does not re-execute Native or Framework graph construction.
+
+- [x] T034 [US4] Run the focused regression and final scope audit for the limited Gate
+  - **输入**: T031–T033, existing Feature 002 configuration/report tests, current Git/upstream state.
+  - **输出**: executed/failed/unexecuted inventory, schema/Gate regression results, `git diff --check`, upstream pinned HEAD and clean-state proof, and an overclaim audit.
+  - **依赖**: T033.
+  - **最小测试**: Execute `.venv/bin/python -m pytest tests/python/test_cpp_main_structural_parity.py tests/python/test_cpp_main_baseline_config.py -q`, `git diff --check`, `git -C upstream/diskann-cpp-main rev-parse HEAD`, and `git -C upstream/diskann-cpp-main status --porcelain=v1`.
+  - **完成条件**: All applicable focused tests pass; upstream remains pinned/clean; current Gate remains evidence-derived; no report claims final certification, Search Semantics, Quality, Recall, complete Native-versus-Framework parity, or performance.
+
+**Phase 4 checkpoint**: The limited Gate mechanism may be complete while its current evidence
+result is `NOT_REACHED`. This is not a failure of the completed Framework structural closure, and
+it does not change the Framework role from `candidate`.
+
 ## Dependencies and Execution Order
 
 ### Phase dependency graph
@@ -305,11 +347,18 @@ Phase 3: T021
   -> T028
   -> T029
   -> T030
+
+Phase 4: T030
+  -> T031
+  -> T032
+  -> T033
+  -> T034
 ~~~
 
 - Phase 1 is blocking for every Stage Binding.
 - Phase 2 is blocking for runner assembly and any SIFT1M Unified execution.
 - Phase 3 small-data tests and preflight are blocking for the single SIFT1M run.
+- Phase 4 consumes retained evidence only and does not authorize another graph-build execution.
 - No task authorizes a dataset larger than SIFT1M.
 
 ### Parallel opportunities
@@ -358,8 +407,9 @@ Stage Binding.
 1. Complete Phase 1 and stop if any source/build/format identity is uncertain.
 2. Complete Phase 2 and validate P0, B0, and M0 separately on small inputs.
 3. Complete Phase 3 pre-SIFT tests and admission before authorizing the one SIFT1M Unified run.
-4. Stop after the structural closure. A later explicit planning decision is required for Profile
-   freezing, Graph Parity, or validated_graph_baseline registration.
+4. Apply Phase 4 only to retained evidence under the fixed Structural/Contract Policy. Stop with
+   the derived result; Search/Quality parity and final Baseline certification remain separate
+   future work.
 
 ## Notes
 

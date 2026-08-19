@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-pipeline.local/feature-002/structural-parity-policy.schema.json",
+  "title": "Feature 002 Structural/Contract Parity Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "status",
+    "scope",
+    "source",
+    "dataset",
+    "profile",
+    "reference_baseline",
+    "framework_baseline",
+    "controls",
+    "required_checks",
+    "outcome_rules",
+    "allowed_claim",
+    "forbidden_claims",
+    "excluded_comparisons"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "policy_id": {"const": "cpp-main-p0-b0-m0-structural-contract-parity-v1"},
+    "status": {"const": "frozen"},
+    "scope": {"const": "feature_002_p0_b0_m0_structural_and_contract"},
+    "source": {"$ref": "#/$defs/source"},
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "node_count", "dimension", "scalar_type", "metric"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "node_count": {"const": 1000000},
+        "dimension": {"const": 128},
+        "scalar_type": {"const": "float32"},
+        "metric": {"const": "l2"}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "status", "R", "L", "build_DRAM_budget_gib", "num_threads"],
+      "properties": {
+        "path": {"const": "experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "status": {"const": "draft"},
+        "R": {"const": 16},
+        "L": {"const": 32},
+        "build_DRAM_budget_gib": {"const": 0.6},
+        "num_threads": {"const": 6}
+      }
+    },
+    "reference_baseline": {
+      "allOf": [
+        {"$ref": "#/$defs/baselineRole"},
+        {
+          "properties": {
+            "role": {"const": "reference"},
+            "baseline_id": {"const": "cpp_main_native_sharded_reference_v1"},
+            "state": {"const": "reference"}
+          }
+        }
+      ]
+    },
+    "framework_baseline": {
+      "allOf": [
+        {"$ref": "#/$defs/baselineRole"},
+        {
+          "properties": {
+            "role": {"const": "framework"},
+            "baseline_id": {"const": "cpp_main_p0_b0_m0_framework_candidate_v1"},
+            "state": {"const": "candidate"}
+          }
+        }
+      ]
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["branch_mode", "minimum_partition_count", "global_id_space", "maximum_degree", "medoids_required"],
+      "properties": {
+        "branch_mode": {"const": "sharded"},
+        "minimum_partition_count": {"type": "integer", "minimum": 2},
+        "global_id_space": {"const": "global"},
+        "maximum_degree": {"const": 16},
+        "medoids_required": {"const": true}
+      }
+    },
+    "required_checks": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "source_identity",
+          "dataset_identity",
+          "profile_controls",
+          "sharded_branch",
+          "partition_count",
+          "upstream_clean",
+          "native_stage_sequence",
+          "framework_stage_sequence",
+          "framework_artifact_handoffs",
+          "global_graph_contract",
+          "cross_role_controls"
+        ]
+      }
+    },
+    "outcome_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["PASS", "FAIL", "INCONCLUSIVE", "NOT_REACHED"],
+      "properties": {
+        "PASS": {"type": "string", "minLength": 1},
+        "FAIL": {"type": "string", "minLength": 1},
+        "INCONCLUSIVE": {"type": "string", "minLength": 1},
+        "NOT_REACHED": {"type": "string", "minLength": 1}
+      }
+    },
+    "allowed_claim": {"type": "string", "minLength": 1},
+    "forbidden_claims": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "excluded_comparisons": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commit"],
+      "properties": {
+        "repository": {"const": "https://github.com/microsoft/DiskANN.git"},
+        "branch": {"const": "cpp_main"},
+        "commit": {"const": "78256bbab4685e1774e78d331e081a153be26823"}
+      }
+    },
+    "baselineRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "baseline_id", "state"],
+      "properties": {
+        "role": {"enum": ["reference", "framework"]},
+        "baseline_id": {"type": "string", "minLength": 1},
+        "state": {"enum": ["reference", "candidate"]}
+      }
+    }
+  }
+}

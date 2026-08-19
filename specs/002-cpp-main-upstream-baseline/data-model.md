@@ -81,7 +81,9 @@ accessor implementation, parameter path, or process-global lookup fails closed.
 The only current Profile reference is
 `experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml`, and its governance field
 is `status: draft`. The file remains draft before and after this structural closure; a frozen
-Profile belongs only to future Formal Graph Parity work.
+Profile belongs only to later Search/Quality certification work. The Feature-local
+Structural/Contract Policy binds the exact draft Profile bytes and checksum without changing its
+governance status to frozen.
 
 | Field | SIFT1M value | Ownership |
 |---|---:|---|
@@ -429,4 +431,79 @@ the structural properties defined above. It excludes:
 - run-to-run graph equality or deterministic findings aggregation;
 - timing, process state, allocation history, and thread scheduling;
 - Recall, QPS, latency, and full DiskANN build/search behavior;
-- any PASS, FAIL, or INCONCLUSIVE Graph Parity result.
+- complete Native-versus-Framework Graph Parity or final Baseline certification.
+
+## 11. Feature-local Baseline Role Identities
+
+These records are labels within Feature 002. They are not public implementation registrations,
+BuildIdentity replacements, certification IDs, or new Registry entities.
+
+| Role | baseline_id | State rule |
+|---|---|---|
+| Reference | `cpp_main_native_sharded_reference_v1` | `reference`; binds the fixed native sharded path |
+| Framework | `cpp_main_p0_b0_m0_framework_candidate_v1` | always `candidate`, including after a limited Gate `PASS` |
+
+Both roles bind the same pinned DiskANN source, SIFT1M Dataset identity, and frozen comparison
+controls. Their implementation and BuildManifest identities remain unchanged and separate.
+
+## 12. Structural/Contract Parity Policy and Report
+
+### 12.1 Frozen policy
+
+`contracts/structural-parity-policy.json` is a Feature-local immutable decision input with:
+
+- policy schema version, policy identity, and `status: frozen`;
+- exact Reference and Framework role identities;
+- pinned source, Dataset checksum, draft Profile path/checksum, and R/L/M/T controls;
+- sharded mode, minimum Partition count, GlobalNodeId, R=16, and required medoid controls;
+- the ordered mandatory check IDs;
+- four deterministic result rules;
+- one allowed claim and explicit forbidden claims;
+- exclusions for adjacency/checksum equality across outputs, repeated runs, topology statistics,
+  search, quality, Recall, and performance.
+
+This is not the public RunRequest, Artifact, BuildManifest, EvaluationReport, or Registry contract.
+Its schema remains under the Feature directory and is not added to the public schema catalog.
+
+### 12.2 Evidence projections
+
+The Gate consumes read-only projections of already-retained Reference and Framework evidence. A
+projection identifies the role, execution status, source clean state, Dataset/Profile controls,
+sharded and Partition observations, applicable stage sequence/handoff facts, final-graph
+availability, and structural findings plus evidence paths. The projection does not grant Artifact
+validity: every Framework Artifact finding must originate from the existing Validator and
+ValidationEvidence; missing Reference merged-graph evidence remains missing rather than being
+inferred from the post-merge disk layout.
+
+### 12.3 Gate derivation
+
+~~~text
+required execution or final graph unavailable -> NOT_REACHED
+else any mandatory check FAIL             -> FAIL
+else any mandatory check MISSING           -> INCONCLUSIVE
+else                                       -> PASS
+~~~
+
+No result is user-selected or stored as an input. No repeated execution is requested. The Gate is
+a Feature-local pure derivation and does not publish Artifacts or invoke Pipeline stages.
+
+### 12.4 StructuralParityReport
+
+`structural-parity-report.json` contains:
+
+| Field | Rule |
+|---|---|
+| schema_version / report_id / generated_at | Feature-local report identity |
+| policy | Exact policy ID, repository-relative path, and byte SHA-256 |
+| reference_baseline | Reference role ID, state, execution status, evidence references |
+| framework_baseline | Framework role ID, exact `candidate` state, execution status, evidence references |
+| checks | One status (`PASS`, `FAIL`, or `MISSING`) for every frozen mandatory check |
+| gate | Derived reachability, result, and reason |
+| claims | Structural/Contract claim true only on `PASS`; every broader claim false |
+| allowed_claim / forbidden_claims | Exact interpretation boundary copied from the Policy |
+
+The report is not a public Artifact, public EvaluationReport, registration record, certification
+record, or performance report. The authoritative current report is `NOT_REACHED` because the
+Native Probe succeeded but did not retain a complete immutable Reference merged GlobalGraph and
+matching structural validation evidence. The successful Unified path does not close that missing
+Reference evidence, and its Framework role therefore remains `candidate`.

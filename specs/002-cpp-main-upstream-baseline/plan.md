@@ -30,11 +30,15 @@ identity capture, and cpp_main-specific native-format parsing and structural val
 not copy Vamana or merge logic, modify upstream control flow or randomness, define a generic
 Adapter, or change the public C++17 contracts approved in Feature 001.
 
-This first implementation round is a structural-and-contract closure, not formal Graph Parity. It
+The first implementation round was a structural-and-contract closure, not complete Graph Parity. It
 ends when the public Pipeline can execute P0, every B0 selected by explicit PartitionId, and M0 on
 the fixed SIFT1M Dataset under the unchanged draft Profile; the sharded condition is satisfied, at least two Partitions are produced,
 the final graph and medoids form a valid GlobalGraphArtifact, and upstream remains clean.
-Formal parity remains not reached and validated_graph_baseline registration remains prohibited.
+This extension adds only fixed Feature-local Reference/Framework role identities, one frozen
+Structural/Contract Parity Policy, one policy-derived Gate, and one Feature-local report. The
+limited Gate is distinct from complete Graph Parity and final Baseline certification. The current
+evidence-derived result is `NOT_REACHED` because the retained Native Probe lacks a complete
+immutable Reference merged-graph structural record; the Framework role remains `candidate`.
 
 ## Gate A Final Decision
 
@@ -60,10 +64,11 @@ baseline_registration: prohibited
 ~~~
 
 Reachability is an architectural admission conclusion. This plan implements Stage Bindings and
-structural evidence only. It does not freeze or execute a Graph Parity Protocol. Incomplete
-exact-byte Native Probe capture is therefore a later comparison-strategy question, not a stage
-implementation blocker. The YAML block above is retained Gate A design evidence; its status fields
-are not fields of `unified-sharded-report.json`.
+structural evidence only. The YAML block above is retained Gate A design evidence; its status
+fields are not fields of `unified-sharded-report.json`. The later Feature-local
+Structural/Contract Parity Policy does not revise Gate A and does not require exact-byte equality;
+it does, however, require complete Reference final-graph structural evidence before its own Gate
+can be reached.
 
 ## Technical Context
 
@@ -87,8 +92,10 @@ not add a public Contract version, general sidecar model, or Adapter API.
 
 **Testing**: CTest for source/build admission, native-format readers, descriptor/preflight gates,
 P0, B0, M0, the narrow cpp_main native graph-integrity evaluator path, and a small complete
-Pipeline; pytest for the Feature-local preflight/execute lifecycle and closure report; one retained
-SIFT1M Unified structural run after targeted tests pass. No repeated-run statistics or parity
+Pipeline; pytest for the Feature-local preflight/execute lifecycle, closure report, frozen
+Structural/Contract Policy, four-state Gate derivation, and Feature-local parity report; one
+retained SIFT1M Unified structural run after targeted tests pass. No repeated-run statistics,
+adjacency equality, topology statistics, Search Semantics, Quality, Recall, or performance
 comparison is planned.
 
 **Target Platform**: Linux amd64 is normative. macOS may run tests that do not require the upstream
@@ -165,8 +172,9 @@ authorized.
       SIFT1M. No experiment beyond SIFT1M is planned.
 
 Post-design result: **PASS**. No public Contract amendment or Constitution exception is required.
-The formal Graph Parity gate remains not_reached until a later protocol is explicitly frozen and
-executed.
+The fixed limited Policy can derive only Structural/Contract Parity. Final Framework Baseline
+certification remains deferred to Search Evaluation/S0 plus later Search Semantics and Quality
+Parity.
 
 ## Architectural Boundaries
 
@@ -288,6 +296,48 @@ Its minimum fields are:
 
 No public schema or generic report abstraction is created for this file.
 
+### Feature-local Structural/Contract Parity Gate
+
+The Gate uses two stable Feature-local role labels without changing implementation registration:
+
+~~~yaml
+reference_baseline:
+  baseline_id: cpp_main_native_sharded_reference_v1
+  state: reference
+framework_baseline:
+  baseline_id: cpp_main_p0_b0_m0_framework_candidate_v1
+  state: candidate
+~~~
+
+`contracts/structural-parity-policy.json` freezes the pinned source, Dataset checksum, draft
+Profile checksum and effective R/L/M/T controls, sharded execution, minimum Partition count,
+GlobalNodeId and degree/medoid contract, required evidence checks, four result rules, one allowed
+claim, and forbidden claims. Its adjacent schema is Feature-local and is not installed in the
+public contract catalog.
+
+`harness/python/diskann_harness/cpp_main_structural_parity.py` is a narrow pure derivation helper.
+It validates the fixed Policy and Feature-local report shape, compares already-retained evidence
+projections, and derives exactly one of:
+
+- `PASS`: every mandatory check is present and passes;
+- `FAIL`: required executions/final-graph evidence exist and at least one mandatory check fails;
+- `INCONCLUSIVE`: the comparison was reached, no check fails, but required evidence is incomplete
+  or ambiguous;
+- `NOT_REACHED`: either required execution or final-graph evidence is unavailable.
+
+The helper does not validate or publish Artifacts, does not modify the Pipeline, and does not
+create a Registry, public S0 stage, BuildIdentity, certification identity, claim-eligibility
+system, or performance-certification system. Artifact validity continues to come only from the
+existing Validator and its ValidationEvidence.
+
+`structural-parity-report.json` is the Feature-local derived report. It binds the exact Policy path
+and checksum, both role identities, evidence references, every mandatory check, the result and
+reason, the one conditionally allowed claim, and explicit false values for Search Semantics,
+Quality, Recall, complete Native-versus-Framework parity, and final Framework certification. A
+limited `PASS` would leave the Framework state `candidate`. The current report is `NOT_REACHED`
+because the successful Native Probe retained branch/lifecycle evidence but not a complete
+immutable merged GlobalGraph with structural validation evidence.
+
 ## Project Structure
 
 ### Documentation for this Feature
@@ -302,10 +352,14 @@ specs/002-cpp-main-upstream-baseline/
 ├── data-model.md
 ├── quickstart.md
 ├── unified-sharded-report.json           # generated Feature-local structural closure summary
+├── structural-parity-report.json         # current policy-derived Feature-local Gate report
 ├── contracts/
 │   ├── b0-callable-wrapper.md
 │   ├── native-formats.md
-│   └── stage-bindings.md
+│   ├── stage-bindings.md
+│   ├── structural-parity-policy.json
+│   ├── structural-parity-policy.schema.json
+│   └── structural-parity-report.schema.json
 └── checklists/
     └── requirements.md
 ~~~
@@ -333,7 +387,8 @@ src/baseline/cpp_main/
 └── cpp_main_baseline_runner.cpp          # non-installed existing-Pipeline assembly
 
 harness/python/diskann_harness/
-└── cpp_main_baseline.py                  # non-running preflight -> immutable request -> one execute call
+├── cpp_main_baseline.py                  # non-running preflight -> immutable request -> one execute call
+└── cpp_main_structural_parity.py         # Feature-local fixed-policy result derivation only
 
 src/validation/
 ├── schema_catalog.cpp                    # fixed Feature 001 + cpp_main format dispatch
@@ -365,7 +420,8 @@ tests/cmake/
 └── check_cpp_main_baseline_build.cmake
 
 tests/python/
-└── test_cpp_main_baseline_config.py
+├── test_cpp_main_baseline_config.py
+└── test_cpp_main_structural_parity.py
 
 experiments/configs/cpp-main-upstream-baseline/
 └── baseline-run-profile.yaml              # status: draft
@@ -471,6 +527,11 @@ Feature; they do not replace or version the public Artifact contract.
    The EvaluationReport is not a Graph Parity Report or performance report. Write the
    Feature-local `specs/002-cpp-main-upstream-baseline/unified-sharded-report.json` with the fields
    defined above; do not create a baseline-registration record.
+6. Separately apply the frozen Feature-local Structural/Contract Policy to the retained Reference
+   and Framework evidence. Do not infer a missing Reference merged graph from the native disk
+   layout or process logs. Write only the policy-derived Feature-local report; do not re-execute
+   either graph build and do not extend the result into search, quality, performance, or final
+   certification claims.
 
 ## Validation Matrix
 
@@ -485,6 +546,7 @@ Feature; they do not replace or version the public Artifact contract.
 | GlobalGraph | one record per Dataset node, GlobalNodeIds in range, degree at most R, medoids present | missing medoids, invalid medoid, malformed graph, wrong node count/neighbor/lineage/checksum |
 | native graph evaluation | validated native claims/evidence produce a separate report with cpp_main evaluator identity | unvalidated Artifact, Fake/unknown/mismatched media type, or missing ValidationEvidence |
 | pipeline | P0 then all B0 then M0; no invalid Artifact crosses a gate | preflight failure creates no factory; stage failure/cancellation invokes no downstream stage |
+| Structural/Contract Parity | frozen Policy checksum, exact role/source/Dataset/Profile controls, complete structural evidence, policy-derived result | identity/control mismatch fails; missing required final-graph evidence is `NOT_REACHED`; reached incomplete evidence is `INCONCLUSIVE` |
 
 Cancellation is checked at stage start, after wrapper-controlled input validation, after each
 non-interruptible upstream call returns, and before output publication. This plan does not modify
@@ -511,7 +573,12 @@ The implementation round is complete only when all of the following are true:
 
 Passing this exit gate changes stage availability from planned to implemented-and-structurally-
 validated in implementation evidence only. It does not change formal_gate_status, does not yield a
-Graph Parity result, and does not authorize validated_graph_baseline registration.
+complete Graph Parity result, and does not authorize validated_graph_baseline registration.
+
+The subsequent Feature-local Structural/Contract Gate is independently complete as a mechanism
+when its fixed schemas and four-state derivation tests pass. Its current evidence result may remain
+`NOT_REACHED`; mechanism completion is not evidence completion and never changes the Framework
+role from `candidate`.
 
 ## Requirement-to-Design Trace
 
@@ -525,13 +592,18 @@ Graph Parity result, and does not authorize validated_graph_baseline registratio
 | complete requires/provides and hard gates | Architectural Boundaries; contracts/stage-bindings.md |
 | public Pipeline closure | Pipeline and evidence closure; quickstart.md |
 | Feature-local structural closure report | Feature-local structural closure report; data-model.md |
-| no parity or registration overclaim | Summary; First-Round Exit Gate; Explicit Non-Goals |
+| Reference/Framework role identities | Feature-local Structural/Contract Parity Gate; data-model.md |
+| frozen Structural/Contract Policy and derived result | contracts/structural-parity-policy.json; Validation Matrix |
+| Feature-local parity report and claim boundary | structural-parity-report.json; quickstart.md |
+| no complete parity or certification overclaim | Summary; First-Round Exit Gate; Explicit Non-Goals |
 
 ## Explicit Non-Goals
 
-- Formal Native-versus-Unified Graph Parity, byte-identical graph output, adjacency equality, or
-  repeated-run statistical protocol.
+- Complete Native-versus-Unified Graph Parity, byte-identical graph output, adjacency equality,
+  topology statistics, or repeated-run statistical protocol beyond the fixed limited Gate.
 - Recall, QPS, search latency, complete DiskANN build/search parity, or performance conclusions.
+- Public S0 stage, Search Semantics/Quality Parity implementation, final Framework Baseline
+  certification, certification ID, claim eligibility, or performance-certification subsystem.
 - Loop Engine, parameter matrix, automatic retry, checkpoint scheduler, or automatic tuning.
 - Generic Adapter, general format plugin, sidecar framework, production Adapter, or Contract v2.
 - Copied or rewritten partitioning, Vamana, or merge algorithms; upstream patches or instrumentation.

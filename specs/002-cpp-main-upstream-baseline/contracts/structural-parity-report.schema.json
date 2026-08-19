@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-pipeline.local/feature-002/structural-parity-report.schema.json",
+  "title": "Feature 002 Structural/Contract Parity Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_id",
+    "generated_at",
+    "scope",
+    "policy",
+    "reference_baseline",
+    "framework_baseline",
+    "checks",
+    "gate",
+    "claims",
+    "allowed_claim",
+    "forbidden_claims"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "report_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "scope": {"const": "feature_002_p0_b0_m0_structural_and_contract"},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_id", "path", "sha256"],
+      "properties": {
+        "policy_id": {"const": "cpp-main-p0-b0-m0-structural-contract-parity-v1"},
+        "path": {"const": "specs/002-cpp-main-upstream-baseline/contracts/structural-parity-policy.json"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "reference_baseline": {
+      "allOf": [
+        {"$ref": "#/$defs/reportRole"},
+        {
+          "properties": {
+            "baseline_id": {"const": "cpp_main_native_sharded_reference_v1"},
+            "state": {"const": "reference"}
+          }
+        }
+      ]
+    },
+    "framework_baseline": {
+      "allOf": [
+        {"$ref": "#/$defs/reportRole"},
+        {
+          "properties": {
+            "baseline_id": {"const": "cpp_main_p0_b0_m0_framework_candidate_v1"},
+            "state": {"const": "candidate"}
+          }
+        }
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["PASS", "FAIL", "MISSING"]}
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "result", "reason"],
+      "properties": {
+        "status": {"enum": ["REACHED", "NOT_REACHED"]},
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE", "NOT_REACHED"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "structural_and_contract_parity",
+        "search_semantics_parity",
+        "quality_parity",
+        "recall_parity",
+        "complete_native_framework_parity",
+        "final_framework_baseline_certified"
+      ],
+      "properties": {
+        "structural_and_contract_parity": {"type": "boolean"},
+        "search_semantics_parity": {"const": false},
+        "quality_parity": {"const": false},
+        "recall_parity": {"const": false},
+        "complete_native_framework_parity": {"const": false},
+        "final_framework_baseline_certified": {"const": false}
+      }
+    },
+    "allowed_claim": {"type": "string", "minLength": 1},
+    "forbidden_claims": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reportRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline_id", "state", "execution_status", "evidence_refs"],
+      "properties": {
+        "baseline_id": {"type": "string", "minLength": 1},
+        "state": {"enum": ["reference", "candidate"]},
+        "execution_status": {"enum": ["SUCCEEDED", "FAILED", "NOT_REACHED"]},
+        "evidence_refs": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}
