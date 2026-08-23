@@ -1,8 +1,11 @@
 #include "diskann_pipeline/validation.hpp"
+#include "diskann_pipeline/workspace.hpp"
 
 #include "validation/validation_internal.hpp"
 
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 namespace diskann_pipeline {
 
@@ -113,6 +116,118 @@ ArtifactValidationResult Validator::validate(
     evidence.failure_category = ErrorCategory::kSchemaInvalid;
     return {std::move(evidence), std::nullopt};
   }
+}
+
+ArtifactValidationResult Validator::validate_with_lineage(
+    const ArtifactRef& reference) const {
+  struct CatalogEntry {
+    ArtifactRef reference;
+    detail::Json metadata;
+  };
+  std::vector<CatalogEntry> entries;
+  std::error_code error;
+  if (std::filesystem::exists(workspace_.normal_root)) {
+    for (std::filesystem::recursive_directory_iterator iterator(
+             workspace_.normal_root, error),
+         end;
+         iterator != end && !error; iterator.increment(error)) {
+      if (!iterator->is_regular_file() ||
+          iterator->path().filename() != "artifact.json") {
+        continue;
+      }
+      try {
+        std::ifstream input(iterator->path(), std::ios::binary);
+        std::ostringstream bytes;
+        bytes << input.rdbuf();
+        const auto metadata = detail::parse_json_strict(bytes.str());
+        const auto relative =
+            std::filesystem::relative(iterator->path(), workspace_.normal_root);
+        entries.push_back(
+            {{relative,
+              artifact_type_from_string(
+                  metadata.at("artifact_type").get<std::string>()),
+              metadata.at("format_version").get<std::string>(),
+              metadata.at("aggregate_checksum").get<std::string>()},
+             metadata});
+      } catch (const std::exception&) {
+        // Explicit target validation below remains fail-closed; unrelated
+        // malformed catalog entries are not eligible lineage grants.
+      }
+    }
+  }
+  if (std::none_of(entries.begin(), entries.end(), [&](const auto& entry) {
+        return entry.reference.metadata_path == reference.metadata_path;
+      })) {
+    try {
+      const auto path =
+          resolve_normal_artifact_metadata(workspace_, reference.metadata_path);
+      std::ifstream input(path, std::ios::binary);
+      std::ostringstream bytes;
+      bytes << input.rdbuf();
+      entries.push_back({reference, detail::parse_json_strict(bytes.str())});
+    } catch (const std::exception&) {
+      return validate(reference);
+    }
+  }
+
+  std::vector<ValidatedArtifact> grants;
+  std::vector<bool> resolved(entries.size(), false);
+  std::optional<ArtifactValidationResult> target_failure;
+  for (std::size_t pass = 0; pass <= entries.size(); ++pass) {
+    bool progress = false;
+    for (std::size_t index = 0; index < entries.size(); ++index) {
+      if (resolved[index]) {
+        continue;
+      }
+      const auto& source_json = entries[index].metadata.at("source_artifacts");
+      if (!source_json.is_array()) {
+        resolved[index] = true;
+        progress = true;
+        continue;
+      }
+      std::vector<ValidatedArtifact> sources;
+      bool ready = true;
+      for (const auto& value : source_json) {
+        const SourceArtifactIdentity identity{
+            artifact_type_from_string(
+                value.at("artifact_type").get<std::string>()),
+            value.at("format_version").get<std::string>(),
+            value.at("aggregate_checksum").get<std::string>()};
+        const auto found = std::find_if(
+            grants.begin(), grants.end(), [&](const auto& grant) {
+              return validation_detail::same_artifact_identity(
+                  identity, grant.reference());
+            });
+        if (found == grants.end()) {
+          ready = false;
+          break;
+        }
+        sources.push_back(*found);
+      }
+      if (!ready) {
+        continue;
+      }
+      auto result = validate(entries[index].reference, sources);
+      resolved[index] = true;
+      progress = true;
+      if (entries[index].reference.metadata_path == reference.metadata_path) {
+        if (result.valid()) {
+          return result;
+        }
+        target_failure = result;
+      }
+      if (result.valid()) {
+        grants.push_back(*result.validated_artifact);
+      }
+    }
+    if (!progress) {
+      break;
+    }
+  }
+  if (target_failure) {
+    return *target_failure;
+  }
+  return validate(reference);
 }
 
 }  // namespace diskann_pipeline

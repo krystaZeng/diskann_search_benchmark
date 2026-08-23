@@ -126,6 +126,38 @@ dp::AggregateIdentityProjection global_projection() {
           kLocal1Aggregate + "\"}]}"};
 }
 
+dp::AggregateIdentityProjection pq_projection() {
+  return {
+      dp::ArtifactType::kPQ,
+      "pq-artifact/v1",
+      kDatasetChecksum,
+      dp::IdSpace::kNone,
+      {"search.pq_in_memory/v1", "search.pqflash_loadable/v1"},
+      {{"pq_pivots", 2132, std::string(64, 'a')},
+       {"pq_compressed_vectors", 20, std::string(64, 'b')}},
+      {source(dp::ArtifactType::kDataset, "fake-dataset-json/v1",
+              kDatasetAggregate)},
+      R"({"point_count":6,"dimension":2,"scalar_type":"float32","distance_metric":"l2","centroid_count":256,"pq_chunks":2,"opq":false,"compressed_code_scalar":"uint8"})"};
+}
+
+dp::AggregateIdentityProjection disk_layout_projection() {
+  return {
+      dp::ArtifactType::kDiskLayout,
+      "disk-layout-artifact/v1",
+      kDatasetChecksum,
+      dp::IdSpace::kGlobal,
+      {"graph.global_ids/v1", "search.disk_layout/v1",
+       "search.disk_vectors_full_precision/v1", "search.entry_end_to_end/v1",
+       "search.pqflash_loadable/v1"},
+      {{"disk_index", 8192, std::string(64, 'c')},
+       {"medoids", 12, std::string(64, 'd')}},
+      {source(dp::ArtifactType::kDataset, "fake-dataset-json/v1",
+              kDatasetAggregate),
+       source(dp::ArtifactType::kGlobalGraph, "global-graph-artifact/v1",
+              kGlobalAggregate)},
+      R"({"global_node_count":6,"dimension":2,"scalar_type":"float32","distance_metric":"l2","disk_vector_encoding":"float32_full_precision","pq_disk_bytes":0,"reorder":false,"declared_max_degree":3,"medoid_count":1,"entry_policy":"end_to_end","centroid_policy":"medoid_vector_fallback","frozen_point_count":0})"};
+}
+
 }  // namespace
 
 int main() {
@@ -170,6 +202,17 @@ int main() {
       std::string(kLocal1Aggregate));
   DP_EXPECT_EQ(dp::aggregate_checksum(global_projection()),
                std::string(kGlobalAggregate));
+
+  const auto pq_checksum = dp::aggregate_checksum(pq_projection());
+  const auto layout_checksum = dp::aggregate_checksum(disk_layout_projection());
+  DP_EXPECT_EQ(pq_checksum.size(), std::size_t{64});
+  DP_EXPECT_EQ(layout_checksum.size(), std::size_t{64});
+  auto changed_pq = pq_projection();
+  changed_pq.payloads[1].byte_length += 1;
+  DP_EXPECT_TRUE(dp::aggregate_checksum(changed_pq) != pq_checksum);
+  auto changed_layout = disk_layout_projection();
+  changed_layout.source_artifacts[1].aggregate_checksum = std::string(64, '0');
+  DP_EXPECT_TRUE(dp::aggregate_checksum(changed_layout) != layout_checksum);
 
   auto path_independent = dataset_projection();
   DP_EXPECT_EQ(dp::aggregate_checksum(path_independent),

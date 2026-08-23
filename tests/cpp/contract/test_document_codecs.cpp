@@ -65,6 +65,19 @@ int main() {
   DP_EXPECT_THROW(dp::parse_artifact_ref(
       R"({"artifact_type":"dataset","format_version":"v1","aggregate_checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","metadata_path":"a.json","unknown":true})"));
 
+  const dp::ArtifactRef pq_ref{
+      "artifacts/pq/metadata.json", dp::ArtifactType::kPQ,
+      "pq-artifact/v1", std::string(64, 'b')};
+  const dp::ArtifactRef layout_ref{
+      "artifacts/layout/metadata.json", dp::ArtifactType::kDiskLayout,
+      "disk-layout-artifact/v1", std::string(64, 'c')};
+  DP_EXPECT_EQ(dp::parse_artifact_ref(dp::serialize_artifact_ref(pq_ref))
+                   .artifact_type,
+               dp::ArtifactType::kPQ);
+  DP_EXPECT_EQ(dp::parse_artifact_ref(dp::serialize_artifact_ref(layout_ref))
+                   .artifact_type,
+               dp::ArtifactType::kDiskLayout);
+
   const auto manifest_json = dp::serialize_build_manifest(build_manifest());
   const auto parsed_manifest = dp::parse_build_manifest(manifest_json);
   DP_EXPECT_EQ(parsed_manifest.run_id, std::string("run-phase1"));

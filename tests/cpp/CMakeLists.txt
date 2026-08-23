@@ -133,3 +133,7 @@ target_include_directories(
 diskann_pipeline_apply_cxx17(production_surface)
 add_test(NAME production_surface COMMAND production_surface)
 set_tests_properties(production_surface PROPERTIES LABELS "phase4;assembly")
+
+if(DISKANN_SEARCH_EVALUATION)
+  add_subdirectory(search)
+endif()

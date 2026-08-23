@@ -48,6 +48,13 @@ int main() {
   static_assert(std::is_same_v<dp::GlobalNodeId, std::uint32_t>);
   static_assert(std::is_same_v<dp::LocalNodeId, std::uint32_t>);
   static_assert(std::is_same_v<dp::PartitionId, std::uint32_t>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<dp::PQArtifactMetadata>().pq_chunks),
+                std::uint32_t>);
+  static_assert(std::is_same_v<
+                decltype(std::declval<dp::DiskLayoutArtifactMetadata>()
+                             .declared_max_degree),
+                std::uint32_t>);
   static_assert(std::is_constructible_v<dp::ImplementationRegistry,
                                         dp::RegistryAdmissionPolicy>);
   static_assert(!std::is_default_constructible_v<dp::ImplementationRegistry>);
@@ -76,6 +83,9 @@ int main() {
   DP_EXPECT_EQ(ref.metadata_path,
                std::filesystem::path("artifacts/example/metadata.json"));
   DP_EXPECT_EQ(refs.front().artifact_type, dp::ArtifactType::kDataset);
+  DP_EXPECT_EQ(dp::to_string(dp::ArtifactType::kPQ), std::string_view("pq"));
+  DP_EXPECT_EQ(dp::to_string(dp::ArtifactType::kDiskLayout),
+               std::string_view("disk_layout"));
 
   ContractMerger merger;
   ContractLocalBuilder builder;

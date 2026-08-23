@@ -17,16 +17,32 @@ def test_runtime_contract_sources_are_complete_stable_and_byte_identical() -> No
     assert targets == sorted(targets)
     assert len(targets) == len(set(targets))
 
-    design = ROOT / "specs/001-modular-cpp-diskann-pipeline/contracts"
-    expected_sources = {
-        (design / "checksum-canonicalization.md").relative_to(ROOT).as_posix(),
-        (design / "adapter-policy.md").relative_to(ROOT).as_posix(),
-        *{
-            path.relative_to(ROOT).as_posix()
-            for path in (design / "schemas").glob("*.json")
-        },
-    }
-    assert {entry["source"] for entry in entries} == expected_sources
+    feature_001 = ROOT / "specs/001-modular-cpp-diskann-pipeline/contracts"
+    feature_005 = ROOT / "specs/005-diskann-search-evaluation/contracts"
+    source_by_target = {entry["target"]: entry["source"] for entry in entries}
+    assert source_by_target["contracts/v1/schemas/common.schema.json"] == (
+        feature_005 / "common.schema.json"
+    ).relative_to(ROOT).as_posix()
+    assert source_by_target["contracts/v1/schemas/build-manifest.schema.json"] == (
+        feature_005 / "build-manifest.schema.json"
+    ).relative_to(ROOT).as_posix()
+    assert source_by_target["contracts/v1/schemas/pq-artifact.schema.json"] == (
+        feature_005 / "pq-artifact.schema.json"
+    ).relative_to(ROOT).as_posix()
+    assert source_by_target[
+        "contracts/v1/schemas/disk-layout-artifact.schema.json"
+    ] == (feature_005 / "disk-layout-artifact.schema.json").relative_to(
+        ROOT
+    ).as_posix()
+    for target, source in source_by_target.items():
+        if target in {
+            "contracts/v1/schemas/common.schema.json",
+            "contracts/v1/schemas/build-manifest.schema.json",
+            "contracts/v1/schemas/pq-artifact.schema.json",
+            "contracts/v1/schemas/disk-layout-artifact.schema.json",
+        }:
+            continue
+        assert source.startswith(feature_001.relative_to(ROOT).as_posix() + "/")
     for entry in entries:
         assert set(entry) == {"source", "target", "sha256"}
         assert not PurePosixPath(entry["source"]).is_absolute()
@@ -38,4 +54,3 @@ def test_runtime_contract_sources_are_complete_stable_and_byte_identical() -> No
         source_bytes = source.read_bytes()
         assert target.read_bytes() == source_bytes
         assert hashlib.sha256(source_bytes).hexdigest() == entry["sha256"]
-

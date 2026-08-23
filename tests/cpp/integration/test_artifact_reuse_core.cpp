@@ -2,6 +2,7 @@
 
 #include "baseline/cpp_main_stage_test_support.hpp"
 #include "support/contract_artifact_fixture.hpp"
+#include "search/search_artifact_test_support.hpp"
 #include "support/test_assert.hpp"
 
 namespace dp = diskann_pipeline;
@@ -93,6 +94,32 @@ int main() {
       DP_EXPECT_EQ(forged_global.failure->category,
                    dp::ErrorCategory::kSourceMismatch);
     }
+  }
+
+  {
+    dp::search::test::SearchArtifactFixture fixture;
+    dp::Validator validator(fixture.base.workspace);
+    const auto dataset = validator.validate(fixture.base.dataset);
+    const dp::ArtifactRequirement requirement{
+        dp::ArtifactType::kPQ, {"pq-artifact/v1"}, dp::IdSpace::kNone};
+    const auto reused = dp::ArtifactReuseService(validator).resolve(
+        fixture.pq, requirement,
+        {"search.pq_in_memory/v1", "search.pqflash_loadable/v1"},
+        {*dataset.validated_artifact});
+    DP_EXPECT_EQ(reused.status, dp::StageStatus::kReused);
+    DP_EXPECT_TRUE(reused.validated_artifact.has_value());
+
+    dp::test::overwrite_file(
+        dp::test::metadata_path(fixture.base.workspace, fixture.pq)
+                .parent_path() /
+            "codes.bin",
+        "corrupt");
+    const auto rejected = dp::ArtifactReuseService(validator).resolve(
+        fixture.pq, requirement,
+        {"search.pq_in_memory/v1", "search.pqflash_loadable/v1"},
+        {*dataset.validated_artifact});
+    DP_EXPECT_EQ(rejected.status, dp::StageStatus::kFailed);
+    DP_EXPECT_TRUE(!rejected.validated_artifact.has_value());
   }
 
   {

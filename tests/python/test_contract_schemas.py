@@ -9,14 +9,10 @@ from referencing import Registry, Resource
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-DESIGN_SCHEMAS = (
-    REPOSITORY_ROOT
-    / "specs"
-    / "001-modular-cpp-diskann-pipeline"
-    / "contracts"
-    / "schemas"
-)
 RUNTIME_SCHEMAS = REPOSITORY_ROOT / "contracts" / "v1" / "schemas"
+FEATURE_005_SCHEMAS = (
+    REPOSITORY_ROOT / "specs" / "005-diskann-search-evaluation" / "contracts"
+)
 
 
 def _load_schemas(directory: Path) -> dict[str, dict]:
@@ -46,11 +42,22 @@ def test_every_schema_is_draft_2020_12_and_metaschema_valid() -> None:
 
 
 def test_design_and_runtime_schema_bytes_are_identical() -> None:
-    design = sorted(path.name for path in DESIGN_SCHEMAS.glob("*.json"))
+    inventory = json.loads(
+        (REPOSITORY_ROOT / "contracts/v1/SOURCES.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    schema_entries = [
+        entry
+        for entry in inventory["entries"]
+        if entry["target"].startswith("contracts/v1/schemas/")
+    ]
     runtime = sorted(path.name for path in RUNTIME_SCHEMAS.glob("*.json"))
-    assert runtime == design
-    for name in design:
-        assert (RUNTIME_SCHEMAS / name).read_bytes() == (DESIGN_SCHEMAS / name).read_bytes()
+    assert runtime == sorted(Path(entry["target"]).name for entry in schema_entries)
+    for entry in schema_entries:
+        assert (REPOSITORY_ROOT / entry["target"]).read_bytes() == (
+            REPOSITORY_ROOT / entry["source"]
+        ).read_bytes()
 
 
 def test_local_ref_and_strict_unknown_field_rejection() -> None:
@@ -111,6 +118,24 @@ def test_base_manifest_schema_accepts_complete_provenance() -> None:
     _validator("build-manifest.schema.json").validate(manifest)
 
 
+def test_feature_005_local_schemas_are_valid_but_not_public_artifacts() -> None:
+    for name in (
+        "search-protocol.schema.json",
+        "search-observation.schema.json",
+        "search-evaluation-report.schema.json",
+    ):
+        schema = json.loads((FEATURE_005_SCHEMAS / name).read_text(encoding="utf-8"))
+        Draft202012Validator.check_schema(schema)
+        assert name not in {path.name for path in RUNTIME_SCHEMAS.glob("*.json")}
+
+
+def test_build_manifest_document_stage_accepts_search() -> None:
+    schema = json.loads(
+        (RUNTIME_SCHEMAS / "build-manifest.schema.json").read_text(encoding="utf-8")
+    )
+    assert "search" in schema["properties"]["stage"]["enum"]
+
+
 def _artifact_base(artifact_type: str, format_version: str, id_space: str) -> dict:
     return {
         "schema_version": "1.0.0",
@@ -141,6 +166,123 @@ def _payload(role: str) -> dict:
         "byte_length": 1,
         "sha256": "c" * 64,
     }
+
+
+def _search_payload(role: str, media_type: str) -> dict:
+    value = _payload(role)
+    value["media_type"] = media_type
+    return value
+
+
+def test_pq_artifact_schema_is_strict_and_dataset_derived() -> None:
+    document = _artifact_base("pq", "pq-artifact/v1", "none")
+    document["structural"] = {
+        "point_count": 6,
+        "dimension": 2,
+        "scalar_type": "float32",
+        "distance_metric": "l2",
+        "centroid_count": 256,
+        "pq_chunks": 2,
+        "opq": False,
+        "compressed_code_scalar": "uint8",
+    }
+    document["capabilities"] = [
+        "search.pq_in_memory/v1",
+        "search.pqflash_loadable/v1",
+    ]
+    document["source_artifacts"] = [
+        {
+            "artifact_type": "dataset",
+            "format_version": "fake-dataset-json/v1",
+            "aggregate_checksum": "d" * 64,
+        }
+    ]
+    document["payloads"] = [
+        _search_payload(
+            "pq_pivots",
+            "application/vnd.diskann.pq-pivots+binary;version=1",
+        ),
+        _search_payload(
+            "pq_compressed_vectors",
+            "application/vnd.diskann.pq-codes+binary;version=1",
+        ),
+    ]
+    validator = _validator("pq-artifact.schema.json")
+    validator.validate(document)
+
+    wrong_source = json.loads(json.dumps(document))
+    wrong_source["source_artifacts"][0]["artifact_type"] = "global_graph"
+    with pytest.raises(ValidationError):
+        validator.validate(wrong_source)
+
+    additional = json.loads(json.dumps(document))
+    additional["unexpected"] = True
+    with pytest.raises(ValidationError):
+        validator.validate(additional)
+
+
+def test_disk_layout_centroid_policy_controls_payload_cardinality() -> None:
+    document = _artifact_base(
+        "disk_layout", "disk-layout-artifact/v1", "global"
+    )
+    document["structural"] = {
+        "global_node_count": 6,
+        "dimension": 2,
+        "scalar_type": "float32",
+        "distance_metric": "l2",
+        "disk_vector_encoding": "float32_full_precision",
+        "pq_disk_bytes": 0,
+        "reorder": False,
+        "declared_max_degree": 3,
+        "medoid_count": 1,
+        "entry_policy": "end_to_end",
+        "centroid_policy": "medoid_vector_fallback",
+        "frozen_point_count": 0,
+    }
+    document["capabilities"] = [
+        "graph.global_ids/v1",
+        "search.disk_layout/v1",
+        "search.disk_vectors_full_precision/v1",
+        "search.entry_end_to_end/v1",
+        "search.pqflash_loadable/v1",
+    ]
+    document["source_artifacts"] = [
+        {
+            "artifact_type": "dataset",
+            "format_version": "fake-dataset-json/v1",
+            "aggregate_checksum": "d" * 64,
+        },
+        {
+            "artifact_type": "global_graph",
+            "format_version": "global-graph-artifact/v1",
+            "aggregate_checksum": "e" * 64,
+        },
+    ]
+    document["payloads"] = [
+        _search_payload(
+            "disk_index",
+            "application/vnd.diskann.pqflash-disk-index+binary;version=1",
+        ),
+        _search_payload(
+            "medoids", "application/vnd.diskann.uint32-matrix+binary;version=1"
+        ),
+    ]
+    validator = _validator("disk-layout-artifact.schema.json")
+    validator.validate(document)
+
+    missing_centroids = json.loads(json.dumps(document))
+    missing_centroids["structural"]["centroid_policy"] = "declared_centroids"
+    with pytest.raises(ValidationError):
+        validator.validate(missing_centroids)
+
+    forbidden_centroids = json.loads(json.dumps(document))
+    forbidden_centroids["payloads"].append(
+        _search_payload(
+            "centroids", "application/vnd.diskann.float32-matrix+binary;version=1"
+        )
+    )
+    with pytest.raises(ValidationError):
+        validator.validate(forbidden_centroids)
 
 
 def test_partition_schema_accepts_optional_vectors_and_centroids() -> None:

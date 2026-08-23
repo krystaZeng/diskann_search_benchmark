@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/common.schema.json",
+  "title": "DiskANN Pipeline Common Contract Definitions v1",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._+/-]*$"
+    },
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "artifactType": {
+      "enum": ["dataset", "partition", "local_graph", "global_graph", "pq", "disk_layout"]
+    },
+    "idSpace": {
+      "enum": ["none", "local", "global"]
+    },
+    "stage": {
+      "enum": ["partition", "local_build", "merge"]
+    },
+    "studyClass": {
+      "enum": ["infrastructure_validation", "baseline_validation"],
+      "description": "Known study classes shared by versioned Feature-specific request schemas."
+    },
+    "stageStatus": {
+      "enum": [
+        "PLANNED",
+        "RUNNING",
+        "SUCCEEDED",
+        "FAILED",
+        "CANCELLED",
+        "INVALID_OUTPUT",
+        "REUSED"
+      ]
+    },
+    "artifactRef": {
+      "type": "object",
+      "description": "Immutable Artifact reference. metadata_path resolves only to the Artifact metadata document; provenance and evaluation documents use separate references.",
+      "additionalProperties": false,
+      "required": [
+        "artifact_type",
+        "format_version",
+        "aggregate_checksum",
+        "metadata_path"
+      ],
+      "properties": {
+        "artifact_type": {"$ref": "#/$defs/artifactType"},
+        "format_version": {"$ref": "#/$defs/version"},
+        "aggregate_checksum": {"$ref": "#/$defs/sha256"},
+        "metadata_path": {
+          "$ref": "#/$defs/relativePath",
+          "description": "Workspace-relative path to the immutable Artifact metadata document, not a normalized stage Manifest, BuildManifest, or EvaluationReport."
+        }
+      }
+    },
+    "sourceArtifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "format_version", "aggregate_checksum"],
+      "properties": {
+        "artifact_type": {"$ref": "#/$defs/artifactType"},
+        "format_version": {"$ref": "#/$defs/version"},
+        "aggregate_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "payloadRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "media_type", "byte_length", "sha256"],
+      "properties": {
+        "role": {"$ref": "#/$defs/stableId"},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "media_type": {"type": "string", "minLength": 1, "maxLength": 200},
+        "byte_length": {"type": "integer", "minimum": 0},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "datasetIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset_id",
+        "dataset_checksum",
+        "global_node_count",
+        "vector_dimension",
+        "scalar_type",
+        "distance_metric"
+      ],
+      "properties": {
+        "dataset_id": {"$ref": "#/$defs/stableId"},
+        "dataset_checksum": {"$ref": "#/$defs/sha256"},
+        "global_node_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "vector_dimension": {"type": "integer", "minimum": 1},
+        "scalar_type": {"enum": ["float32"]},
+        "distance_metric": {"enum": ["l2"]}
+      }
+    },
+    "capabilityArray": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stableId"},
+      "uniqueItems": true
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "reason"],
+      "properties": {
+        "category": {"$ref": "#/$defs/stableId"},
+        "reason": {"type": "string", "minLength": 1},
+        "exit_code": {"type": "integer"}
+      }
+    }
+  }
+}

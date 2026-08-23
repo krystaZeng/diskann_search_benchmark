@@ -134,6 +134,21 @@ void validate_structural_shape(ArtifactType type, const Json& structural) {
           {"global_node_count", "declared_max_degree", "observed_max_degree",
            "source_partition_artifact", "source_local_graph_artifacts"});
       break;
+    case ArtifactType::kPQ:
+      detail::require_object_shape(
+          structural,
+          {"point_count", "dimension", "scalar_type", "distance_metric",
+           "centroid_count", "pq_chunks", "opq",
+           "compressed_code_scalar"});
+      break;
+    case ArtifactType::kDiskLayout:
+      detail::require_object_shape(
+          structural,
+          {"global_node_count", "dimension", "scalar_type",
+           "distance_metric", "disk_vector_encoding", "pq_disk_bytes",
+           "reorder", "declared_max_degree", "medoid_count",
+           "entry_policy", "centroid_policy", "frozen_point_count"});
+      break;
   }
 }
 

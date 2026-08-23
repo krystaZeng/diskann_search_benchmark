@@ -19,6 +19,7 @@ add_library(
   validation/schema_catalog.cpp
   validation/validation_gate.cpp
   validation/artifact_validator.cpp
+  search/diskann/native_search_formats.cpp
   baseline/cpp_main/native_formats.cpp
   validation/mapping_validator.cpp
   validation/graph_validator.cpp
@@ -54,6 +55,10 @@ target_compile_definitions(
 diskann_pipeline_apply_cxx17(diskann_pipeline_core)
 
 add_subdirectory(cli)
+
+if(DISKANN_SEARCH_EVALUATION)
+  add_subdirectory(search/diskann)
+endif()
 
 if(DISKANN_GP_ANN_OGP)
   add_subdirectory(papers/gp_ann/ogp)

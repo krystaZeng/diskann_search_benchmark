@@ -1,0 +1,8 @@
+operation: disk_layout
+parameters:
+  scalar_type: float32
+  pq_disk_bytes: 0
+  reorder: false
+  labels: false
+  entry_policy: end_to_end
+  centroid_policy: medoid_vector_fallback

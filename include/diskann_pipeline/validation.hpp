@@ -75,6 +75,11 @@ class Validator {
       const ArtifactRef& reference,
       const std::vector<ValidatedArtifact>& validated_sources = {}) const;
 
+  // Resolve the existing immutable lineage catalog under this workspace and
+  // fresh-validate every source before granting the requested Artifact.
+  ArtifactValidationResult validate_with_lineage(
+      const ArtifactRef& reference) const;
+
  private:
   WorkspaceRef workspace_;
 };

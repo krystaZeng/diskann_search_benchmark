@@ -1,6 +1,7 @@
 #include "diskann_pipeline/validation.hpp"
 
 #include "support/contract_artifact_fixture.hpp"
+#include "search/search_artifact_test_support.hpp"
 #include "support/test_assert.hpp"
 
 namespace dp = diskann_pipeline;
@@ -24,6 +25,28 @@ int main() {
                             "p0-map.json");
     DP_EXPECT_EQ(validate_partition(fixture).evidence.failure_category.value(),
                  dp::ErrorCategory::kPayloadMissing);
+  }
+  {
+    dp::search::test::SearchArtifactFixture fixture;
+    dp::test::mutate_metadata(
+        fixture.base.workspace, fixture.pq,
+        [](auto& json) { json["payloads"][0]["path"] = "../escape.bin"; });
+    dp::Validator validator(fixture.base.workspace);
+    const auto dataset = validator.validate(fixture.base.dataset);
+    const auto rejected =
+        validator.validate(fixture.pq, {*dataset.validated_artifact});
+    DP_EXPECT_EQ(rejected.evidence.failure_category.value(),
+                 dp::ErrorCategory::kPathEscape);
+  }
+  {
+    dp::search::test::SearchArtifactFixture fixture;
+    fixture.layout.format_version = "disk-layout-artifact/v2";
+    dp::Validator validator(fixture.base.workspace);
+    const auto dataset = validator.validate(fixture.base.dataset);
+    const auto rejected =
+        validator.validate(fixture.layout, {*dataset.validated_artifact});
+    DP_EXPECT_EQ(rejected.evidence.failure_category.value(),
+                 dp::ErrorCategory::kUnsupportedVersion);
   }
   {
     dp::test::ContractArtifactFixture fixture;

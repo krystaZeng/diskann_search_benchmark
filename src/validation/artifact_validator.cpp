@@ -4,6 +4,7 @@
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/workspace.hpp"
 #include "baseline/cpp_main/native_formats.hpp"
+#include "search/diskann/native_search_formats.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -399,6 +400,145 @@ void validate_artifact_semantics(
     validate_graph_payload(artifact, artifact.payloads[1], local_count,
                            declared, true, observed_claim);
     return;
+  }
+
+  if (artifact.reference.artifact_type == ArtifactType::kPQ) {
+    if (validated_sources.size() != 1 ||
+        validated_sources[0].reference().artifact_type !=
+            ArtifactType::kDataset ||
+        artifact.payloads.size() != 2 ||
+        artifact.payloads[0].role != "pq_pivots" ||
+        artifact.payloads[1].role != "pq_compressed_vectors" ||
+        artifact.payloads[0].media_type != search::kPqPivotsMediaType ||
+        artifact.payloads[1].media_type != search::kPqCodesMediaType ||
+        !has_capability(artifact, "search.pqflash_loadable/v1")) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "PQArtifact requires one Dataset source and exact native payloads");
+    }
+    const auto point_count = structural.at("point_count").get<NodeCount>();
+    const auto dimension = structural.at("dimension").get<std::uint32_t>();
+    const auto centroid_count =
+        structural.at("centroid_count").get<std::uint32_t>();
+    const auto chunks = structural.at("pq_chunks").get<std::uint32_t>();
+    const auto opq = structural.at("opq").get<bool>();
+    if (point_count != artifact.dataset.global_node_count ||
+        dimension != artifact.dataset.vector_dimension ||
+        structural.at("scalar_type") != "float32" ||
+        structural.at("distance_metric") != "l2" || centroid_count != 256 ||
+        chunks == 0 || chunks > dimension || chunks > 512 || opq ||
+        structural.at("compressed_code_scalar") != "uint8") {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "PQArtifact structural facts differ from Dataset");
+    }
+    search::validate_pq_native_payloads(
+        payload_path(artifact, artifact.payloads[0]),
+        payload_path(artifact, artifact.payloads[1]), point_count, dimension,
+        chunks, opq);
+    return;
+  }
+
+  if (artifact.reference.artifact_type == ArtifactType::kDiskLayout) {
+    if (validated_sources.size() != 2 ||
+        validated_sources[0].reference().artifact_type !=
+            ArtifactType::kDataset ||
+        validated_sources[1].reference().artifact_type !=
+            ArtifactType::kGlobalGraph ||
+        artifact.payloads.size() < 2 || artifact.payloads.size() > 3 ||
+        artifact.payloads[0].role != "disk_index" ||
+        artifact.payloads[1].role != "medoids" ||
+        artifact.payloads[0].media_type != search::kDiskIndexMediaType ||
+        artifact.payloads[1].media_type != search::kUint32MatrixMediaType ||
+        !has_capability(artifact, "search.pqflash_loadable/v1") ||
+        !has_capability(artifact, "search.disk_vectors_full_precision/v1") ||
+        !has_capability(artifact, "graph.global_ids/v1") ||
+        !has_capability(artifact, "search.entry_end_to_end/v1")) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "DiskLayoutArtifact requires ordered Dataset/GlobalGraph sources and exact payloads");
+    }
+    const auto global_count =
+        structural.at("global_node_count").get<NodeCount>();
+    const auto dimension = structural.at("dimension").get<std::uint32_t>();
+    const auto declared_degree =
+        structural.at("declared_max_degree").get<std::uint32_t>();
+    const auto medoid_count =
+        structural.at("medoid_count").get<std::uint32_t>();
+    const auto frozen_count =
+        structural.at("frozen_point_count").get<std::uint64_t>();
+    const auto reorder = structural.at("reorder").get<bool>();
+    const auto centroid_policy =
+        structural.at("centroid_policy").get<std::string>();
+    const auto source_global = detail::parse_json_strict(
+        validated_sources[1].structural_json());
+    if (global_count != artifact.dataset.global_node_count ||
+        global_count !=
+            source_global.at("global_node_count").get<NodeCount>() ||
+        dimension != artifact.dataset.vector_dimension ||
+        declared_degree !=
+            source_global.at("declared_max_degree").get<std::uint32_t>() ||
+        structural.at("scalar_type") != "float32" ||
+        structural.at("distance_metric") != "l2" ||
+        structural.at("disk_vector_encoding") != "float32_full_precision" ||
+        structural.at("pq_disk_bytes").get<std::uint32_t>() != 0 || reorder ||
+        frozen_count != 0 || structural.at("entry_policy") != "end_to_end" ||
+        medoid_count == 0) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "DiskLayoutArtifact structural facts differ from its inputs");
+    }
+    const auto source_medoid = std::find_if(
+        validated_sources[1].payloads().begin(),
+        validated_sources[1].payloads().end(),
+        [](const PayloadRef& payload) {
+          return payload.role == kGlobalGraphMedoidsPayloadRole;
+        });
+    if (source_medoid == validated_sources[1].payloads().end() ||
+        source_medoid->sha256 != artifact.payloads[1].sha256) {
+      throw PipelineError(ErrorCategory::kSourceMismatch,
+                          "DiskLayout medoids do not match GlobalGraph lineage");
+    }
+    if (centroid_policy == "medoid_vector_fallback") {
+      if (artifact.payloads.size() != 2) {
+        throw PipelineError(ErrorCategory::kSchemaInvalid,
+                            "medoid fallback forbids a centroid payload");
+      }
+    } else if (centroid_policy == "declared_centroids") {
+      if (artifact.payloads.size() != 3 ||
+          artifact.payloads[2].role != "centroids" ||
+          artifact.payloads[2].media_type != search::kFloat32MatrixMediaType) {
+        throw PipelineError(ErrorCategory::kPayloadMissing,
+                            "declared centroids require the centroid payload");
+      }
+      const auto source_centroid = std::find_if(
+          validated_sources[1].payloads().begin(),
+          validated_sources[1].payloads().end(),
+          [](const PayloadRef& payload) { return payload.role == "centroids"; });
+      if (source_centroid == validated_sources[1].payloads().end() ||
+          source_centroid->sha256 != artifact.payloads[2].sha256) {
+        throw PipelineError(
+            ErrorCategory::kSourceMismatch,
+            "DiskLayout centroids are not traceable to GlobalGraph lineage");
+      }
+      search::validate_centroids_native_payload(
+          payload_path(artifact, artifact.payloads[2]), medoid_count,
+          dimension);
+    } else {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "unknown DiskLayout centroid policy");
+    }
+    search::validate_disk_layout_native_payload(
+        payload_path(artifact, artifact.payloads[0]), global_count, dimension,
+        declared_degree, reorder, frozen_count);
+    search::validate_medoids_native_payload(
+        payload_path(artifact, artifact.payloads[1]), medoid_count,
+        global_count);
+    return;
+  }
+
+  if (artifact.reference.artifact_type != ArtifactType::kGlobalGraph) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "unsupported Artifact semantic validator");
   }
 
   if (validated_sources.size() < 2 ||

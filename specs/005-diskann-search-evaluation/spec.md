@@ -38,7 +38,9 @@ downstream feature beginning with an already validated `DatasetArtifact` and
   result, metric-semantic, and timing-boundary oracle.
 - `instrumented`: a distinct project-owned thin runner invokes the same search path and preserves
   structured raw observations. Its stable implementation identity MUST differ from the oracle.
-- Instrumented evidence is non-formal until the parity gate passes.
+- Instrumented performance evidence is non-formal until the Search Runner Parity gate passes;
+  Recall is governed independently by quality eligibility and does not certify Search Semantics,
+  Quality Parity, or the final Baseline.
 
 **ID-Space Contract**: The input graph and all returned neighbor identities use the complete
 Dataset `GlobalNodeId` space. No `LocalNodeId`, unresolved replica identity, out-of-range result, or
@@ -166,16 +168,26 @@ observation and GroundTruth.
    completes, **Then** every declared `(L_search, repetition_index)` point retains all query result
    IDs, distances, required QueryStats, and its own canonical batch timing.
 2. **Given** a complete compatible SearchObservation and GroundTruth, **When** evaluation runs,
-   **Then** the report contains distinct Recall@10 and Recall@100 metrics plus QPS, mean latency,
-   P99.9 latency, and Mean IOs for the K=100 execution using pinned DiskANN semantics.
+   **Then** `quality_eligible=true` produces formal Recall@10 and Recall@100, while
+   `performance_eligible=true` produces formal QPS, mean latency, P99.9 latency, and Mean IOs for
+   the K=100 execution using pinned DiskANN semantics. For every complete successful
+   quality-eligible observation, the existing Python Harness `evaluate` operation also computes and
+   displays QPS, mean latency, P99.9 latency, and Mean IOs from the retained raw facts. When
+   `performance_eligible=false`, persistence of those displayed values in SearchEvaluationReport is
+   optional; if persisted, they are `informational_non_formal`, record the exclusion reason, and do
+   not enter a formal performance aggregate.
 3. **Given** unchanged search execution and raw observations but a changed compatible evaluation
    declaration, **When** a new evaluation is requested, **Then** a new report can be produced
    without repeating SSD search.
-4. **Given** an incomplete or identity-mismatched raw observation, **When** evaluation is
-   requested, **Then** the evidence is retained for diagnosis but is excluded from formal reports.
+4. **Given** a failed, invalid, cancelled, identity-mismatched, or otherwise excluded raw
+   observation, **When** evaluation is requested, **Then** its identity, path, checksum, terminal
+   status, and exclusion reason are retained in the SearchEvaluationReport as audit/exclusion
+   references only; it contributes no metric, aggregate, median, or comparison finding and cannot
+   be quality-eligible or performance-eligible.
 5. **Given** an environment that cannot establish the declared Linux/local-SSD IO semantics,
    **When** search completes for functional validation, **Then** its results cannot be labeled as
-   formal QPS, latency, or IO evidence.
+   formal QPS, latency, or IO evidence, while compatible complete observations may still produce
+   formal Recall@10/Recall@100 through the separate quality-eligibility decision.
 6. **Given** the first formal evaluation, **When** QuerySet and GroundTruth admission runs, **Then**
    the immutable QuerySet is `sift1M_dataset/selected_query.csv` and its GroundTruth is an exact L2
    result over the admitted SIFT1M Dataset identity rather than an unrelated public benchmark file.
@@ -316,8 +328,8 @@ observation and GroundTruth.
   count 3, required performance environment, and the fixed `end_to_end` entry-policy
   classification.
 - **FR-025**: `evaluation` MUST bind the exact-L2 GroundTruth for the admitted `selected_query`,
-  with width at least 100, plus Recall/evaluator semantic version, valid-run exclusion policy, and
-  aggregation policy without participating in search execution.
+  with width at least 100, plus Recall/evaluator semantic version, separate quality/performance
+  eligibility policies, and aggregation policy without participating in search execution.
 - **FR-026**: GroundTruth MUST NOT be loaded or used by the `PQFlashIndex` search execution path and
   MUST only participate after a SearchObservation exists.
 - **FR-027**: Any change to QuerySet, K, search controls, ordered `L_search`, or repetition count
@@ -367,8 +379,12 @@ observation and GroundTruth.
   top-100 result data; partial, missing, wrong-count, duplicate, out-of-range, non-finite,
   identity-mismatched, or incomplete core QueryStats evidence MUST make it invalid for formal
   evaluation.
-- **FR-043**: Invalid raw evidence MUST be retained for diagnosis but MUST NOT enter a formal
-  SearchEvaluationReport, comparison, or aggregation.
+- **FR-043**: Failed, invalid, cancelled, identity-mismatched, or otherwise excluded raw evidence
+  MUST be retained, and SearchEvaluationReport MUST preserve its observation identity, path,
+  checksum, terminal status, and exclusion reason as audit/exclusion references. Such references
+  are diagnostic only: they MUST NOT contribute Recall, QPS, latency, IO, any formal metric,
+  aggregate, median, or comparison finding, and MUST NOT be marked `quality_eligible` or
+  `performance_eligible`.
 - **FR-044**: GroundTruth mismatch MUST NOT retroactively invalidate an otherwise complete raw
   search observation, but MUST block evaluation with that GroundTruth.
 - **FR-045**: When a newly requested metric requires raw information absent from the retained
@@ -398,12 +414,20 @@ observation and GroundTruth.
 - **FR-052**: Evaluation MUST verify GroundTruth compatibility with Dataset, QuerySet, metric, and
   K; SearchObservation compatibility with `search_execution`; and evaluator compatibility with the
   declared evaluation policy.
-- **FR-053**: For every eligible raw search point, the report MUST preserve L, beamwidth, cache
-  protocol, repetition identity, separate Recall@10 and Recall@100, QPS, mean latency, P99.9
-  latency, and Mean IOs, and MUST label the performance metrics as K=100 end-to-end execution
-  results. For each L and cache-specific protocol, the report MUST additionally preserve the median
-  of each metric over repetitions eligible under the predeclared exclusion policy, without hiding
-  excluded raw repetitions.
+- **FR-053**: The evaluator MUST independently derive `quality_eligible` and
+  `performance_eligible` for every retained raw search point. Quality eligibility controls formal
+  Recall@10/Recall@100 and their median and requires complete valid observations plus compatible
+  Dataset, QuerySet, GroundTruth, SearchProtocol, evaluator, K/L, and result semantics, but not a
+  normative performance environment. Performance eligibility controls formal K=100 QPS, mean
+  latency, P99.9 latency, Mean IOs, and their median and additionally requires the declared Linux
+  local-SSD/O_DIRECT/libaio and timing-boundary admission. Complete valid non-normative points MUST
+  NOT enter formal performance aggregates. For every complete successful quality-eligible point,
+  the existing Python Harness `evaluate` operation MUST compute and display QPS, mean latency,
+  P99.9 latency, and Mean IOs from SearchObservation raw facts. Persisting those non-formal values in
+  SearchEvaluationReport is optional; any persisted values MUST be classified
+  `informational_non_formal`, with the specific exclusion recorded in
+  `performance_eligibility_reason`. The report MUST still bind compatible GroundTruth, retain every
+  excluded repetition, and preserve the existing Search Runner Parity scope.
 - **FR-054**: Recall, QPS, latency, IO, or comparison findings MUST NOT be embedded in Dataset,
   GlobalGraph, PQ, DiskLayout, or BuildManifest data.
 - **FR-055**: New metrics SHOULD be derived from already retained raw fields when possible; the MVP
@@ -547,8 +571,9 @@ user preference questions.
   GlobalGraph's own source-verifiable entry/medoid/centroid policy and label the resulting
   evaluation as end-to-end.
 - **SC-021**: Every formal L/cache search point attempts exactly three predeclared repetitions,
-  retains all three outcomes, and reports per-repetition metrics plus medians over eligible
-  repetitions without result-dependent replacement or best-run selection.
+  retains all three outcomes, and reports separate per-repetition quality/performance eligibility
+  plus separate medians over the repetitions eligible for each metric family, without
+  result-dependent replacement or best-run selection.
 
 ## Assumptions
 
@@ -568,9 +593,9 @@ user preference questions.
 - First-phase evaluation does not include a controlled-entry variant; any future addition of that
   policy requires a separate SearchProtocol and experiment classification rather than aggregation
   with end-to-end results.
-- The predeclared exclusion policy may exclude an invalid repetition from the median but never from
-  retained evidence; no extra execution replaces it, and a point with no eligible repetitions has
-  no formal aggregate.
+- The predeclared quality/performance eligibility policies may exclude an invalid repetition from
+  the applicable median but never from retained evidence; no extra execution replaces it, and a
+  point with no eligible repetitions for one metric family has no formal aggregate for that family.
 - At least one small native-format Dataset/GlobalGraph fixture and corresponding query/truth inputs
   can be prepared outside `upstream/` for independent User Story tests; those fixtures do not
   replace the selected formal QuerySet identity.

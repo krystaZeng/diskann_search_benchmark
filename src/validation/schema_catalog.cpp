@@ -21,6 +21,11 @@ const SchemaRule& schema_rule(ArtifactType artifact_type,
   static const SchemaRule global{ArtifactType::kGlobalGraph,
                                  "global-graph-artifact/v1", IdSpace::kGlobal,
                                  "graph.global_adjacency/v1"};
+  static const SchemaRule pq{ArtifactType::kPQ, "pq-artifact/v1",
+                             IdSpace::kNone, "search.pq_in_memory/v1"};
+  static const SchemaRule disk_layout{
+      ArtifactType::kDiskLayout, "disk-layout-artifact/v1", IdSpace::kGlobal,
+      "search.disk_layout/v1"};
   switch (artifact_type) {
     case ArtifactType::kDataset:
       if (format_version == dataset.format_version) {
@@ -43,6 +48,16 @@ const SchemaRule& schema_rule(ArtifactType artifact_type,
     case ArtifactType::kGlobalGraph:
       if (format_version == global.format_version) {
         return global;
+      }
+      break;
+    case ArtifactType::kPQ:
+      if (format_version == pq.format_version) {
+        return pq;
+      }
+      break;
+    case ArtifactType::kDiskLayout:
+      if (format_version == disk_layout.format_version) {
+        return disk_layout;
       }
       break;
   }

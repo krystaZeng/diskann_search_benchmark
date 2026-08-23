@@ -37,6 +37,10 @@ std::string_view to_string(ArtifactType value) noexcept {
       return "local_graph";
     case ArtifactType::kGlobalGraph:
       return "global_graph";
+    case ArtifactType::kPQ:
+      return "pq";
+    case ArtifactType::kDiskLayout:
+      return "disk_layout";
   }
   return "unknown";
 }
@@ -91,7 +95,9 @@ ArtifactType artifact_type_from_string(std::string_view value) {
       {{"dataset", ArtifactType::kDataset},
        {"partition", ArtifactType::kPartition},
        {"local_graph", ArtifactType::kLocalGraph},
-       {"global_graph", ArtifactType::kGlobalGraph}},
+       {"global_graph", ArtifactType::kGlobalGraph},
+       {"pq", ArtifactType::kPQ},
+       {"disk_layout", ArtifactType::kDiskLayout}},
       "ArtifactType");
 }
 

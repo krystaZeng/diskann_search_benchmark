@@ -2,6 +2,7 @@
 
 #include "baseline/cpp_main_stage_test_support.hpp"
 #include "support/contract_artifact_fixture.hpp"
+#include "search/search_artifact_test_support.hpp"
 #include "support/test_assert.hpp"
 
 #include <functional>
@@ -83,6 +84,34 @@ int main() {
   DP_EXPECT_TRUE(global.validated_artifact->has_capability(
       "graph.global_adjacency/v1"));
   DP_EXPECT_EQ(global.evidence.result, dp::ValidationResult::kValid);
+
+  {
+    dp::search::test::SearchArtifactFixture search_fixture;
+    dp::Validator search_validator(search_fixture.base.workspace);
+    const auto search_dataset =
+        search_validator.validate(search_fixture.base.dataset);
+    const auto pq = search_validator.validate(
+        search_fixture.pq, {*search_dataset.validated_artifact});
+    DP_EXPECT_TRUE(pq.valid());
+    DP_EXPECT_EQ(pq.validated_artifact->id_space(), dp::IdSpace::kNone);
+
+    const auto search_partition = search_validator.validate(
+        search_fixture.base.partition, {*search_dataset.validated_artifact});
+    const auto search_local0 = search_validator.validate(
+        search_fixture.base.local0, {*search_partition.validated_artifact});
+    const auto search_local1 = search_validator.validate(
+        search_fixture.base.local1, {*search_partition.validated_artifact});
+    const auto search_global = search_validator.validate(
+        search_fixture.base.global,
+        {*search_partition.validated_artifact,
+         *search_local0.validated_artifact, *search_local1.validated_artifact});
+    const auto layout = search_validator.validate(
+        search_fixture.layout,
+        {*search_dataset.validated_artifact,
+         *search_global.validated_artifact});
+    DP_EXPECT_TRUE(layout.valid());
+    DP_EXPECT_EQ(layout.validated_artifact->id_space(), dp::IdSpace::kGlobal);
+  }
 
   // GlobalGraph structural lineage is independently checksum-bound as part of
   // the aggregate identity, but it must still match the complete identity of

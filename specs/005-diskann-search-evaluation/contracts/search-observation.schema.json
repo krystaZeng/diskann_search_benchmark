@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/005/search-observation.schema.json",
+  "title": "Feature 005 SearchObservation v1",
+  "description": "One immutable document per cache/L/repetition raw search point; GroundTruth is forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format_version", "observation_id", "run_id", "generated_at", "implementation",
+    "source_build", "protocol", "search_execution", "dataset_artifact", "global_graph_artifact",
+    "pq_artifact", "disk_layout_artifact", "query_set_checksum", "raw_search_point",
+    "environment", "per_query", "observation_checksum"
+  ],
+  "properties": {
+    "format_version": {"const": "search-observation/v1"},
+    "observation_id": {"$ref": "#/$defs/stableId"},
+    "run_id": {"$ref": "#/$defs/stableId"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "implementation": {"$ref": "#/$defs/implementation"},
+    "source_build": {"$ref": "#/$defs/sourceBuild"},
+    "protocol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "protocol_id", "protocol_checksum"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "protocol_id": {"$ref": "#/$defs/stableId"},
+        "protocol_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "search_execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["execution_id", "canonical_checksum"],
+      "properties": {
+        "execution_id": {"$ref": "#/$defs/stableId"},
+        "canonical_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "dataset_artifact": {"$ref": "#/$defs/artifactRef"},
+    "global_graph_artifact": {"$ref": "#/$defs/artifactRef"},
+    "pq_artifact": {"$ref": "#/$defs/artifactRef"},
+    "disk_layout_artifact": {"$ref": "#/$defs/artifactRef"},
+    "query_set_checksum": {"$ref": "#/$defs/sha256"},
+    "raw_search_point": {"$ref": "#/$defs/rawSearchPoint"},
+    "environment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fingerprint_path", "fingerprint_sha256"],
+      "properties": {
+        "fingerprint_path": {"$ref": "#/$defs/relativePath"},
+        "fingerprint_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "per_query": {
+      "type": "array",
+      "minItems": 0,
+      "items": {"$ref": "#/$defs/perQuery"}
+    },
+    "failure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["category", "reason"],
+      "properties": {
+        "category": {"$ref": "#/$defs/stableId"},
+        "reason": {"type": "string", "minLength": 1},
+        "exit_code": {"type": "integer"}
+      }
+    },
+    "observation_checksum": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"raw_search_point": {"properties": {"status": {"const": "SUCCEEDED"}}}}},
+      "then": {"properties": {"per_query": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"raw_search_point": {"properties": {"status": {"enum": ["FAILED", "INVALID_OUTPUT", "CANCELLED"]}}}}},
+      "then": {"required": ["failure"]}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stableId": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["metadata_path", "artifact_type", "format_version", "aggregate_checksum"],
+      "properties": {
+        "metadata_path": {"$ref": "#/$defs/relativePath"},
+        "artifact_type": {"enum": ["dataset", "global_graph", "pq", "disk_layout"]},
+        "format_version": {"type": "string", "minLength": 1},
+        "aggregate_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "implementation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["implementation_id", "version", "reproduction_mode"],
+      "properties": {
+        "implementation_id": {"const": "cpp_main_pqflash_search_instrumented_v1"},
+        "version": {"const": "1.0.0"},
+        "reproduction_mode": {"const": "instrumented"}
+      }
+    },
+    "sourceBuild": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "diskann_repository", "diskann_branch", "diskann_commit", "binary_path",
+        "binary_sha256", "build_manifest_path", "build_manifest_sha256"
+      ],
+      "properties": {
+        "diskann_repository": {"const": "https://github.com/microsoft/DiskANN.git"},
+        "diskann_branch": {"const": "cpp_main"},
+        "diskann_commit": {"const": "78256bbab4685e1774e78d331e081a153be26823"},
+        "binary_path": {"$ref": "#/$defs/relativePath"},
+        "binary_sha256": {"$ref": "#/$defs/sha256"},
+        "build_manifest_path": {"$ref": "#/$defs/relativePath"},
+        "build_manifest_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "cacheState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "requested_nodes", "effective_nodes", "primary_payload_bytes"],
+      "properties": {
+        "mode": {"enum": ["zero", "fixed_bfs"]},
+        "requested_nodes": {"type": "integer", "minimum": 0},
+        "effective_nodes": {"type": "integer", "minimum": 0},
+        "primary_payload_bytes": {"type": "integer", "minimum": 0},
+        "allocator_overhead_bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "rawSearchPoint": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "point_id", "L_search", "K", "beamwidth", "cache", "repetition_index",
+        "query_count", "completed_query_count", "batch_wall_clock_us", "status"
+      ],
+      "properties": {
+        "point_id": {"$ref": "#/$defs/stableId"},
+        "L_search": {"type": "integer", "minimum": 100},
+        "K": {"const": 100},
+        "beamwidth": {"const": 2},
+        "cache": {"$ref": "#/$defs/cacheState"},
+        "repetition_index": {"type": "integer", "minimum": 0, "maximum": 2},
+        "query_count": {"type": "integer", "minimum": 1},
+        "completed_query_count": {"type": "integer", "minimum": 0},
+        "batch_wall_clock_us": {"type": "integer", "minimum": 0},
+        "status": {"enum": ["SUCCEEDED", "FAILED", "INVALID_OUTPUT", "CANCELLED"]}
+      }
+    },
+    "perQuery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["query_row_index", "source_query_id", "result_ids", "result_distances", "total_us", "n_ios"],
+      "properties": {
+        "query_row_index": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+        "source_query_id": {"type": "string"},
+        "result_ids": {
+          "type": "array", "minItems": 100, "maxItems": 100,
+          "items": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+        },
+        "result_distances": {
+          "type": "array", "minItems": 100, "maxItems": 100,
+          "items": {"type": "number", "minimum": 0}
+        },
+        "total_us": {"type": "number", "minimum": 0},
+        "n_ios": {"type": "integer", "minimum": 0},
+        "cpu_us": {"type": "number", "minimum": 0},
+        "io_us": {"type": "number", "minimum": 0},
+        "n_cmps": {"type": "integer", "minimum": 0},
+        "n_cache_hits": {"type": "integer", "minimum": 0},
+        "n_hops": {"type": "integer", "minimum": 0},
+        "read_size": {"type": "integer", "minimum": 0},
+        "n_4k": {"type": "integer", "minimum": 0},
+        "n_8k": {"type": "integer", "minimum": 0},
+        "n_12k": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

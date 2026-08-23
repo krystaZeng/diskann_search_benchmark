@@ -66,8 +66,15 @@ function(diskann_configure_cpp_main_baseline)
     message(FATAL_ERROR "pinned cpp_main did not define diskann_s")
   endif()
 
-  add_library(diskann_cpp_main_upstream INTERFACE)
+  if(NOT TARGET diskann_cpp_main_upstream)
+    add_library(diskann_cpp_main_upstream INTERFACE)
+  endif()
   target_link_libraries(diskann_cpp_main_upstream INTERFACE diskann_s)
+  if(NOT MSVC)
+    # LinuxAlignedFileReader is part of the admitted static surface, so libaio
+    # must follow diskann_s on every thin caller's final link line.
+    target_link_libraries(diskann_cpp_main_upstream INTERFACE aio)
+  endif()
   target_include_directories(
     diskann_cpp_main_upstream
     INTERFACE "${_upstream_source}/include")

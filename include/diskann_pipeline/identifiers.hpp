@@ -19,6 +19,8 @@ enum class ArtifactType {
   kPartition,
   kLocalGraph,
   kGlobalGraph,
+  kPQ,
+  kDiskLayout,
 };
 
 enum class IdSpace {
@@ -76,4 +78,3 @@ StageKind stage_kind_from_string(std::string_view value);
 StageStatus stage_status_from_string(std::string_view value);
 
 }  // namespace diskann_pipeline
-

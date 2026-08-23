@@ -24,7 +24,7 @@
     "manifest_version": {"const": "1.0.0"},
     "run_id": {"$ref": "common.schema.json#/$defs/stableId"},
     "stage": {
-      "enum": ["build", "partition", "local_build", "merge", "validate", "evaluate"]
+      "enum": ["build", "partition", "local_build", "merge", "validate", "evaluate", "search"]
     },
     "implementation": {
       "type": "object",

@@ -20,6 +20,20 @@ option(
   DISKANN_HNSW_MERGER
   "Build the HNSW-Merger Vamana Merge faithful adaptation"
   OFF)
+option(
+  DISKANN_SEARCH_EVALUATION
+  "Build the fixed DiskANN post-GlobalGraph search evaluation Feature"
+  OFF)
+
+if(DISKANN_SEARCH_EVALUATION AND NOT DISKANN_CPP_MAIN_BASELINE)
+  message(FATAL_ERROR
+          "DISKANN_SEARCH_EVALUATION requires DISKANN_CPP_MAIN_BASELINE=ON")
+endif()
+
+set(DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE ON)
+endif()
 
 set(DISKANN_HNSW_MERGER_REPOSITORY
     "https://github.com/Kimchuls/HNSWMerger.git")
@@ -105,9 +119,19 @@ if(DISKANN_GP_ANN_OGP)
   diskann_configure_gp_ann_ogp()
 endif()
 
+# Feature 005's Linux-native targets name this integration while src/ is being
+# configured.  Declare only the interface identity here; the existing pinned
+# Baseline admission below binds it to diskann_s after the core target exists.
+if(DISKANN_CPP_MAIN_BASELINE AND DISKANN_SEARCH_EVALUATION AND
+   DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE)
+  find_package(OpenMP REQUIRED)
+  add_library(diskann_cpp_main_upstream INTERFACE)
+endif()
+
 add_subdirectory(src)
 
-if(DISKANN_CPP_MAIN_BASELINE)
+if(DISKANN_CPP_MAIN_BASELINE AND
+   (NOT DISKANN_SEARCH_EVALUATION OR DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE))
   include(CppMainBaseline)
   diskann_configure_cpp_main_baseline()
 endif()

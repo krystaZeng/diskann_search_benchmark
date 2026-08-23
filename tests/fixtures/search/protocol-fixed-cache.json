@@ -1,0 +1,1 @@
+{"cache":{"construction":"medoid_bfs","mode":"fixed_bfs","requested_nodes":10000,"shuffle":false},"fixture":"protocol template; canonical document is built in test","K":100,"L_search":[100,200,400],"repetitions":3}

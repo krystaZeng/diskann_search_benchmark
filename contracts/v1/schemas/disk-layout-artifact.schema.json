@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/005/disk-layout-artifact.schema.json",
+  "title": "DiskLayoutArtifact Metadata v1 design",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "canonicalization", "artifact_type", "format_version", "dataset",
+    "id_space", "structural", "capabilities", "source_artifacts", "payloads",
+    "aggregate_checksum"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "canonicalization": {"const": "diskann-artifact-c14n-v1"},
+    "artifact_type": {"const": "disk_layout"},
+    "format_version": {"const": "disk-layout-artifact/v1"},
+    "dataset": {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/datasetIdentity"},
+    "id_space": {"const": "global"},
+    "structural": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "global_node_count", "dimension", "scalar_type", "distance_metric",
+        "disk_vector_encoding", "pq_disk_bytes", "reorder", "declared_max_degree",
+        "medoid_count", "entry_policy", "centroid_policy", "frozen_point_count"
+      ],
+      "properties": {
+        "global_node_count": {"type": "integer", "minimum": 1, "maximum": 4294967296},
+        "dimension": {"type": "integer", "minimum": 1},
+        "scalar_type": {"const": "float32"},
+        "distance_metric": {"const": "l2"},
+        "disk_vector_encoding": {"const": "float32_full_precision"},
+        "pq_disk_bytes": {"const": 0},
+        "reorder": {"const": false},
+        "declared_max_degree": {"type": "integer", "minimum": 1, "maximum": 512},
+        "medoid_count": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "entry_policy": {"const": "end_to_end"},
+        "centroid_policy": {"enum": ["declared_centroids", "medoid_vector_fallback"]},
+        "frozen_point_count": {"const": 0}
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 5,
+      "items": {"type": "string"},
+      "allOf": [
+        {"contains": {"const": "search.disk_layout/v1"}},
+        {"contains": {"const": "search.pqflash_loadable/v1"}},
+        {"contains": {"const": "search.disk_vectors_full_precision/v1"}},
+        {"contains": {"const": "graph.global_ids/v1"}},
+        {"contains": {"const": "search.entry_end_to_end/v1"}}
+      ]
+    },
+    "source_artifacts": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "allOf": [
+            {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/sourceArtifactIdentity"},
+            {"type": "object", "properties": {"artifact_type": {"const": "dataset"}}}
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/sourceArtifactIdentity"},
+            {"type": "object", "properties": {"artifact_type": {"const": "global_graph"}}}
+          ]
+        }
+      ]
+    },
+    "payloads": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "allOf": [
+            {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/payloadRef"},
+            {"type": "object", "properties": {
+              "role": {"const": "disk_index"},
+              "media_type": {"const": "application/vnd.diskann.pqflash-disk-index+binary;version=1"}
+            }}
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/payloadRef"},
+            {"type": "object", "properties": {
+              "role": {"const": "medoids"},
+              "media_type": {"const": "application/vnd.diskann.uint32-matrix+binary;version=1"}
+            }}
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/payloadRef"},
+            {"type": "object", "properties": {
+              "role": {"const": "centroids"},
+              "media_type": {"const": "application/vnd.diskann.float32-matrix+binary;version=1"}
+            }}
+          ]
+        }
+      ]
+    },
+    "aggregate_checksum": {"pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "structural": {
+            "properties": {"centroid_policy": {"const": "declared_centroids"}}
+          }
+        }
+      },
+      "then": {"properties": {"payloads": {"minItems": 3, "maxItems": 3}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "structural": {
+            "properties": {"centroid_policy": {"const": "medoid_vector_fallback"}}
+          }
+        }
+      },
+      "then": {"properties": {"payloads": {"minItems": 2, "maxItems": 2}}}
+    }
+  ]
+}

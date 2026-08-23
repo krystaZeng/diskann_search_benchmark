@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/005/search-evaluation-report.schema.json",
+  "title": "Feature 005 SearchEvaluationReport v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version", "report_id", "generated_at", "evaluator", "diskann_source_mapping",
+    "protocol", "search_execution", "dataset_artifact", "global_graph_artifact", "pq_artifact",
+    "disk_layout_artifact", "query_set_checksum", "ground_truth", "entry_policy",
+    "graph_baseline_context", "environment_fingerprint",
+    "search_runner_parity", "non_reexecution_evidence", "observation_results", "aggregates",
+    "report_checksum"
+  ],
+  "properties": {
+    "report_version": {"const": "search-evaluation-report/v1"},
+    "report_id": {"$ref": "#/$defs/stableId"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "evaluator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["implementation_id", "version", "reproduction_mode"],
+      "properties": {
+        "implementation_id": {"const": "cpp_main_search_metrics_evaluator_v1"},
+        "version": {"const": "1.0.0"},
+        "reproduction_mode": {"const": "instrumented"}
+      }
+    },
+    "diskann_source_mapping": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "branch", "commit", "research_path"],
+      "properties": {
+        "repository": {"const": "https://github.com/microsoft/DiskANN.git"},
+        "branch": {"const": "cpp_main"},
+        "commit": {"const": "78256bbab4685e1774e78d331e081a153be26823"},
+        "research_path": {"$ref": "#/$defs/relativePath"}
+      }
+    },
+    "protocol": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "protocol_id", "protocol_checksum"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "protocol_id": {"$ref": "#/$defs/stableId"},
+        "protocol_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "search_execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["execution_id", "canonical_checksum"],
+      "properties": {
+        "execution_id": {"$ref": "#/$defs/stableId"},
+        "canonical_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "dataset_artifact": {"$ref": "#/$defs/artifactRef"},
+    "global_graph_artifact": {"$ref": "#/$defs/artifactRef"},
+    "pq_artifact": {"$ref": "#/$defs/artifactRef"},
+    "disk_layout_artifact": {"$ref": "#/$defs/artifactRef"},
+    "query_set_checksum": {"$ref": "#/$defs/sha256"},
+    "ground_truth": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ground_truth_id", "path", "sha256", "width", "query_set_checksum", "dataset_artifact"],
+      "properties": {
+        "ground_truth_id": {"$ref": "#/$defs/stableId"},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "width": {"type": "integer", "minimum": 100},
+        "query_set_checksum": {"$ref": "#/$defs/sha256"},
+        "dataset_artifact": {"$ref": "#/$defs/artifactRef"}
+      }
+    },
+    "entry_policy": {"const": "end_to_end"},
+    "graph_baseline_context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["graph_structural_parity_gate", "framework_state", "search_runner_parity_is_graph_parity", "final_baseline_certified"],
+      "properties": {
+        "graph_structural_parity_gate": {"enum": ["PASS", "FAIL", "INCONCLUSIVE", "NOT_REACHED"]},
+        "framework_state": {"enum": ["candidate", "reference"]},
+        "search_runner_parity_is_graph_parity": {"const": false},
+        "final_baseline_certified": {"const": false}
+      }
+    },
+    "environment_fingerprint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {"path": {"$ref": "#/$defs/relativePath"}, "sha256": {"$ref": "#/$defs/sha256"}}
+    },
+    "search_runner_parity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_path", "evidence_sha256", "result"],
+      "properties": {
+        "evidence_path": {"$ref": "#/$defs/relativePath"},
+        "evidence_sha256": {"$ref": "#/$defs/sha256"},
+        "result": {"enum": ["PASS", "FAIL", "NOT_REACHED"]}
+      }
+    },
+    "non_reexecution_evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "partition_invoked", "local_build_invoked", "merge_invoked",
+        "evidence_path", "evidence_sha256"
+      ],
+      "properties": {
+        "partition_invoked": {"const": false},
+        "local_build_invoked": {"const": false},
+        "merge_invoked": {"const": false},
+        "evidence_path": {"$ref": "#/$defs/relativePath"},
+        "evidence_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "observation_results": {
+      "type": "array", "minItems": 1,
+      "items": {"$ref": "#/$defs/observationResult"}
+    },
+    "aggregates": {
+      "type": "object", "additionalProperties": false,
+      "required": ["quality", "performance"],
+      "properties": {
+        "quality": {"type": "array", "items": {"$ref": "#/$defs/qualityAggregate"}},
+        "performance": {"type": "array", "items": {"$ref": "#/$defs/performanceAggregate"}}
+      }
+    },
+    "report_checksum": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "observation_results": {
+            "contains": {"properties": {"performance_eligible": {"const": true}}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "search_runner_parity": {"properties": {"result": {"const": "PASS"}}}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stableId": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"},
+    "relativePath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"},
+    "artifactRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["metadata_path", "artifact_type", "format_version", "aggregate_checksum"],
+      "properties": {
+        "metadata_path": {"$ref": "#/$defs/relativePath"},
+        "artifact_type": {"enum": ["dataset", "global_graph", "pq", "disk_layout"]},
+        "format_version": {"type": "string", "minLength": 1},
+        "aggregate_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "qualityMetrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["recall_at_10", "recall_at_100"],
+      "properties": {
+        "recall_at_10": {"type": "number", "minimum": 0, "maximum": 100},
+        "recall_at_100": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "performanceMetrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100"],
+      "properties": {
+        "qps_k100": {"type": "number", "exclusiveMinimum": 0},
+        "mean_latency_us_k100": {"type": "number", "minimum": 0},
+        "p99_9_latency_us_k100": {"type": "number", "minimum": 0},
+        "mean_ios_k100": {"type": "number", "minimum": 0}
+      }
+    },
+    "observationResult": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "observation_id", "path", "sha256", "cache_mode", "L_search", "repetition_index",
+        "terminal_status", "quality_eligible", "quality_eligibility_reason",
+        "performance_eligible", "performance_eligibility_reason"
+      ],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/stableId"},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "cache_mode": {"enum": ["zero", "fixed_bfs"]},
+        "L_search": {"type": "integer", "minimum": 100},
+        "repetition_index": {"type": "integer", "minimum": 0, "maximum": 2},
+        "terminal_status": {"enum": ["SUCCEEDED", "FAILED", "INVALID_OUTPUT", "CANCELLED"]},
+        "quality_eligible": {"type": "boolean"},
+        "quality_eligibility_reason": {"type": "string", "minLength": 1},
+        "performance_eligible": {"type": "boolean"},
+        "performance_eligibility_reason": {"type": "string", "minLength": 1},
+        "quality_metrics": {"$ref": "#/$defs/qualityMetrics"},
+        "performance_metrics": {"$ref": "#/$defs/performanceMetrics"},
+        "performance_metric_classification": {
+          "enum": ["formal", "informational_non_formal"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"quality_eligible": {"const": true}}},
+          "then": {
+            "required": ["quality_metrics"],
+            "properties": {"terminal_status": {"const": "SUCCEEDED"}}
+          },
+          "else": {"not": {"required": ["quality_metrics"]}}
+        },
+        {
+          "if": {"properties": {"performance_eligible": {"const": true}}},
+          "then": {
+            "required": ["performance_metrics", "performance_metric_classification"],
+            "properties": {
+              "terminal_status": {"const": "SUCCEEDED"},
+              "performance_metric_classification": {"const": "formal"}
+            }
+          },
+          "else": {
+            "oneOf": [
+              {
+                "required": ["performance_metrics", "performance_metric_classification"],
+                "properties": {
+                  "performance_metric_classification": {"const": "informational_non_formal"}
+                }
+              },
+              {
+                "not": {
+                  "anyOf": [
+                    {"required": ["performance_metrics"]},
+                    {"required": ["performance_metric_classification"]}
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "qualityAggregate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cache_mode", "L_search", "eligible_count", "aggregation", "median_quality_metrics"],
+      "properties": {
+        "cache_mode": {"enum": ["zero", "fixed_bfs"]},
+        "L_search": {"type": "integer", "minimum": 100},
+        "eligible_count": {"type": "integer", "minimum": 1, "maximum": 3},
+        "aggregation": {"const": "median_eligible"},
+        "median_quality_metrics": {"$ref": "#/$defs/qualityMetrics"}
+      }
+    },
+    "performanceAggregate": {
+      "type": "object", "additionalProperties": false,
+      "description": "Contains only repetitions whose observation result has performance_eligible=true.",
+      "required": [
+        "cache_mode", "L_search", "eligible_count", "aggregation",
+        "median_performance_metrics"
+      ],
+      "properties": {
+        "cache_mode": {"enum": ["zero", "fixed_bfs"]},
+        "L_search": {"type": "integer", "minimum": 100},
+        "eligible_count": {"type": "integer", "minimum": 1, "maximum": 3},
+        "aggregation": {"const": "median_eligible"},
+        "median_performance_metrics": {"$ref": "#/$defs/performanceMetrics"}
+      }
+    }
+  }
+}

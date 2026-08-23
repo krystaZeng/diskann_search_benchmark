@@ -25,7 +25,7 @@
       "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
     },
     "artifactType": {
-      "enum": ["dataset", "partition", "local_graph", "global_graph"]
+      "enum": ["dataset", "partition", "local_graph", "global_graph", "pq", "disk_layout"]
     },
     "idSpace": {
       "enum": ["none", "local", "global"]

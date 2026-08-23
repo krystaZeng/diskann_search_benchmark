@@ -69,4 +69,30 @@ struct GlobalGraphArtifactMetadata {
   std::string aggregate_checksum;
 };
 
+struct PQArtifactMetadata {
+  DatasetIdentity dataset;
+  NodeCount point_count;
+  std::uint32_t dimension;
+  std::uint32_t centroid_count;
+  std::uint32_t pq_chunks;
+  bool opq;
+  std::vector<std::string> capabilities;
+  std::vector<SourceArtifactIdentity> source_artifacts;
+  std::vector<PayloadRef> payloads;
+  std::string aggregate_checksum;
+};
+
+struct DiskLayoutArtifactMetadata {
+  DatasetIdentity dataset;
+  NodeCount global_node_count;
+  std::uint32_t dimension;
+  std::uint32_t declared_max_degree;
+  std::uint32_t medoid_count;
+  std::string centroid_policy;
+  std::vector<std::string> capabilities;
+  std::vector<SourceArtifactIdentity> source_artifacts;
+  std::vector<PayloadRef> payloads;
+  std::string aggregate_checksum;
+};
+
 }  // namespace diskann_pipeline

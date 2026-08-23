@@ -1,0 +1,9 @@
+operation: pq
+parameters:
+  B: 0.03
+  QD: 0
+  pq_chunks: 32
+  sample_rate: 0.256
+  centroid_count: 256
+  opq: false
+  distance_metric: l2
