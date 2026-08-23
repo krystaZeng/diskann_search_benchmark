@@ -8,8 +8,10 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <memory>
 #include <numeric>
+#include <sstream>
 
 #if DISKANN_SEARCH_LINUX_NATIVE_TEST
 #include <immintrin.h>
@@ -51,23 +53,92 @@ struct Inputs {
       {0, 3})};
 };
 
+std::string now_utc() {
+  const auto now = std::chrono::system_clock::now();
+  const auto time = std::chrono::system_clock::to_time_t(now);
+  std::tm utc{};
+#if defined(_WIN32)
+  gmtime_s(&utc, &time);
+#else
+  gmtime_r(&time, &utc);
+#endif
+  std::ostringstream output;
+  output << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+  return output.str();
+}
+
 ds::MaterializationRequest request(const Inputs& inputs,
                                    const std::string& run_id) {
   ds::MaterializationRequest value;
   value.run_id = run_id;
   value.dataset = inputs.dataset.reference;
   value.global_graph = inputs.global;
-  value.source = {"https://github.com/microsoft/DiskANN.git", "cpp_main",
+  value.source = {"https://example.invalid/project.git",
+                  "feature/search-evaluation", std::string(40, 'b'), true,
+                  std::string(64, 'c')};
+  value.diskann_source = {
+                  "https://github.com/microsoft/DiskANN.git", "cpp_main",
                   "78256bbab4685e1774e78d331e081a153be26823", false,
                   std::nullopt};
   value.toolchain = {"test-os", "/usr/bin/c++", "test-compiler", "4.4.2",
                      "test-generator", "Release",
-                     {"DISKANN_SEARCH_EVALUATION=ON"},
-                     {"c++ -std=c++17"}, {"diskann_s"}};
+                     {"CMAKE_BUILD_TYPE=Release",
+                      "DISKANN_CPP_MAIN_BASELINE=ON",
+                      "DISKANN_SEARCH_EVALUATION=ON"},
+                     {"/usr/bin/c++ -std=c++17 -O3 -DNDEBUG -mavx2 "
+                      "-fopenmp -Wall -Wextra -Wpedantic"},
+                     {"diskann_search_evaluation_runner <- diskann_s,OpenMP"}};
   value.resource_budget = {64ULL * 1024 * 1024, 1};
-  value.started_at = "2026-08-21T00:00:00Z";
-  value.ended_at = "2026-08-21T00:00:01Z";
+  value.runner_binary_path = "/tmp/diskann_search_evaluation_runner";
+  value.runner_binary_sha256 = std::string(64, 'a');
+  value.started_at = now_utc();
   return value;
+}
+
+void expect_manifest_provenance(const std::filesystem::path& path,
+                                const ds::MaterializationRequest& request,
+                                const std::string& native_call_time) {
+  const auto manifest = native_fixture::read_json(path);
+  DP_EXPECT_EQ(manifest.at("source").at("repository").get<std::string>(),
+               request.source.repository);
+  DP_EXPECT_EQ(manifest.at("source").at("branch").get<std::string>(),
+               request.source.branch);
+  DP_EXPECT_EQ(manifest.at("source").at("commit").get<std::string>(),
+               request.source.commit);
+  DP_EXPECT_TRUE(manifest.at("source").at("dirty_worktree").get<bool>());
+  const auto& parameters = manifest.at("parameters");
+  DP_EXPECT_EQ(parameters.at("diskann_source").at("repository").get<std::string>(),
+               request.diskann_source.repository);
+  DP_EXPECT_EQ(parameters.at("diskann_source").at("branch").get<std::string>(),
+               request.diskann_source.branch);
+  DP_EXPECT_EQ(parameters.at("diskann_source").at("commit").get<std::string>(),
+               request.diskann_source.commit);
+  DP_EXPECT_EQ(parameters.at("runner_binary").at("path").get<std::string>(),
+               request.runner_binary_path.string());
+  DP_EXPECT_EQ(parameters.at("runner_binary").at("sha256").get<std::string>(),
+               request.runner_binary_sha256);
+  const auto compile_command =
+      manifest.at("toolchain").at("compile_commands").at(0).get<std::string>();
+  DP_EXPECT_TRUE(compile_command.find("-O3") != std::string::npos);
+  DP_EXPECT_TRUE(compile_command.find("-DNDEBUG") != std::string::npos);
+  DP_EXPECT_TRUE(compile_command.find("-mavx2") != std::string::npos);
+  DP_EXPECT_TRUE(compile_command.find("-fopenmp") != std::string::npos);
+  DP_EXPECT_TRUE(compile_command.find("-Wall") != std::string::npos);
+  DP_EXPECT_EQ(manifest.at("started_at").get<std::string>(),
+               request.started_at);
+  DP_EXPECT_TRUE(manifest.at("started_at").get<std::string>() <=
+                 native_call_time);
+  DP_EXPECT_TRUE(manifest.at("ended_at").get<std::string>() >=
+                 native_call_time);
+}
+
+void expect_terminal_times(const std::filesystem::path& path,
+                           const ds::MaterializationRequest& request) {
+  const auto manifest = native_fixture::read_json(path);
+  DP_EXPECT_EQ(manifest.at("started_at").get<std::string>(),
+               request.started_at);
+  DP_EXPECT_TRUE(manifest.at("ended_at").get<std::string>() >=
+                 request.started_at);
 }
 
 #if DISKANN_SEARCH_LINUX_NATIVE_TEST
@@ -230,6 +301,70 @@ void real_post_graph_closure() {
             .dump());
   }
 }
+
+void runner_provenance_closure(const Inputs& inputs) {
+  const auto request_path = inputs.temporary.path / "runner-layout-request.json";
+  native_fixture::write_text(
+      request_path,
+      Json{{"workspace", {{"root", inputs.workspace.root.string()}}},
+           {"run_id", "search-layout-runner-provenance"},
+           {"operation", "disk_layout"},
+           {"dataset", artifact_reference(inputs.dataset.reference)},
+           {"global_graph", artifact_reference(inputs.global)},
+           {"parameters", {{"centroid_policy", "medoid_vector_fallback"}}},
+           {"resource_budget",
+            {{"memory_budget_bytes", 64ULL * 1024 * 1024},
+             {"thread_budget", 1}}}}
+          .dump());
+  DP_EXPECT_EQ(run_feature_runner(
+                   {"materialize", "--request", request_path.string()}),
+               0);
+  const auto manifest = native_fixture::read_json(
+      inputs.workspace.manifest_root / "search-layout-runner-provenance.json");
+  const auto repository =
+      manifest.at("source").at("repository").get<std::string>();
+  DP_EXPECT_TRUE(repository.rfind("https://", 0) == 0);
+  DP_EXPECT_TRUE(repository !=
+                 "https://github.com/microsoft/DiskANN.git");
+  DP_EXPECT_EQ(manifest.at("source").at("branch").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_PROJECT_BRANCH));
+  DP_EXPECT_EQ(manifest.at("source").at("commit").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_PROJECT_COMMIT));
+  DP_EXPECT_EQ(manifest.at("source").at("dirty_worktree").get<bool>(),
+               DISKANN_SEARCH_TEST_PROJECT_DIRTY != 0);
+  DP_EXPECT_EQ(
+      manifest.at("parameters").at("diskann_source").at("commit").get<std::string>(),
+      std::string("78256bbab4685e1774e78d331e081a153be26823"));
+  DP_EXPECT_EQ(
+      manifest.at("parameters").at("runner_binary").at("sha256").get<std::string>(),
+      dp::sha256_file(DISKANN_SEARCH_TEST_RUNNER));
+  const auto& toolchain = manifest.at("toolchain");
+  DP_EXPECT_EQ(toolchain.at("os").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_SYSTEM_NAME));
+  DP_EXPECT_EQ(toolchain.at("compiler_path").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_CXX_COMPILER));
+  DP_EXPECT_EQ(toolchain.at("compiler_version").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_CXX_COMPILER_VERSION));
+  DP_EXPECT_EQ(toolchain.at("cmake_version").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_CMAKE_VERSION));
+  DP_EXPECT_EQ(toolchain.at("generator").get<std::string>(),
+               std::string(DISKANN_SEARCH_TEST_CMAKE_GENERATOR));
+  DP_EXPECT_EQ(toolchain.at("build_type").get<std::string>(),
+               std::string("Release"));
+  const auto definitions = toolchain.at("cmake_definitions").dump();
+  DP_EXPECT_TRUE(definitions.find("CMAKE_BUILD_TYPE=Release") !=
+                 std::string::npos);
+  DP_EXPECT_TRUE(definitions.find("DISKANN_SEARCH_EVALUATION=ON") !=
+                 std::string::npos);
+  const auto compile_commands = toolchain.at("compile_commands").dump();
+  DP_EXPECT_TRUE(compile_commands.find("-O3") != std::string::npos);
+  DP_EXPECT_TRUE(compile_commands.find("-DNDEBUG") != std::string::npos);
+  DP_EXPECT_TRUE(compile_commands.find("-mavx2") != std::string::npos);
+  DP_EXPECT_TRUE(compile_commands.find("-fopenmp") != std::string::npos);
+  DP_EXPECT_TRUE(compile_commands.find("-Wall") != std::string::npos);
+  DP_EXPECT_TRUE(manifest.at("started_at").get<std::string>() <=
+                 manifest.at("ended_at").get<std::string>());
+}
 #endif
 
 }  // namespace
@@ -249,10 +384,13 @@ int main() {
       dp::test::metadata_path(inputs.workspace, inputs.global));
   int pq_calls = 0;
   int layout_calls = 0;
+  std::string pq_call_time;
+  std::string layout_call_time;
   ds::NativePostGraphCalls calls;
   calls.generate_pq = [&](const auto&, const auto& pivots,
                           const auto& codes, const auto& policy) {
     ++pq_calls;
+    pq_call_time = now_utc();
     DP_EXPECT_EQ(policy.pq_chunks, std::uint32_t{32});
     DP_EXPECT_TRUE(!policy.opq);
     dp::test::overwrite_file(pivots,
@@ -263,6 +401,7 @@ int main() {
   calls.create_disk_layout = [&](const auto&, const auto&, const auto& output,
                                  const auto& policy) {
     ++layout_calls;
+    layout_call_time = now_utc();
     DP_EXPECT_EQ(policy.pq_disk_bytes, std::uint32_t{0});
     DP_EXPECT_TRUE(!policy.reorder);
     dp::test::overwrite_file(
@@ -280,13 +419,17 @@ int main() {
   DP_EXPECT_TRUE(std::filesystem::is_regular_file(pq.validation_evidence_path));
   DP_EXPECT_EQ(pq_calls, 1);
   DP_EXPECT_EQ(layout_calls, 0);
+  expect_manifest_provenance(pq.build_manifest_path, pq_request,
+                             pq_call_time);
 
-  const auto layout =
-      materializer.materialize_disk_layout(request(inputs, "search-layout-small"));
+  const auto layout_request = request(inputs, "search-layout-small");
+  const auto layout = materializer.materialize_disk_layout(layout_request);
   DP_EXPECT_EQ(layout.status, dp::StageStatus::kSucceeded);
   DP_EXPECT_TRUE(layout.artifact.has_value());
   DP_EXPECT_EQ(pq_calls, 1);
   DP_EXPECT_EQ(layout_calls, 1);
+  expect_manifest_provenance(layout.build_manifest_path, layout_request,
+                             layout_call_time);
   DP_EXPECT_EQ(graph_before,
                dp::sha256_file(
                    dp::test::metadata_path(inputs.workspace, inputs.global)));
@@ -303,6 +446,7 @@ int main() {
   DP_EXPECT_EQ(rejected.status, dp::StageStatus::kFailed);
   DP_EXPECT_EQ(layout_calls, 1);
   DP_EXPECT_TRUE(!rejected.artifact.has_value());
+  expect_terminal_times(rejected.build_manifest_path, declared);
 
   ds::NativePostGraphCalls corrupt_calls = calls;
   corrupt_calls.generate_pq = [](const auto&, const auto& pivots,
@@ -318,6 +462,7 @@ int main() {
   DP_EXPECT_TRUE(!invalid.artifact.has_value());
   DP_EXPECT_TRUE(invalid.quarantine_id.has_value());
   DP_EXPECT_TRUE(std::filesystem::is_regular_file(invalid.build_manifest_path));
+  expect_terminal_times(invalid.build_manifest_path, invalid_request);
 
   token.cancelled = true;
   auto cancelled_request = request(inputs, "search-pq-cancelled");
@@ -327,8 +472,10 @@ int main() {
   DP_EXPECT_TRUE(!cancelled.artifact.has_value());
   DP_EXPECT_TRUE(std::filesystem::is_regular_file(
       cancelled.build_manifest_path));
+  expect_terminal_times(cancelled.build_manifest_path, cancelled_request);
 
 #if DISKANN_SEARCH_LINUX_NATIVE_TEST
+  runner_provenance_closure(inputs);
   real_post_graph_closure();
 #endif
 

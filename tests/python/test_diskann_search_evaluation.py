@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import struct
+import sys
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,374 @@ def test_selected_query_normalization_preserves_opaque_source_id(tmp_path: Path)
         {"query_row_index": 1, "source_query_id": "not-a-dataset-id"},
     ]
     assert output["native_header"] == (2, 4)
+
+
+def test_input_materialization_manifests_capture_runtime_and_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_source = {
+        "repository": "https://example.invalid/project.git",
+        "branch": "feature/search-evaluation",
+        "commit": "b" * 40,
+        "dirty_worktree": True,
+        "dirty_source_checksum": "c" * 64,
+    }
+    monkeypatch.setattr(search, "_git_source_identity", lambda root: project_source)
+    dataset_identity = {
+        "dataset_id": "small-search-dataset",
+        "dataset_checksum": "d" * 64,
+        "global_node_count": 256,
+        "vector_dimension": 4,
+        "scalar_type": "float32",
+        "distance_metric": "l2",
+    }
+    native_toolchain = {
+        "os": "linux",
+        "compiler_path": "/usr/bin/c++",
+        "compiler_version": "11.4.0",
+        "cmake_version": "3.22.1",
+        "generator": "Unix Makefiles",
+        "build_type": "Release",
+        "cmake_definitions": [
+            "CMAKE_BUILD_TYPE=Release",
+            "DISKANN_CPP_MAIN_BASELINE=ON",
+            "DISKANN_SEARCH_EVALUATION=ON",
+        ],
+        "compile_commands": [
+            "/usr/bin/c++ -std=c++17 -O3 -DNDEBUG -mavx2 -fopenmp"
+        ],
+        "link_commands": ["compute_groundtruth <- diskann_s,OpenMP"],
+    }
+    common = {
+        "workspace_root": str(tmp_path),
+        "source": project_source,
+        "toolchain": native_toolchain,
+        "dataset_identity": dataset_identity,
+        "resource_budget": {
+            "memory_budget_bytes": 16 * 1024 * 1024,
+            "thread_budget": 1,
+        },
+        "started_at": "2000-01-01T00:00:00Z",
+        "ended_at": "2000-01-01T00:00:00Z",
+        "input_artifacts": [],
+    }
+    csv_path = tmp_path / "selected-query.csv"
+    csv_path.write_text(
+        "id,x0,x1,x2,x3\nopaque-42,0,1,2,3\n", encoding="utf-8"
+    )
+    query_request = {
+        **common,
+        "run_id": "query-provenance",
+        "source_csv": str(csv_path),
+        "source_byte_length": csv_path.stat().st_size,
+        "source_sha256": search._sha256(csv_path),
+        "query_set_id": "query-provenance",
+        "dimension": 4,
+        "query_count": 1,
+        "reference_path": "inputs/query-reference.json",
+        "manifest_path": "manifests/query-provenance.json",
+        "validation_evidence_path": "manifests/evidence/query-provenance.json",
+    }
+    query_request_path = tmp_path / "query-request.json"
+    query_request_path.write_text(json.dumps(query_request), encoding="utf-8")
+    query_times = iter(["2026-08-23T01:00:00Z", "2026-08-23T01:00:01Z"])
+    monkeypatch.setattr(search, "_now_utc", lambda: next(query_times))
+    query_result = search.materialize_query_set_request(query_request_path)
+    query_manifest = json.loads(
+        Path(query_result["manifest_path"]).read_text(encoding="utf-8")
+    )
+    search._schema_validator(
+        "build-manifest.schema.json", search._repository_root()
+    ).validate(query_manifest)
+    assert query_manifest["started_at"] == "2026-08-23T01:00:00Z"
+    assert query_manifest["ended_at"] == "2026-08-23T01:00:01Z"
+    assert query_manifest["source"] == project_source
+    assert query_manifest["toolchain"]["compiler_path"] == sys.executable
+    assert query_manifest["toolchain"]["generator"] == "python-harness"
+    assert query_manifest["parameters"]["source_csv"]["sha256"] == search._sha256(csv_path)
+
+    query_reference = json.loads(
+        Path(query_result["reference_path"]).read_text(encoding="utf-8")
+    )
+    groundtruth_binary = tmp_path / "bin/compute_groundtruth"
+    groundtruth_binary.parent.mkdir(parents=True)
+    groundtruth_binary.write_bytes(b"fixture-compute-groundtruth")
+    truth_request = {
+        **common,
+        "run_id": "truth-provenance",
+        "compute_groundtruth_binary": str(groundtruth_binary),
+        "compute_groundtruth_sha256": search._sha256(groundtruth_binary),
+        "dataset_payload": str(tmp_path / "dataset.bin"),
+        "query_payload": str(tmp_path / query_reference["native_payload"]["path"]),
+        "payload_path": "inputs/truth.bin",
+        "query_count": 1,
+        "width": 101,
+        "ground_truth_id": "truth-provenance",
+        "dataset_artifact": {
+            "metadata_path": "dataset/artifact.json",
+            "artifact_type": "dataset",
+            "format_version": "diskann-float32-dataset/v1",
+            "aggregate_checksum": "a" * 64,
+        },
+        "query_set_checksum": query_reference["canonical_checksum"],
+        "reference_path": "inputs/truth-reference.json",
+        "manifest_path": "manifests/truth-provenance.json",
+        "validation_evidence_path": "manifests/evidence/truth-provenance.json",
+        "stdout_path": "reports/truth.stdout",
+        "stderr_path": "reports/truth.stderr",
+    }
+    truth_request_path = tmp_path / "truth-request.json"
+    truth_request_path.write_text(json.dumps(truth_request), encoding="utf-8")
+
+    def groundtruth_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        output = Path(argv[argv.index("--gt_file") + 1])
+        ids = list(range(101))
+        distances = [float(index) for index in ids]
+        output.write_bytes(
+            struct.pack("<II", 1, 101)
+            + struct.pack("<101I", *ids)
+            + struct.pack("<101f", *distances)
+        )
+        return subprocess.CompletedProcess(argv, 0, "fixture stdout", "")
+
+    monkeypatch.setattr(search.subprocess, "run", groundtruth_run)
+    truth_times = iter(["2026-08-23T02:00:00Z", "2026-08-23T02:00:02Z"])
+    monkeypatch.setattr(search, "_now_utc", lambda: next(truth_times))
+    truth_result = search.materialize_ground_truth_request(truth_request_path)
+    truth_manifest = json.loads(
+        Path(truth_result["manifest_path"]).read_text(encoding="utf-8")
+    )
+    search._schema_validator(
+        "build-manifest.schema.json", search._repository_root()
+    ).validate(truth_manifest)
+    assert truth_manifest["started_at"] == "2026-08-23T02:00:00Z"
+    assert truth_manifest["ended_at"] == "2026-08-23T02:00:02Z"
+    assert truth_manifest["source"] == project_source
+    assert truth_manifest["toolchain"] == native_toolchain
+    assert truth_manifest["parameters"]["diskann_source"] == {
+        "repository": "https://github.com/microsoft/DiskANN.git",
+        "branch": "cpp_main",
+        "commit": "78256bbab4685e1774e78d331e081a153be26823",
+        "dirty_worktree": False,
+    }
+    assert truth_manifest["parameters"]["compute_groundtruth_binary"] == {
+        "path": str(groundtruth_binary),
+        "expected_sha256": search._sha256(groundtruth_binary),
+        "actual_sha256": search._sha256(groundtruth_binary),
+        "sha256": search._sha256(groundtruth_binary),
+    }
+
+    failed_truth_request = {
+        **truth_request,
+        "run_id": "truth-failure-provenance",
+        "payload_path": "inputs/truth-failure.bin",
+        "reference_path": "inputs/truth-failure-reference.json",
+        "manifest_path": "manifests/truth-failure-provenance.json",
+        "validation_evidence_path": "manifests/evidence/truth-failure.json",
+        "stdout_path": "reports/truth-failure.stdout",
+        "stderr_path": "reports/truth-failure.stderr",
+    }
+    failed_truth_request_path = tmp_path / "truth-failure-request.json"
+    failed_truth_request_path.write_text(
+        json.dumps(failed_truth_request), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        search.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(
+            argv, 7, "fixture failure stdout", "fixture failure stderr"
+        ),
+    )
+    failed_truth_times = iter(
+        ["2026-08-23T02:30:00Z", "2026-08-23T02:30:00Z"]
+    )
+    monkeypatch.setattr(search, "_now_utc", lambda: next(failed_truth_times))
+    with pytest.raises(search.SearchEvaluationError):
+        search.materialize_ground_truth_request(failed_truth_request_path)
+    failed_truth_manifest = json.loads(
+        (tmp_path / failed_truth_request["manifest_path"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    search._schema_validator(
+        "build-manifest.schema.json", search._repository_root()
+    ).validate(failed_truth_manifest)
+    assert failed_truth_manifest["status"] == "FAILED"
+    assert failed_truth_manifest["started_at"] == "2026-08-23T02:30:00Z"
+    assert failed_truth_manifest["ended_at"] == "2026-08-23T02:30:00Z"
+    assert failed_truth_manifest["failure"]["exit_code"] == 7
+
+
+def test_input_materialization_failure_manifests_capture_terminal_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_source = {
+        "repository": "https://example.invalid/project.git",
+        "branch": "feature/search-evaluation",
+        "commit": "b" * 40,
+        "dirty_worktree": False,
+    }
+    monkeypatch.setattr(search, "_git_source_identity", lambda root: project_source)
+    request = {
+        "workspace_root": str(tmp_path),
+        "run_id": "query-failure-provenance",
+        "source": project_source,
+        "toolchain": {
+            "os": "linux", "compiler_path": "/usr/bin/c++",
+            "compiler_version": "11", "cmake_version": "3.22",
+            "generator": "Unix Makefiles", "build_type": "Release",
+            "cmake_definitions": ["CMAKE_BUILD_TYPE=Release"],
+            "compile_commands": ["c++ -O3 -DNDEBUG"],
+            "link_commands": ["compute_groundtruth"],
+        },
+        "dataset_identity": {
+            "dataset_id": "small", "dataset_checksum": "d" * 64,
+            "global_node_count": 256, "vector_dimension": 4,
+            "scalar_type": "float32", "distance_metric": "l2",
+        },
+        "resource_budget": {"memory_budget_bytes": 1, "thread_budget": 1},
+        "started_at": "2000-01-01T00:00:00Z",
+        "ended_at": "2000-01-01T00:00:00Z",
+        "input_artifacts": [],
+        "source_csv": str(tmp_path / "missing.csv"),
+        "source_byte_length": 1,
+        "source_sha256": "a" * 64,
+        "query_set_id": "missing",
+        "dimension": 4,
+        "query_count": 1,
+        "reference_path": "inputs/missing-reference.json",
+        "manifest_path": "manifests/query-failure-provenance.json",
+        "validation_evidence_path": "manifests/evidence/query-failure.json",
+    }
+    path = tmp_path / "query-failure-request.json"
+    path.write_text(json.dumps(request), encoding="utf-8")
+    times = iter(["2026-08-23T03:00:00Z", "2026-08-23T03:00:00Z"])
+    monkeypatch.setattr(search, "_now_utc", lambda: next(times))
+    with pytest.raises(Exception):
+        search.materialize_query_set_request(path)
+    manifest = json.loads(
+        (tmp_path / request["manifest_path"]).read_text(encoding="utf-8")
+    )
+    search._schema_validator(
+        "build-manifest.schema.json", search._repository_root()
+    ).validate(manifest)
+    assert manifest["status"] == "FAILED"
+    assert manifest["started_at"] == "2026-08-23T03:00:00Z"
+    assert manifest["ended_at"] == "2026-08-23T03:00:00Z"
+
+
+@pytest.mark.parametrize(
+    ("binary_case", "expected_reason"),
+    [
+        ("missing", "compute_groundtruth binary is missing"),
+        ("checksum-mismatch", "compute_groundtruth binary checksum mismatch"),
+    ],
+)
+def test_ground_truth_binary_admission_retains_failed_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    binary_case: str,
+    expected_reason: str,
+) -> None:
+    project_source = {
+        "repository": "https://example.invalid/project.git",
+        "branch": "feature/search-evaluation",
+        "commit": "b" * 40,
+        "dirty_worktree": False,
+    }
+    monkeypatch.setattr(search, "_git_source_identity", lambda root: project_source)
+    binary = tmp_path / "bin/compute_groundtruth"
+    if binary_case == "checksum-mismatch":
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(b"unexpected binary")
+    request = {
+        "workspace_root": str(tmp_path),
+        "run_id": f"truth-binary-{binary_case}",
+        "source": project_source,
+        "toolchain": {
+            "os": "linux",
+            "compiler_path": "/usr/bin/c++",
+            "compiler_version": "11",
+            "cmake_version": "3.22",
+            "generator": "Unix Makefiles",
+            "build_type": "Release",
+            "cmake_definitions": ["CMAKE_BUILD_TYPE=Release"],
+            "compile_commands": ["c++ -O3 -DNDEBUG"],
+            "link_commands": ["compute_groundtruth"],
+        },
+        "dataset_identity": {
+            "dataset_id": "small",
+            "dataset_checksum": "d" * 64,
+            "global_node_count": 256,
+            "vector_dimension": 4,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        },
+        "resource_budget": {"memory_budget_bytes": 1024, "thread_budget": 1},
+        "started_at": "2000-01-01T00:00:00Z",
+        "ended_at": "2000-01-01T00:00:00Z",
+        "input_artifacts": [],
+        "compute_groundtruth_binary": str(binary),
+        "compute_groundtruth_sha256": "e" * 64,
+        "dataset_payload": str(tmp_path / "dataset.bin"),
+        "query_payload": str(tmp_path / "query.bin"),
+        "payload_path": "inputs/truth.bin",
+        "query_count": 1,
+        "width": 101,
+        "ground_truth_id": "truth-binary-admission",
+        "dataset_artifact": {
+            "metadata_path": "dataset/artifact.json",
+            "artifact_type": "dataset",
+            "format_version": "diskann-float32-dataset/v1",
+            "aggregate_checksum": "a" * 64,
+        },
+        "query_set_checksum": "c" * 64,
+        "reference_path": "inputs/truth-reference.json",
+        "manifest_path": f"manifests/truth-binary-{binary_case}.json",
+        "validation_evidence_path": "manifests/evidence/truth.json",
+        "stdout_path": "reports/truth.stdout",
+        "stderr_path": "reports/truth.stderr",
+    }
+    request_path = tmp_path / f"truth-binary-{binary_case}-request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    subprocess_called = False
+
+    def unexpected_subprocess(*args: object, **kwargs: object) -> None:
+        nonlocal subprocess_called
+        subprocess_called = True
+        pytest.fail("binary admission failure must not execute subprocess")
+
+    monkeypatch.setattr(search.subprocess, "run", unexpected_subprocess)
+    times = iter(["2026-08-23T04:00:00Z", "2026-08-23T04:00:01Z"])
+    monkeypatch.setattr(search, "_now_utc", lambda: next(times))
+
+    with pytest.raises(search.SearchEvaluationError, match=expected_reason):
+        search.materialize_ground_truth_request(request_path)
+
+    assert not subprocess_called
+    manifest_path = tmp_path / request["manifest_path"]
+    assert manifest_path.is_file()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    search._schema_validator(
+        "build-manifest.schema.json", search._repository_root()
+    ).validate(manifest)
+    assert manifest["status"] == "FAILED"
+    assert manifest["started_at"] == "2026-08-23T04:00:00Z"
+    assert manifest["ended_at"] == "2026-08-23T04:00:01Z"
+    assert manifest["started_at"] != request["started_at"]
+    assert manifest["ended_at"] != request["ended_at"]
+    assert expected_reason in manifest["failure"]["reason"]
+    binary_identity = manifest["parameters"]["compute_groundtruth_binary"]
+    assert binary_identity["path"] == str(binary)
+    assert binary_identity["expected_sha256"] == request["compute_groundtruth_sha256"]
+    if binary_case == "missing":
+        assert "actual_sha256" not in binary_identity
+    else:
+        assert binary_identity["actual_sha256"] == search._sha256(binary)
+    assert not (tmp_path / request["reference_path"]).exists()
+    assert not (tmp_path / request["payload_path"]).exists()
 
 
 def _protocol(cache_mode: str) -> dict:

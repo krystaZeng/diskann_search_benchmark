@@ -19,7 +19,9 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -34,6 +36,40 @@ constexpr const char* kPinnedRepository =
 constexpr const char* kPinnedBranch = "cpp_main";
 constexpr const char* kPinnedCommit =
     "78256bbab4685e1774e78d331e081a153be26823";
+
+std::string now_utc() {
+  const auto now = std::chrono::system_clock::now();
+  const auto time = std::chrono::system_clock::to_time_t(now);
+  std::tm utc{};
+#if defined(_WIN32)
+  gmtime_s(&utc, &time);
+#else
+  gmtime_r(&time, &utc);
+#endif
+  std::ostringstream output;
+  output << std::put_time(&utc, "%Y-%m-%dT%H:%M:%SZ");
+  return output.str();
+}
+
+Json source_json(const SourceIdentity& source) {
+  Json result{{"repository", source.repository},
+              {"branch", source.branch},
+              {"commit", source.commit},
+              {"dirty_worktree", source.dirty_worktree}};
+  if (source.dirty_source_checksum) {
+    result["dirty_source_checksum"] = *source.dirty_source_checksum;
+  }
+  return result;
+}
+
+std::string materialization_parameters(const MaterializationRequest& request,
+                                       Json parameters) {
+  parameters["diskann_source"] = source_json(request.diskann_source);
+  parameters["runner_binary"] = {
+      {"path", request.runner_binary_path.string()},
+      {"sha256", request.runner_binary_sha256}};
+  return parameters.dump();
+}
 
 Json artifact_json(const ArtifactRef& value) {
   return {{"artifact_type", to_string(value.artifact_type)},
@@ -153,11 +189,17 @@ std::string aggregate_for(const Json& metadata) {
 
 void require_request(const MaterializationRequest& request, bool layout) {
   if (request.run_id.empty() || request.started_at.empty() ||
-      request.ended_at.empty() || request.resource_budget.memory_budget_bytes == 0 ||
+      request.resource_budget.memory_budget_bytes == 0 ||
       request.resource_budget.thread_budget == 0 ||
-      request.source.repository != kPinnedRepository ||
-      request.source.branch != kPinnedBranch ||
-      request.source.commit != kPinnedCommit || request.source.dirty_worktree ||
+      request.source.repository.empty() || request.source.branch.empty() ||
+      request.source.commit.size() != 40 ||
+      request.source.repository == kPinnedRepository ||
+      request.diskann_source.repository != kPinnedRepository ||
+      request.diskann_source.branch != kPinnedBranch ||
+      request.diskann_source.commit != kPinnedCommit ||
+      request.diskann_source.dirty_worktree ||
+      request.runner_binary_path.empty() ||
+      request.runner_binary_sha256.size() != 64 ||
       request.dataset.artifact_type != ArtifactType::kDataset ||
       (layout && (!request.global_graph ||
                   request.global_graph->artifact_type !=
@@ -185,9 +227,12 @@ BuildManifest base_manifest(const MaterializationRequest& request,
   }
   manifest.parameters_json = parameters;
   manifest.started_at = request.started_at;
-  manifest.ended_at = request.ended_at;
   manifest.metrics_json = "{}";
   return manifest;
+}
+
+void finish_manifest(BuildManifest& manifest) {
+  manifest.ended_at = now_utc();
 }
 
 std::filesystem::path publish_candidate(
@@ -219,6 +264,7 @@ MaterializationResult retained_failure(const WorkspaceRef& workspace,
                                        FailureInfo failure) {
   manifest.status = status;
   manifest.failure = failure;
+  finish_manifest(manifest);
   const auto path = persist_terminal_build_manifest(workspace, manifest);
   return {status, std::nullopt, path, {}, std::nullopt, std::move(failure)};
 }
@@ -267,14 +313,14 @@ MaterializationResult PostGraphMaterializer::materialize_pq(
   const PqGenerationPolicy policy;
   auto manifest = base_manifest(
       request, descriptor,
-      Json{{"B", policy.memory_budget_gib},
-           {"QD", policy.qd},
-           {"pq_chunks", policy.pq_chunks},
-           {"sample_rate", policy.sample_rate},
-           {"centroid_count", policy.centroid_count},
-           {"opq", policy.opq},
-           {"distance_metric", policy.distance_metric}}
-          .dump());
+      materialization_parameters(
+          request, Json{{"B", policy.memory_budget_gib},
+                        {"QD", policy.qd},
+                        {"pq_chunks", policy.pq_chunks},
+                        {"sample_rate", policy.sample_rate},
+                        {"centroid_count", policy.centroid_count},
+                        {"opq", policy.opq},
+                        {"distance_metric", policy.distance_metric}}));
   try {
     require_request(request, false);
     if (cancellation_ != nullptr && cancellation_->is_cancelled()) {
@@ -357,12 +403,13 @@ MaterializationResult PostGraphMaterializer::materialize_pq(
                           "PQ candidate failed validation", std::nullopt};
       manifest.validation_evidence_path =
           std::filesystem::relative(evidence_path, workspace_.root);
+      finish_manifest(manifest);
       const auto manifest_path =
           persist_terminal_build_manifest(workspace_, manifest);
       const auto quarantine_id = request.run_id + "-pq-invalid";
       QuarantineManager(workspace_).publish(
           quarantine_id, candidate_root, candidate_root / "artifact.json",
-          manifest_path, evidence_path, *manifest.failure, request.ended_at);
+          manifest_path, evidence_path, *manifest.failure, manifest.ended_at);
       return {StageStatus::kInvalidOutput, std::nullopt, manifest_path,
               evidence_path, quarantine_id, manifest.failure};
     }
@@ -383,6 +430,7 @@ MaterializationResult PostGraphMaterializer::materialize_pq(
     manifest.output_artifacts = {published};
     manifest.validation_evidence_path =
         std::filesystem::relative(final_evidence, workspace_.root);
+    finish_manifest(manifest);
     const auto manifest_path =
         persist_terminal_build_manifest(workspace_, manifest);
     return {StageStatus::kSucceeded, published, manifest_path, final_evidence,
@@ -407,13 +455,13 @@ MaterializationResult PostGraphMaterializer::materialize_disk_layout(
   policy.centroid_policy = request.centroid_policy;
   auto manifest = base_manifest(
       request, descriptor,
-      Json{{"scalar_type", policy.scalar_type},
-           {"pq_disk_bytes", policy.pq_disk_bytes},
-           {"reorder", policy.reorder},
-           {"labels", policy.labels},
-           {"entry_policy", policy.entry_policy},
-           {"centroid_policy", policy.centroid_policy}}
-          .dump());
+      materialization_parameters(
+          request, Json{{"scalar_type", policy.scalar_type},
+                        {"pq_disk_bytes", policy.pq_disk_bytes},
+                        {"reorder", policy.reorder},
+                        {"labels", policy.labels},
+                        {"entry_policy", policy.entry_policy},
+                        {"centroid_policy", policy.centroid_policy}}));
   try {
     require_request(request, true);
     if (policy.centroid_policy != "medoid_vector_fallback") {
@@ -531,12 +579,13 @@ MaterializationResult PostGraphMaterializer::materialize_disk_layout(
                           "DiskLayout candidate failed validation", std::nullopt};
       manifest.validation_evidence_path =
           std::filesystem::relative(evidence_path, workspace_.root);
+      finish_manifest(manifest);
       const auto manifest_path =
           persist_terminal_build_manifest(workspace_, manifest);
       const auto quarantine_id = request.run_id + "-layout-invalid";
       QuarantineManager(workspace_).publish(
           quarantine_id, candidate_root, candidate_root / "artifact.json",
-          manifest_path, evidence_path, *manifest.failure, request.ended_at);
+          manifest_path, evidence_path, *manifest.failure, manifest.ended_at);
       return {StageStatus::kInvalidOutput, std::nullopt, manifest_path,
               evidence_path, quarantine_id, manifest.failure};
     }
@@ -558,6 +607,7 @@ MaterializationResult PostGraphMaterializer::materialize_disk_layout(
     manifest.output_artifacts = {published};
     manifest.validation_evidence_path =
         std::filesystem::relative(final_evidence, workspace_.root);
+    finish_manifest(manifest);
     const auto manifest_path =
         persist_terminal_build_manifest(workspace_, manifest);
     return {StageStatus::kSucceeded, published, manifest_path, final_evidence,

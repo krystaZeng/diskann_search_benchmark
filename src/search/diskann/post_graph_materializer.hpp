@@ -46,11 +46,13 @@ struct MaterializationRequest {
   ArtifactRef dataset;
   std::optional<ArtifactRef> global_graph;
   SourceIdentity source;
+  SourceIdentity diskann_source;
   ToolchainIdentity toolchain;
   ResourceBudget resource_budget;
+  std::filesystem::path runner_binary_path;
+  std::string runner_binary_sha256;
   std::string centroid_policy{"medoid_vector_fallback"};
   std::string started_at;
-  std::string ended_at;
 };
 
 struct MaterializationResult {

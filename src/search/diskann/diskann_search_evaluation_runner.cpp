@@ -63,6 +63,25 @@ dp::ArtifactRef artifact_ref(const Json& value) {
   return dp::parse_artifact_ref(value.dump());
 }
 
+std::string on_off(bool value) { return value ? "ON" : "OFF"; }
+
+dp::SourceIdentity configured_project_source() {
+  dp::SourceIdentity source{DISKANN_SEARCH_PROJECT_REPOSITORY,
+                            DISKANN_SEARCH_PROJECT_BRANCH,
+                            DISKANN_SEARCH_PROJECT_COMMIT,
+                            DISKANN_SEARCH_PROJECT_DIRTY != 0, std::nullopt};
+  if (source.dirty_worktree) {
+    source.dirty_source_checksum = DISKANN_SEARCH_PROJECT_DIRTY_CHECKSUM;
+  }
+  return source;
+}
+
+dp::SourceIdentity configured_diskann_source() {
+  return {"https://github.com/microsoft/DiskANN.git", "cpp_main",
+          "78256bbab4685e1774e78d331e081a153be26823", false,
+          std::nullopt};
+}
+
 dp::ToolchainIdentity configured_toolchain() {
   return {DISKANN_SEARCH_SYSTEM_NAME,
           DISKANN_SEARCH_CXX_COMPILER,
@@ -70,9 +89,24 @@ dp::ToolchainIdentity configured_toolchain() {
           DISKANN_SEARCH_CMAKE_VERSION,
           DISKANN_SEARCH_CMAKE_GENERATOR,
           DISKANN_SEARCH_BUILD_TYPE,
-          {"DISKANN_CPP_MAIN_BASELINE=ON", "DISKANN_SEARCH_EVALUATION=ON"},
-          {"cmake --build build/diskann-search-evaluation"},
-          {"diskann_s", "diskann_search_evaluation_runner"}};
+          {std::string("CMAKE_BUILD_TYPE=") + DISKANN_SEARCH_BUILD_TYPE,
+           std::string("BUILD_TESTING=") +
+               on_off(DISKANN_SEARCH_BUILD_TESTING != 0),
+           std::string("DISKANN_CPP_MAIN_BASELINE=") +
+               on_off(DISKANN_SEARCH_BASELINE_ENABLED != 0),
+           std::string("DISKANN_SEARCH_EVALUATION=") +
+               on_off(DISKANN_SEARCH_FEATURE_ENABLED != 0),
+           std::string("CMAKE_EXPORT_COMPILE_COMMANDS=") +
+               on_off(DISKANN_SEARCH_EXPORT_COMPILE_COMMANDS != 0),
+           std::string("DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE=") +
+               on_off(DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE != 0)},
+          {std::string(DISKANN_SEARCH_CXX_COMPILER) + " -std=c++17 " +
+           DISKANN_SEARCH_EFFECTIVE_CXX_FLAGS +
+           " [target=diskann_search_evaluation_runner]"},
+          {std::string(DISKANN_SEARCH_CXX_COMPILER) +
+           " [target=diskann_search_evaluation_runner; links="
+           "diskann_pipeline::core,nlohmann_json::nlohmann_json,"
+           "diskann_cpp_main_upstream,OpenMP::OpenMP_CXX]"}};
 }
 
 const dp::PayloadRef& payload(const dp::ValidatedArtifact& artifact,
@@ -130,27 +164,33 @@ class NeverCancelled final : public dp::CancellationToken {
   bool is_cancelled() const noexcept override { return false; }
 };
 
-int materialize(const std::filesystem::path& request_path) {
+int materialize(const std::filesystem::path& request_path,
+                const std::filesystem::path& executable_path) {
   const auto json = read_json(request_path);
   const auto workspace = dp::create_workspace(
       json.at("workspace").at("root").get<std::string>());
+  const auto runner_binary = std::filesystem::weakly_canonical(executable_path);
+  if (!std::filesystem::is_regular_file(runner_binary)) {
+    throw dp::PipelineError(dp::ErrorCategory::kPayloadMissing,
+                            "materialization runner binary is missing");
+  }
   ds::MaterializationRequest request;
   request.run_id = json.at("run_id").get<std::string>();
   request.dataset = artifact_ref(json.at("dataset"));
   if (json.contains("global_graph")) {
     request.global_graph = artifact_ref(json.at("global_graph"));
   }
-  request.source = {"https://github.com/microsoft/DiskANN.git", "cpp_main",
-                    "78256bbab4685e1774e78d331e081a153be26823", false,
-                    std::nullopt};
+  request.source = configured_project_source();
+  request.diskann_source = configured_diskann_source();
   request.toolchain = configured_toolchain();
   request.resource_budget = {
       json.at("resource_budget").at("memory_budget_bytes").get<std::uint64_t>(),
       json.at("resource_budget").at("thread_budget").get<std::uint32_t>()};
   request.centroid_policy =
       json.at("parameters").value("centroid_policy", "medoid_vector_fallback");
+  request.runner_binary_path = runner_binary;
+  request.runner_binary_sha256 = dp::sha256_file(runner_binary);
   request.started_at = now_utc();
-  request.ended_at = request.started_at;
   NeverCancelled cancellation;
   ds::PostGraphMaterializer operation(workspace,
                                       ds::fixed_native_post_graph_calls(),
@@ -542,7 +582,7 @@ int main(int argc, char** argv) {
     }
     const std::string operation = argv[1];
     if (operation == "materialize") {
-      return materialize(argument(argc, argv, "--request"));
+      return materialize(argument(argc, argv, "--request"), argv[0]);
     }
     if (operation == "load-probe") {
       return load_probe(argument(argc, argv, "--workspace"),

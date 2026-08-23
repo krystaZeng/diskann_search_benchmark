@@ -46,9 +46,34 @@ _LAYOUT_PARAMETERS = {
     "centroid_policy": "medoid_vector_fallback",
 }
 
+_PINNED_DISKANN_SOURCE = {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "dirty_worktree": False,
+}
+
 
 def _repository_root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _python_harness_toolchain() -> dict[str, Any]:
+    return {
+        "os": platform.platform(),
+        "compiler_path": sys.executable,
+        "compiler_version": platform.python_version(),
+        "cmake_version": "not-applicable-python-harness",
+        "generator": "python-harness",
+        "build_type": "interpreted",
+        "cmake_definitions": [],
+        "compile_commands": [],
+        "link_commands": [],
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -79,14 +104,24 @@ def _git_source_identity(repository_root: Path) -> dict[str, Any]:
             )
         return result.stdout.strip()
 
-    return {
+    status = git("status", "--porcelain=v1", "--untracked-files=all")
+    identity = {
         "repository": git("remote", "get-url", "origin"),
         "branch": git("branch", "--show-current"),
         "commit": git("rev-parse", "HEAD"),
-        "dirty_worktree": bool(
-            git("status", "--porcelain=v1", "--untracked-files=all")
-        ),
+        "dirty_worktree": bool(status),
     }
+    if status:
+        tracked = git("diff", "--binary", "HEAD")
+        material = f"status:\n{status}\ntracked:\n{tracked}"
+        for relative in git("ls-files", "--others", "--exclude-standard").splitlines():
+            path = repository_root / relative
+            if path.is_file():
+                material += f"\nuntracked:{relative}:{_sha256(path)}"
+        identity["dirty_source_checksum"] = hashlib.sha256(
+            material.encode()
+        ).hexdigest()
+    return identity
 
 
 def _physical_memory_bytes() -> int:
@@ -318,16 +353,17 @@ def _read_request(path: str | Path) -> dict[str, Any]:
 
 def _manifest_document(
     request: dict[str, Any], *, implementation_id: str, parameters: dict[str, Any],
-    status: str, failure: dict[str, Any] | None = None,
+    source: dict[str, Any], toolchain: dict[str, Any], started_at: str,
+    ended_at: str, status: str, failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     manifest = {
         "manifest_version": "1.0.0", "run_id": request["run_id"], "stage": "build",
         "implementation": {"implementation_id": implementation_id, "implementation_version": "1.0.0"},
-        "source": request["source"], "toolchain": request["toolchain"],
+        "source": source, "toolchain": toolchain,
         "dataset": request["dataset_identity"], "parameters": parameters,
         "resource_budget": request["resource_budget"], "input_artifacts": request.get("input_artifacts", []),
         "output_artifacts": [], "status": status,
-        "started_at": request["started_at"], "ended_at": request["ended_at"],
+        "started_at": started_at, "ended_at": ended_at,
     }
     if failure is not None:
         manifest["failure"] = failure
@@ -358,6 +394,9 @@ def _input_evidence(
 def materialize_query_set_request(request_path: str | Path) -> dict[str, Any]:
     request = _read_request(request_path)
     root = Path(request["workspace_root"]).resolve()
+    project_source = _git_source_identity(_repository_root())
+    toolchain = _python_harness_toolchain()
+    started_at = _now_utc()
     try:
         source = Path(request["source_csv"])
         if source.stat().st_size != request["source_byte_length"] or _sha256(source) != request["source_sha256"]:
@@ -389,7 +428,19 @@ def materialize_query_set_request(request_path: str | Path) -> dict[str, Any]:
             manifest_path,
             _manifest_document(
                 request, implementation_id="selected_query_csv_to_diskann_float32_v1",
-                parameters={"query_identity": "query_row_index", "source_query_id_semantics": "opaque", "self_match_policy": "no_id_based_exclusion", "output_reference": request["reference_path"]},
+                parameters={
+                    "source_csv": {
+                        "path": str(source),
+                        "byte_length": source.stat().st_size,
+                        "sha256": _sha256(source),
+                    },
+                    "query_identity": "query_row_index",
+                    "source_query_id_semantics": "opaque",
+                    "self_match_policy": "no_id_based_exclusion",
+                    "output_reference": request["reference_path"],
+                },
+                source=project_source, toolchain=toolchain,
+                started_at=started_at, ended_at=_now_utc(),
                 status="SUCCEEDED",
             ),
         )
@@ -401,7 +452,9 @@ def materialize_query_set_request(request_path: str | Path) -> dict[str, Any]:
                 manifest_path,
                 _manifest_document(
                     request, implementation_id="selected_query_csv_to_diskann_float32_v1",
-                    parameters={"source_csv": request.get("source_csv", "")}, status="FAILED",
+                    parameters={"source_csv": request.get("source_csv", "")},
+                    source=project_source, toolchain=toolchain,
+                    started_at=started_at, ended_at=_now_utc(), status="FAILED",
                     failure={"category": "schema_invalid", "reason": str(error)},
                 ),
             )
@@ -432,38 +485,93 @@ def _validate_truth_payload(path: Path, *, query_count: int, width: int, node_co
 def materialize_ground_truth_request(request_path: str | Path) -> dict[str, Any]:
     request = _read_request(request_path)
     root = Path(request["workspace_root"]).resolve()
+    project_source = _git_source_identity(_repository_root())
     binary = Path(request["compute_groundtruth_binary"])
-    if not binary.is_file() or _sha256(binary) != request["compute_groundtruth_sha256"]:
-        raise SearchEvaluationError("compute_groundtruth binary identity mismatch")
     output = root / request["payload_path"]
-    output.parent.mkdir(parents=True, exist_ok=True)
     argv = [str(binary), "--data_type", "float", "--dist_fn", "l2", "--base_file", request["dataset_payload"], "--query_file", request["query_payload"], "--gt_file", str(output), "--K", str(request["width"])]
-    completed = subprocess.run(argv, check=False, capture_output=True, text=True)
     stdout_path = root / request["stdout_path"]
     stderr_path = root / request["stderr_path"]
-    _write_immutable_bytes(stdout_path, completed.stdout.encode())
-    _write_immutable_bytes(stderr_path, completed.stderr.encode())
     manifest_path = root / request["manifest_path"]
-    if completed.returncode != 0:
-        write_immutable_json(manifest_path, _manifest_document(request, implementation_id="cpp_main_compute_groundtruth_exact_l2_v1", parameters={"argv": argv, "stdout": request["stdout_path"], "stderr": request["stderr_path"]}, status="FAILED", failure={"category": "process_failed", "reason": "compute_groundtruth returned nonzero", "exit_code": completed.returncode}))
-        raise SearchEvaluationError("compute_groundtruth failed")
-    _validate_truth_payload(output, query_count=request["query_count"], width=request["width"], node_count=request["dataset_identity"]["global_node_count"])
-    reference = {
-        "reference_version": "1.0.0", "ground_truth_id": request["ground_truth_id"],
-        "payload": {"path": request["payload_path"], "format": "diskann-truthset", "byte_length": output.stat().st_size, "sha256": _sha256(output)},
-        "query_count": request["query_count"], "width": request["width"], "id_space": "global",
-        "distance_metric": "l2_squared_float32", "dataset_artifact": request["dataset_artifact"],
-        "query_set_checksum": request["query_set_checksum"], "self_match_policy": "no_id_based_exclusion",
-        "rank_100_tie_group_closed": True, "generation_manifest_path": request["manifest_path"],
-        "validation_evidence_path": request["validation_evidence_path"],
+    binary_identity = {
+        "path": str(binary),
+        "expected_sha256": request["compute_groundtruth_sha256"],
     }
-    reference["canonical_checksum"] = _canonical_digest(reference)
-    reference_path = root / request["reference_path"]
-    evidence_path = root / request["validation_evidence_path"]
-    write_immutable_json(reference_path, reference)
-    write_immutable_json(evidence_path, _input_evidence(candidate_path=request["reference_path"], format_version="ground-truth-reference/v1", checksum=reference["canonical_checksum"], valid=True, message="exact L2 truth header, width, ID range, distance order, checksum, and tie closure passed"))
-    write_immutable_json(manifest_path, _manifest_document(request, implementation_id="cpp_main_compute_groundtruth_exact_l2_v1", parameters={"argv": argv, "stdout": request["stdout_path"], "stderr": request["stderr_path"], "output_reference": request["reference_path"]}, status="SUCCEEDED"))
-    return {"status": "SUCCEEDED", "reference_path": str(reference_path), "manifest_path": str(manifest_path), "validation_evidence_path": str(evidence_path)}
+    started_at = _now_utc()
+    completed: subprocess.CompletedProcess[str] | None = None
+
+    def parameters(output_reference: str | None = None) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "argv": argv,
+            "stdout": request["stdout_path"],
+            "stderr": request["stderr_path"],
+            "diskann_source": _PINNED_DISKANN_SOURCE,
+            "compute_groundtruth_binary": binary_identity,
+        }
+        if output_reference is not None:
+            value["output_reference"] = output_reference
+        return value
+
+    try:
+        if not binary.is_file():
+            raise SearchEvaluationError("compute_groundtruth binary is missing")
+        actual_binary_sha256 = _sha256(binary)
+        binary_identity["actual_sha256"] = actual_binary_sha256
+        if actual_binary_sha256 != request["compute_groundtruth_sha256"]:
+            raise SearchEvaluationError(
+                "compute_groundtruth binary checksum mismatch"
+            )
+        binary_identity["sha256"] = actual_binary_sha256
+        output.parent.mkdir(parents=True, exist_ok=True)
+        completed = subprocess.run(argv, check=False, capture_output=True, text=True)
+        _write_immutable_bytes(stdout_path, completed.stdout.encode())
+        _write_immutable_bytes(stderr_path, completed.stderr.encode())
+        if completed.returncode != 0:
+            raise SearchEvaluationError("compute_groundtruth returned nonzero")
+        _validate_truth_payload(output, query_count=request["query_count"], width=request["width"], node_count=request["dataset_identity"]["global_node_count"])
+        reference = {
+            "reference_version": "1.0.0", "ground_truth_id": request["ground_truth_id"],
+            "payload": {"path": request["payload_path"], "format": "diskann-truthset", "byte_length": output.stat().st_size, "sha256": _sha256(output)},
+            "query_count": request["query_count"], "width": request["width"], "id_space": "global",
+            "distance_metric": "l2_squared_float32", "dataset_artifact": request["dataset_artifact"],
+            "query_set_checksum": request["query_set_checksum"], "self_match_policy": "no_id_based_exclusion",
+            "rank_100_tie_group_closed": True, "generation_manifest_path": request["manifest_path"],
+            "validation_evidence_path": request["validation_evidence_path"],
+        }
+        reference["canonical_checksum"] = _canonical_digest(reference)
+        reference_path = root / request["reference_path"]
+        evidence_path = root / request["validation_evidence_path"]
+        write_immutable_json(reference_path, reference)
+        write_immutable_json(evidence_path, _input_evidence(candidate_path=request["reference_path"], format_version="ground-truth-reference/v1", checksum=reference["canonical_checksum"], valid=True, message="exact L2 truth header, width, ID range, distance order, checksum, and tie closure passed"))
+        write_immutable_json(
+            manifest_path,
+            _manifest_document(
+                request,
+                implementation_id="cpp_main_compute_groundtruth_exact_l2_v1",
+                parameters=parameters(request["reference_path"]),
+                source=project_source, toolchain=request["toolchain"],
+                started_at=started_at, ended_at=_now_utc(), status="SUCCEEDED",
+            ),
+        )
+        return {"status": "SUCCEEDED", "reference_path": str(reference_path), "manifest_path": str(manifest_path), "validation_evidence_path": str(evidence_path)}
+    except Exception as error:
+        if not manifest_path.exists():
+            failure: dict[str, Any] = {
+                "category": "process_failed" if completed is not None and completed.returncode != 0 else "schema_invalid",
+                "reason": str(error),
+            }
+            if completed is not None:
+                failure["exit_code"] = completed.returncode
+            write_immutable_json(
+                manifest_path,
+                _manifest_document(
+                    request,
+                    implementation_id="cpp_main_compute_groundtruth_exact_l2_v1",
+                    parameters=parameters(), source=project_source,
+                    toolchain=request["toolchain"], started_at=started_at,
+                    ended_at=_now_utc(), status="FAILED", failure=failure,
+                ),
+            )
+        raise
 
 
 def _diskann_recall_one(
