@@ -198,7 +198,7 @@ def normalize_query_set_fixture(
     with source_path.open(newline="", encoding="utf-8") as handle:
         reader = csv.reader(handle)
         header = next(reader)
-        if header != ["id"] + [f"x{index}" for index in range(expected_dimension)]:
+        if header != ["id"] + [f"v{index}" for index in range(expected_dimension)]:
             raise SearchEvaluationError("selected query header/dimension is invalid")
         rows = list(reader)
     if not rows:

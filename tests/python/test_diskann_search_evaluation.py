@@ -160,7 +160,7 @@ def test_input_materialization_manifests_capture_runtime_and_provenance(
     }
     csv_path = tmp_path / "selected-query.csv"
     csv_path.write_text(
-        "id,x0,x1,x2,x3\nopaque-42,0,1,2,3\n", encoding="utf-8"
+        "id,v0,v1,v2,v3\nopaque-42,0,1,2,3\n", encoding="utf-8"
     )
     query_request = {
         **common,
@@ -1043,7 +1043,7 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
     values = struct.unpack_from(f"<{rows * dimension}f", payload, 8)
     csv_path = retained / "selected-query-small-real.csv"
     with csv_path.open("x", encoding="utf-8", newline="") as output:
-        output.write("id," + ",".join(f"x{index}" for index in range(dimension)) + "\n")
+        output.write("id," + ",".join(f"v{index}" for index in range(dimension)) + "\n")
         for row, source_id in ((0, "opaque-0042"), (1, "opaque-not-dataset-id")):
             vector = values[row * dimension : (row + 1) * dimension]
             output.write(source_id + "," + ",".join(str(value) for value in vector) + "\n")
