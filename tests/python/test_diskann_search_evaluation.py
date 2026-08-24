@@ -1352,6 +1352,25 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
     }
     runner_manifest_path.write_text(json.dumps(runner_manifest), encoding="utf-8")
 
+    pq_evidence = (
+        workspace / "manifests/evidence/search-pq-native-real-pq-published.json"
+    )
+    layout_evidence = (
+        workspace
+        / "manifests/evidence/search-layout-native-real-layout-published.json"
+    )
+    admission_evidence = {
+        "pq_artifact": {
+            "path": pq_evidence.relative_to(workspace).as_posix(),
+            "sha256": search._sha256(pq_evidence),
+            "expected_artifact": fixture["pq_artifact"],
+        },
+        "disk_layout_artifact": {
+            "path": layout_evidence.relative_to(workspace).as_posix(),
+            "sha256": search._sha256(layout_evidence),
+            "expected_artifact": fixture["disk_layout_artifact"],
+        },
+    }
     for cache_mode in ("zero", "fixed_bfs"):
         protocol = _protocol(cache_mode)
         protocol_id = f"small-real-{cache_mode}"
@@ -1372,29 +1391,17 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
             "build_manifest_path": runner_manifest_path.relative_to(workspace).as_posix(),
             "build_manifest_sha256": search._sha256(runner_manifest_path),
         }
-        if cache_mode == "zero":
-            pq_evidence = (
-                workspace
-                / "manifests/evidence/search-pq-native-real-pq-published.json"
-            )
-            layout_evidence = (
-                workspace
-                / "manifests/evidence/search-layout-native-real-layout-published.json"
-            )
-            protocol["search_execution"]["admission_evidence"] = {
-                "pq_artifact": {
-                    "path": pq_evidence.relative_to(workspace).as_posix(),
-                    "sha256": search._sha256(pq_evidence),
-                    "expected_artifact": fixture["pq_artifact"],
-                },
-                "disk_layout_artifact": {
-                    "path": layout_evidence.relative_to(workspace).as_posix(),
-                    "sha256": search._sha256(layout_evidence),
-                    "expected_artifact": fixture["disk_layout_artifact"],
-                },
-            }
+        protocol["search_execution"]["admission_evidence"] = admission_evidence
         protocol["evaluation"]["ground_truth"] = truth_reference
         protocol = search.normalize_search_protocol(protocol)
+        bound_evidence = protocol["search_execution"]["admission_evidence"]
+        assert bound_evidence["pq_artifact"] == admission_evidence["pq_artifact"]
+        assert bound_evidence["disk_layout_artifact"] == admission_evidence[
+            "disk_layout_artifact"
+        ]
+        assert protocol["search_execution_checksum"] == search._canonical_digest(
+            protocol["search_execution"]
+        )
         protocol_path = workspace / "protocols" / f"{protocol_id}.json"
         protocol_path.parent.mkdir(parents=True, exist_ok=True)
         protocol_path.write_text(
