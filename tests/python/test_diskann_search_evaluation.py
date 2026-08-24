@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import json
 import math
 import os
@@ -963,8 +964,12 @@ def test_parity_cli_uses_shell_free_oracle_and_runner_argv(
     assert observed == [["/bin/oracle", "/bin/instrumented"]]
 
 
+@pytest.mark.parametrize(
+    "staging_failure",
+    [None, "copy_fallback", "oracle_failure", "missing_payload", "directory_conflict"],
+)
 def test_parity_compares_real_output_contract_and_retains_oracle_manifests(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, staging_failure: str | None
 ) -> None:
     protocol = _protocol("zero")
     dataset_metadata = tmp_path / "normal/dataset/artifact.json"
@@ -1016,6 +1021,37 @@ def test_parity_compares_real_output_contract_and_retains_oracle_manifests(
     runner.write_bytes(b"runner")
     oracle.write_bytes(b"oracle")
     protocol["search_execution"]["runner_build"]["binary_sha256"] = search._sha256(runner)
+
+    payload_sources: dict[str, Path] = {}
+    for artifact_key, payloads in {
+        "pq_artifact": (
+            ("pq_pivots", "pivots.bin", b"pq-pivots"),
+            ("pq_compressed_vectors", "compressed.bin", b"pq-compressed"),
+        ),
+        "disk_layout_artifact": (
+            ("disk_index", "disk.index", b"disk-index"),
+            ("medoids", "medoids.bin", b"medoids"),
+        ),
+    }.items():
+        artifact = protocol["search_execution"][artifact_key]
+        metadata_path = tmp_path / "normal" / artifact["metadata_path"]
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_payloads = []
+        for role, name, content in payloads:
+            source = metadata_path.parent / name
+            source.write_bytes(content)
+            payload_sources[role] = source
+            metadata_payloads.append({
+                "role": role, "path": name, "byte_length": len(content),
+                "sha256": search._sha256(source), "media_type": "application/octet-stream",
+            })
+        metadata_path.write_text(json.dumps({
+            "artifact_type": artifact["artifact_type"],
+            "format_version": artifact["format_version"],
+            "aggregate_checksum": artifact["aggregate_checksum"],
+            "payloads": metadata_payloads,
+        }), encoding="utf-8")
+
     protocol = search.normalize_search_protocol(protocol)
     protocol_path.write_text(
         json.dumps(protocol, sort_keys=True, separators=(",", ":")), encoding="utf-8"
@@ -1026,6 +1062,28 @@ def test_parity_compares_real_output_contract_and_retains_oracle_manifests(
     environment.write_text('{"performance_admitted":false}', encoding="utf-8")
     ids = list(range(100))
     distances = [float(index) for index in ids]
+    source_facts = {
+        role: (path.exists(), path.stat().st_size, search._sha256(path))
+        for role, path in payload_sources.items()
+    }
+    oracle_stage = (
+        tmp_path / "temporary"
+        / f"{protocol['search_execution']['execution_id']}-oracle-native-index"
+    )
+    if staging_failure == "missing_payload":
+        payload_sources["pq_pivots"].unlink()
+    elif staging_failure == "directory_conflict":
+        oracle_stage.mkdir(parents=True)
+    elif staging_failure == "copy_fallback":
+        real_link = search.os.link
+
+        def cross_device_oracle_link(source: Path, destination: Path) -> None:
+            if "oracle-native-index" in str(destination):
+                raise OSError(errno.EXDEV, "fixture cross-device link")
+            real_link(source, destination)
+
+        monkeypatch.setattr(search.os, "link", cross_device_oracle_link)
+    oracle_invocations = 0
 
     def write_observations() -> None:
         observations.mkdir(parents=True)
@@ -1049,9 +1107,29 @@ def test_parity_compares_real_output_contract_and_retains_oracle_manifests(
                 (observations / f"{point_id}.json").write_text(json.dumps(document, sort_keys=True, separators=(",", ":")), encoding="utf-8")
 
     def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal oracle_invocations
         if Path(argv[0]) == runner:
+            instrumented_stage = tmp_path / "temporary/protocol-zero-search-native-index"
+            instrumented_stage.mkdir(parents=True)
+            (instrumented_stage / "runner-owned").write_text("temporary", encoding="utf-8")
+            shutil.rmtree(instrumented_stage)
             write_observations()
             return subprocess.CompletedProcess(argv, 0, '{"status":"SUCCEEDED"}', "")
+        oracle_invocations += 1
+        prefix = Path(argv[argv.index("--index_path_prefix") + 1])
+        assert prefix == oracle_stage / "index"
+        for role, suffix in {
+            "disk_index": "_disk.index",
+            "medoids": "_disk.index_medoids.bin",
+            "pq_pivots": "_pq_pivots.bin",
+            "pq_compressed_vectors": "_pq_compressed.bin",
+        }.items():
+            alias = Path(f"{prefix}{suffix}")
+            assert alias.is_file()
+            assert not alias.is_symlink()
+            assert alias.read_bytes() == payload_sources[role].read_bytes()
+        if staging_failure == "oracle_failure":
+            return subprocess.CompletedProcess(argv, 1, "", "fixture oracle failure")
         l_search = int(argv[argv.index("--search_list") + 1])
         result_prefix = Path(argv[argv.index("--result_path") + 1])
         result_prefix.parent.mkdir(parents=True, exist_ok=True)
@@ -1065,7 +1143,31 @@ def test_parity_compares_real_output_contract_and_retains_oracle_manifests(
     result = search.run_search_runner_parity(
         protocol=protocol_path, oracle=oracle, runner=runner, workspace=tmp_path
     )
+    if staging_failure in {"missing_payload", "directory_conflict"}:
+        assert result["result"] == "FAIL"
+        assert oracle_invocations == 0
+        evidence = json.loads(Path(result["evidence_path"]).read_text(encoding="utf-8"))
+        assert evidence["result"] == "FAIL"
+        assert "oracle staging failed" in evidence["reason"]
+        if staging_failure == "directory_conflict":
+            assert oracle_stage.is_dir()
+        return
+    if staging_failure == "oracle_failure":
+        assert result["result"] == "FAIL"
+        assert oracle_invocations == 9
+        assert not oracle_stage.exists()
+        assert {
+            role: (path.exists(), path.stat().st_size, search._sha256(path))
+            for role, path in payload_sources.items()
+        } == source_facts
+        return
     assert result["result"] == "PASS"
+    assert oracle_invocations == 9
+    assert not oracle_stage.exists()
+    assert {
+        role: (path.exists(), path.stat().st_size, search._sha256(path))
+        for role, path in payload_sources.items()
+    } == source_facts
     evidence = json.loads(Path(result["evidence_path"]).read_text(encoding="utf-8"))
     assert evidence["result"] == "PASS"
     assert len(evidence["points"]) == 9

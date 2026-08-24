@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import errno
 import hashlib
 import json
 import math
@@ -1113,6 +1114,131 @@ def _oracle_manifest(
     return manifest
 
 
+def _oracle_artifact_payloads(
+    *, workspace: Path, artifact: Any, expected_type: str,
+    required_roles: tuple[str, ...],
+) -> dict[str, Path]:
+    reference = _artifact_ref(artifact, expected_type)
+    normal_root = (workspace / "normal").resolve()
+    metadata_path = _confined_existing_file(
+        normal_root, reference["metadata_path"], f"{expected_type} metadata"
+    )
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SearchEvaluationError(
+            f"{expected_type} metadata is unreadable"
+        ) from error
+    if (
+        metadata.get("artifact_type") != reference["artifact_type"]
+        or metadata.get("format_version") != reference["format_version"]
+        or metadata.get("aggregate_checksum") != reference["aggregate_checksum"]
+    ):
+        raise SearchEvaluationError(f"{expected_type} metadata identity mismatch")
+    payloads = metadata.get("payloads")
+    if type(payloads) is not list:
+        raise SearchEvaluationError(f"{expected_type} payload declarations are invalid")
+    by_role: dict[str, Any] = {}
+    for payload in payloads:
+        if type(payload) is not dict or type(payload.get("role")) is not str:
+            raise SearchEvaluationError(
+                f"{expected_type} payload declaration is invalid"
+            )
+        role = payload["role"]
+        if role in by_role:
+            raise SearchEvaluationError(f"{expected_type} payload role is duplicated")
+        by_role[role] = payload
+    admitted: dict[str, Path] = {}
+    for role in required_roles:
+        payload = by_role.get(role)
+        if payload is None:
+            raise SearchEvaluationError(f"{expected_type} payload role is missing: {role}")
+        relative = Path(payload.get("path", ""))
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            raise SearchEvaluationError(f"{expected_type} payload path escapes Artifact")
+        source = (metadata_path.parent / relative).resolve()
+        try:
+            source.relative_to(metadata_path.parent.resolve())
+        except ValueError as error:
+            raise SearchEvaluationError(
+                f"{expected_type} payload path escapes Artifact"
+            ) from error
+        byte_length = payload.get("byte_length")
+        if (
+            type(byte_length) is not int
+            or byte_length < 0
+            or not source.is_file()
+            or source.stat().st_size != byte_length
+        ):
+            raise SearchEvaluationError(
+                f"{expected_type} payload is missing or has wrong byte length: {role}"
+            )
+        admitted[role] = source
+    return admitted
+
+
+def _stage_oracle_native_index(
+    *, workspace: Path, execution: dict[str, Any]
+) -> tuple[Path, Path]:
+    execution_id = execution.get("execution_id")
+    if (
+        type(execution_id) is not str
+        or not execution_id
+        or Path(execution_id).name != execution_id
+    ):
+        raise SearchEvaluationError("oracle staging execution identity is invalid")
+    sources = {
+        **_oracle_artifact_payloads(
+            workspace=workspace, artifact=execution.get("pq_artifact"),
+            expected_type="pq",
+            required_roles=("pq_pivots", "pq_compressed_vectors"),
+        ),
+        **_oracle_artifact_payloads(
+            workspace=workspace, artifact=execution.get("disk_layout_artifact"),
+            expected_type="disk_layout", required_roles=("disk_index", "medoids"),
+        ),
+    }
+    temporary_root = (workspace / "temporary").resolve()
+    try:
+        temporary_root.relative_to(workspace)
+    except ValueError as error:
+        raise SearchEvaluationError("oracle staging path escapes workspace") from error
+    temporary_root.mkdir(parents=True, exist_ok=True)
+    stage = temporary_root / f"{execution_id}-oracle-native-index"
+    try:
+        stage.mkdir()
+    except FileExistsError as error:
+        raise SearchEvaluationError("oracle staging directory already exists") from error
+    prefix = stage / "index"
+    aliases = {
+        "disk_index": Path(f"{prefix}_disk.index"),
+        "medoids": Path(f"{prefix}_disk.index_medoids.bin"),
+        "pq_pivots": Path(f"{prefix}_pq_pivots.bin"),
+        "pq_compressed_vectors": Path(f"{prefix}_pq_compressed.bin"),
+    }
+    fallback_errors = {errno.EXDEV, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}
+    try:
+        for role, destination in aliases.items():
+            source = sources[role]
+            try:
+                os.link(source, destination)
+            except OSError as error:
+                if error.errno not in fallback_errors or destination.exists():
+                    raise
+                shutil.copyfile(source, destination)
+            if (
+                not destination.is_file()
+                or destination.stat().st_size != source.stat().st_size
+            ):
+                raise SearchEvaluationError(
+                    f"oracle staging alias is invalid: {role}"
+                )
+    except Exception:
+        shutil.rmtree(stage)
+        raise
+    return stage, prefix
+
+
 def run_search_runner_parity(
     *, protocol: str | Path, oracle: str | Path, runner: str | Path,
     workspace: str | Path,
@@ -1156,10 +1282,23 @@ def run_search_runner_parity(
     )
     points: list[dict[str, Any]] = []
     parity_pass = True
-    prefix = (
-        workspace_path / "temporary" /
-        f"{document['protocol_id']}-search-native-index" / "index"
-    )
+    try:
+        oracle_stage, prefix = _stage_oracle_native_index(
+            workspace=workspace_path, execution=execution
+        )
+    except Exception as error:
+        write_immutable_json(
+            evidence_path,
+            {
+                "result": "FAIL",
+                "reason": f"oracle staging failed: {error}",
+                "instrumented_exit_code": runner_result.returncode,
+                "points": [],
+                "graph_structural_parity_gate": "NOT_REACHED",
+                "framework_state": "candidate",
+            },
+        )
+        return {"result": "FAIL", "evidence_path": str(evidence_path)}
     query = workspace_path / execution["query_set"]["native_payload"]["path"]
     truth = workspace_path / document["evaluation"]["ground_truth"]["payload"]["path"]
     for repetition in range(3):
@@ -1302,6 +1441,7 @@ def run_search_runner_parity(
         "graph_structural_parity_gate": "NOT_REACHED",
         "framework_state": "candidate",
     }
+    shutil.rmtree(oracle_stage)
     write_immutable_json(evidence_path, evidence)
     return {"result": evidence["result"], "evidence_path": str(evidence_path)}
 
