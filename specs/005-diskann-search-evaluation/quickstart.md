@@ -272,14 +272,21 @@ Inside the non-task manual execution boundary, the sole normalization owner is
    DiskLayoutArtifact;
 4. approved `materialize --operation query_set` and `materialize --operation ground_truth`
    invocations generate and validate the exact QuerySetReference and GroundTruthReference;
-5. the same Feature-specific `preflight --mode formal-search` command reads the exact zero-cache
+5. use the existing Validator to fresh-validate the exact PQArtifact and DiskLayoutArtifact into
+   new exclusive-create evidence paths, compute each evidence SHA-256, and place the same two
+   path/SHA/expected-ArtifactRef declarations in the zero/fixed preflight config; publication
+   evidence or admission booleans are not substitutes;
+6. the same Feature-specific `preflight --mode formal-search` command reads the exact zero-cache
    and fixed-cache input declarations, normalizes and writes exactly two immutable SearchProtocols
    once, then immediately rereads and validates their schema, checksums, search-execution
    identities, Artifact/input identities, runner binary, paths, resources, frozen controls, current
    ABI/dependencies, and load-probe/small-search evidence without running search;
-6. common search admission PASS presents the resulting exact immutable search requests for separate
+7. common search admission PASS presents the resulting exact immutable search requests for separate
    human review and explicit approval;
-7. each approved `search` consumes its frozen SearchProtocol without renormalizing it.
+8. each approved `search` consumes its frozen SearchProtocol without renormalizing it. New
+   evidence-bearing Protocols avoid large payload rehash/graph scans while checking metadata,
+   evidence, source lineage, required payload existence/length, and actual runner/BuildManifest
+   identity; legacy/no-evidence fixture Protocols retain full validation.
 
 Common search admission permits a Mac Docker quality request when the exact inputs, runner,
 ABI/dependencies, fixed search path, paths, resources, and controls are usable; it does not require

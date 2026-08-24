@@ -354,6 +354,10 @@ Required fields:
 - fixed instrumented implementation and pinned DiskANN source identities;
 - admitted project runner repository/branch/full commit/clean state, binary path/SHA-256, and its
   independent BuildManifest path/SHA-256.
+- optional PQArtifact/DiskLayoutArtifact admission-evidence references. Each reference contains the
+  workspace-relative fresh ValidationEvidence path, evidence-file SHA-256, and exact expected
+  ArtifactRef. Non-fixture formal-search preflight requires both; legacy and evidence-free fixture
+  Protocols omit the object and retain full validation at search startup.
 
 GroundTruth is forbidden from this projection. Zero/fixed cache are two protocol documents, not one
 protocol with a changing cache mode.
@@ -381,10 +385,11 @@ Required fields:
 
 ### 5.4 Checksums and changes
 
-The `search_execution_checksum` hashes only its canonical object. The protocol checksum hashes both
+The `search_execution_checksum` hashes the entire canonical `search_execution` object, including
+the optional admission-evidence references when present. The protocol checksum hashes both
 sections. Evaluation-only changes can reuse observations when the execution identity/checksum stays
-the same. Search input/control/repetition changes require a new execution identity and actual new
-search.
+the same. Search input/control/repetition or bound admission-evidence changes require a new
+execution identity and actual new search.
 
 ## 6. SearchObservation/v1 and raw search point
 

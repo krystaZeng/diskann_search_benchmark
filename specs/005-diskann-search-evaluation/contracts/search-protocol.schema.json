@@ -125,6 +125,25 @@
         "build_manifest_sha256": {"$ref": "#/$defs/sha256"}
       }
     },
+    "admissionEvidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "expected_artifact"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "expected_artifact": {"$ref": "#/$defs/artifactRef"}
+      }
+    },
+    "searchAdmissionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pq_artifact", "disk_layout_artifact"],
+      "properties": {
+        "pq_artifact": {"$ref": "#/$defs/admissionEvidenceRef"},
+        "disk_layout_artifact": {"$ref": "#/$defs/admissionEvidenceRef"}
+      }
+    },
     "environmentRequirement": {
       "type": "object",
       "additionalProperties": false,
@@ -194,6 +213,7 @@
         "environment": {"$ref": "#/$defs/environmentRequirement"},
         "implementation": {"$ref": "#/$defs/implementationIdentity"},
         "runner_build": {"$ref": "#/$defs/runnerBuild"},
+        "admission_evidence": {"$ref": "#/$defs/searchAdmissionEvidence"},
         "diskann_source_commit": {"const": "78256bbab4685e1774e78d331e081a153be26823"}
       }
     },

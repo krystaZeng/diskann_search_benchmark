@@ -109,9 +109,9 @@ dp::ToolchainIdentity configured_toolchain() {
            "diskann_cpp_main_upstream,OpenMP::OpenMP_CXX]"}};
 }
 
-const dp::PayloadRef& payload(const dp::ValidatedArtifact& artifact,
+const dp::PayloadRef& payload(const ds::SearchArtifactAdmission& artifact,
                               const std::string& role) {
-  for (const auto& candidate : artifact.payloads()) {
+  for (const auto& candidate : artifact.payloads) {
     if (candidate.role == role) {
       return candidate;
     }
@@ -121,23 +121,57 @@ const dp::PayloadRef& payload(const dp::ValidatedArtifact& artifact,
 }
 
 std::filesystem::path payload_path(const dp::WorkspaceRef& workspace,
-                                   const dp::ValidatedArtifact& artifact,
+                                   const ds::SearchArtifactAdmission& artifact,
                                    const dp::PayloadRef& value) {
-  const auto metadata = dp::resolve_normal_artifact_metadata(
-      workspace, artifact.reference().metadata_path);
-  return dp::resolve_confined_path(metadata.parent_path(), value.path);
+  static_cast<void>(workspace);
+  return dp::resolve_confined_path(artifact.metadata_file.parent_path(),
+                                   value.path);
+}
+
+ds::SearchArtifactAdmission admitted_from_validated(
+    const dp::WorkspaceRef& workspace, const dp::ValidatedArtifact& artifact) {
+  return {artifact.reference(),
+          artifact.dataset(),
+          artifact.id_space(),
+          artifact.source_artifacts(),
+          artifact.payloads(),
+          dp::resolve_normal_artifact_metadata(
+              workspace, artifact.reference().metadata_path)};
 }
 
 struct StagedNativeIndex {
+  std::filesystem::path stage_root;
   std::filesystem::path prefix;
   std::filesystem::path disk;
   std::filesystem::path pivots;
   std::filesystem::path codes;
+
+  StagedNativeIndex(std::filesystem::path root,
+                    std::filesystem::path prefix_value,
+                    std::filesystem::path disk_value,
+                    std::filesystem::path pivots_value,
+                    std::filesystem::path codes_value)
+      : stage_root(std::move(root)),
+        prefix(std::move(prefix_value)),
+        disk(std::move(disk_value)),
+        pivots(std::move(pivots_value)),
+        codes(std::move(codes_value)) {}
+  StagedNativeIndex(const StagedNativeIndex&) = delete;
+  StagedNativeIndex& operator=(const StagedNativeIndex&) = delete;
+  StagedNativeIndex(StagedNativeIndex&&) noexcept = default;
+  StagedNativeIndex& operator=(StagedNativeIndex&&) noexcept = default;
+  ~StagedNativeIndex() {
+    if (!stage_root.empty()) {
+      std::error_code ignored;
+      std::filesystem::remove_all(stage_root, ignored);
+    }
+  }
 };
 
 StagedNativeIndex stage_native_index(
     const dp::WorkspaceRef& workspace, const std::string& invocation_id,
-    const dp::ValidatedArtifact& pq, const dp::ValidatedArtifact& layout) {
+    const ds::SearchArtifactAdmission& pq,
+    const ds::SearchArtifactAdmission& layout) {
   const auto temporary =
       dp::create_temporary_storage(workspace, invocation_id + "-native-index");
   const auto prefix = temporary.stage_root / "index";
@@ -147,16 +181,16 @@ StagedNativeIndex stage_native_index(
       std::filesystem::path(prefix.string() + "_pq_compressed.bin");
   const auto medoids =
       std::filesystem::path(disk.string() + "_medoids.bin");
-  std::filesystem::copy_file(
-      payload_path(workspace, layout, payload(layout, "disk_index")), disk);
-  std::filesystem::copy_file(
-      payload_path(workspace, layout, payload(layout, "medoids")), medoids);
-  std::filesystem::copy_file(
-      payload_path(workspace, pq, payload(pq, "pq_pivots")), pivots);
-  std::filesystem::copy_file(
+  static_cast<void>(ds::stage_native_payload_alias(
+      payload_path(workspace, layout, payload(layout, "disk_index")), disk));
+  static_cast<void>(ds::stage_native_payload_alias(
+      payload_path(workspace, layout, payload(layout, "medoids")), medoids));
+  static_cast<void>(ds::stage_native_payload_alias(
+      payload_path(workspace, pq, payload(pq, "pq_pivots")), pivots));
+  static_cast<void>(ds::stage_native_payload_alias(
       payload_path(workspace, pq, payload(pq, "pq_compressed_vectors")),
-      codes);
-  return {prefix, disk, pivots, codes};
+      codes));
+  return {temporary.stage_root, prefix, disk, pivots, codes};
 }
 
 class NeverCancelled final : public dp::CancellationToken {
@@ -246,11 +280,13 @@ int load_probe(const std::filesystem::path& workspace_root,
 #if DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE
   const auto& pq_grant = *pq.validated_artifact;
   const auto& layout_grant = *layout.validated_artifact;
+  const auto pq_admission = admitted_from_validated(workspace, pq_grant);
+  const auto layout_admission = admitted_from_validated(workspace, layout_grant);
   const auto staged = stage_native_index(
       workspace,
       "load-probe-" + pq_ref.aggregate_checksum.substr(0, 12) + "-" +
           layout_ref.aggregate_checksum.substr(0, 12),
-      pq_grant, layout_grant);
+      pq_admission, layout_admission);
   std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
   diskann::PQFlashIndex<float> index(reader, diskann::Metric::L2);
   const auto status = index.load_from_separate_paths(
@@ -293,14 +329,41 @@ Json artifact_json(const dp::ArtifactRef& value) {
   return Json::parse(dp::serialize_artifact_ref(value));
 }
 
+ds::SearchAdmissionEvidenceRef admission_evidence_ref(const Json& value) {
+  return {value.at("path").get<std::string>(),
+          value.at("sha256").get<std::string>(),
+          artifact_ref(value.at("expected_artifact"))};
+}
+
+void validate_protocol_checksums(const Json& protocol) {
+  const auto& execution = protocol.at("search_execution");
+  const auto execution_checksum = dp::sha256_bytes(
+      dp::canonicalize_restricted_json(execution.dump()));
+  if (execution_checksum !=
+      protocol.at("search_execution_checksum").get<std::string>()) {
+    throw dp::PipelineError(dp::ErrorCategory::kChecksumMismatch,
+                            "SearchProtocol execution checksum mismatch");
+  }
+  auto projection = protocol;
+  projection.erase("protocol_checksum");
+  const auto protocol_checksum = dp::sha256_bytes(
+      dp::canonicalize_restricted_json(projection.dump()));
+  if (protocol_checksum != protocol.at("protocol_checksum").get<std::string>()) {
+    throw dp::PipelineError(dp::ErrorCategory::kChecksumMismatch,
+                            "SearchProtocol checksum mismatch");
+  }
+}
+
 int search_protocol(const std::filesystem::path& workspace_root,
-                    const std::filesystem::path& protocol_path) {
+                    const std::filesystem::path& protocol_path,
+                    const std::filesystem::path& executable_path) {
   const auto workspace = dp::create_workspace(workspace_root);
   const auto protocol_absolute = protocol_path.is_absolute()
                                      ? protocol_path
                                      : dp::resolve_confined_path(workspace.root,
                                                                  protocol_path);
   const auto protocol = read_json(protocol_absolute);
+  validate_protocol_checksums(protocol);
   const auto& execution = protocol.at("search_execution");
   if (execution.at("K") != 100 || execution.at("beamwidth") != 2 ||
       execution.at("thread_count") != 6 ||
@@ -314,36 +377,99 @@ int search_protocol(const std::filesystem::path& workspace_root,
   const auto global_ref = artifact_ref(execution.at("global_graph_artifact"));
   const auto pq_ref = artifact_ref(execution.at("pq_artifact"));
   const auto layout_ref = artifact_ref(execution.at("disk_layout_artifact"));
-  const auto dataset = dp::Validator(workspace).validate_with_lineage(dataset_ref);
-  const auto global = dp::Validator(workspace).validate_with_lineage(global_ref);
-  const auto pq = dp::Validator(workspace).validate_with_lineage(pq_ref);
-  const auto layout = dp::Validator(workspace).validate_with_lineage(layout_ref);
-  if (!dataset.valid() || !global.valid() || !pq.valid() || !layout.valid()) {
-    throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
-                            "search input failed fresh validation");
+  const auto& implementation = execution.at("implementation");
+  const auto& runner_build = execution.at("runner_build");
+  ds::validate_search_runner_execution_identity(
+      workspace, std::filesystem::current_path(), executable_path,
+      {runner_build.at("binary_path").get<std::string>(),
+       runner_build.at("binary_sha256").get<std::string>(),
+       runner_build.at("build_manifest_path").get<std::string>(),
+       runner_build.at("build_manifest_sha256").get<std::string>(),
+       {runner_build.at("project_repository").get<std::string>(),
+        runner_build.at("project_branch").get<std::string>(),
+        runner_build.at("project_commit").get<std::string>(),
+        runner_build.at("project_dirty").get<bool>(), std::nullopt},
+       implementation.at("implementation_id").get<std::string>(),
+       implementation.at("version").get<std::string>(),
+       implementation.at("reproduction_mode").get<std::string>(),
+       execution.at("diskann_source_commit").get<std::string>()});
+
+  ds::SearchArtifactAdmission dataset_admission;
+  ds::SearchArtifactAdmission global_admission;
+  ds::SearchArtifactAdmission pq_admission;
+  ds::SearchArtifactAdmission layout_admission;
+  if (execution.contains("admission_evidence")) {
+    dataset_admission =
+        ds::admit_search_artifact_metadata(workspace, dataset_ref);
+    global_admission =
+        ds::admit_search_artifact_metadata(workspace, global_ref);
+    const auto& evidence = execution.at("admission_evidence");
+    pq_admission = ds::admit_prevalidated_search_artifact(
+        workspace, pq_ref,
+        admission_evidence_ref(evidence.at("pq_artifact")));
+    layout_admission = ds::admit_prevalidated_search_artifact(
+        workspace, layout_ref,
+        admission_evidence_ref(evidence.at("disk_layout_artifact")));
+  } else {
+    const auto dataset =
+        dp::Validator(workspace).validate_with_lineage(dataset_ref);
+    const auto global =
+        dp::Validator(workspace).validate_with_lineage(global_ref);
+    const auto pq = dp::Validator(workspace).validate_with_lineage(pq_ref);
+    const auto layout =
+        dp::Validator(workspace).validate_with_lineage(layout_ref);
+    if (!dataset.valid() || !global.valid() || !pq.valid() || !layout.valid()) {
+      throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
+                              "legacy search input failed fresh validation");
+    }
+    dataset_admission =
+        admitted_from_validated(workspace, *dataset.validated_artifact);
+    global_admission =
+        admitted_from_validated(workspace, *global.validated_artifact);
+    pq_admission = admitted_from_validated(workspace, *pq.validated_artifact);
+    layout_admission =
+        admitted_from_validated(workspace, *layout.validated_artifact);
   }
-  const auto& pq_grant = *pq.validated_artifact;
-  const auto& layout_grant = *layout.validated_artifact;
+  ds::validate_search_artifact_lineage(dataset_admission, global_admission,
+                                       pq_admission, layout_admission);
   const auto& query_ref = execution.at("query_set");
   const auto query_path = dp::resolve_confined_path(
       workspace.root,
       query_ref.at("native_payload").at("path").get<std::string>());
-  if (dp::sha256_file(query_path) !=
+  if (!std::filesystem::is_regular_file(query_path) ||
+      std::filesystem::file_size(query_path) !=
+          query_ref.at("native_payload").at("byte_length").get<std::uint64_t>() ||
+      dp::sha256_file(query_path) !=
       query_ref.at("native_payload").at("sha256").get<std::string>()) {
     throw dp::PipelineError(dp::ErrorCategory::kChecksumMismatch,
                             "QuerySet payload checksum mismatch");
   }
   const auto mapping_path = dp::resolve_confined_path(
       workspace.root, query_ref.at("row_mapping").at("path").get<std::string>());
+  if (!std::filesystem::is_regular_file(mapping_path) ||
+      std::filesystem::file_size(mapping_path) !=
+          query_ref.at("row_mapping").at("byte_length").get<std::uint64_t>() ||
+      dp::sha256_file(mapping_path) !=
+          query_ref.at("row_mapping").at("sha256").get<std::string>()) {
+    throw dp::PipelineError(dp::ErrorCategory::kChecksumMismatch,
+                            "QuerySet row mapping checksum mismatch");
+  }
   const auto mapping = read_json(mapping_path);
   std::uint32_t query_count = 0;
   std::uint32_t query_dimension = 0;
   auto queries = read_query_matrix(query_path, query_count, query_dimension);
   if (query_count != query_ref.at("query_count").get<std::uint32_t>() ||
-      query_dimension != pq_grant.dataset().vector_dimension ||
+      query_dimension != pq_admission.dataset.vector_dimension ||
       !mapping.is_array() || mapping.size() != query_count) {
     throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
                             "QuerySet identity/row mapping mismatch");
+  }
+  for (std::uint32_t row = 0; row < query_count; ++row) {
+    if (mapping.at(row).at("query_row_index").get<std::uint32_t>() != row ||
+        !mapping.at(row).at("source_query_id").is_string()) {
+      throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
+                              "QuerySet row mapping order is invalid");
+    }
   }
   dp::BuildManifest manifest;
   manifest.run_id = protocol.at("protocol_id").get<std::string>() + "-search";
@@ -355,7 +481,7 @@ int search_protocol(const std::filesystem::path& workspace_root,
                      "78256bbab4685e1774e78d331e081a153be26823", false,
                      std::nullopt};
   manifest.toolchain = configured_toolchain();
-  manifest.dataset = pq_grant.dataset();
+  manifest.dataset = pq_admission.dataset;
   Json observation_references = Json::array();
   const auto refresh_manifest_parameters = [&]() {
     manifest.parameters_json =
@@ -374,7 +500,7 @@ int search_protocol(const std::filesystem::path& workspace_root,
   try {
     const auto staged = stage_native_index(
         workspace, protocol.at("protocol_id").get<std::string>() + "-search",
-        pq_grant, layout_grant);
+        pq_admission, layout_admission);
     std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
     diskann::PQFlashIndex<float> index(reader, diskann::Metric::L2);
     if (index.load_from_separate_paths(6, staged.disk.c_str(),
@@ -556,6 +682,7 @@ int search_protocol(const std::filesystem::path& workspace_root,
 }
 #else
 int search_protocol(const std::filesystem::path&,
+                    const std::filesystem::path&,
                     const std::filesystem::path&) {
   throw dp::PipelineError(dp::ErrorCategory::kCapabilityUnsatisfied,
                           "instrumented PQFlash search is Linux-only pending");
@@ -591,7 +718,7 @@ int main(int argc, char** argv) {
     }
     if (operation == "search") {
       return search_protocol(argument(argc, argv, "--workspace"),
-                             argument(argc, argv, "--protocol"));
+                             argument(argc, argv, "--protocol"), argv[0]);
     }
     throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
                             "unsupported Feature operation");

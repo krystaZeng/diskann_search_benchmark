@@ -141,7 +141,11 @@ diskann_search_evaluation_runner search \
 
 The runner:
 
-1. fresh-validates PQArtifact and DiskLayoutArtifact and validates QuerySetReference;
+1. validates the frozen Protocol and runner executable/BuildManifest identity, then either admits
+   PQArtifact/DiskLayoutArtifact through the fresh ValidationEvidence references bound by
+   non-fixture formal-search preflight or, for a legacy/no-evidence Protocol, retains the existing
+   full `validate_with_lineage` path; QuerySetReference keeps full payload/checksum/shape/row-
+   mapping validation in both paths;
 2. loads PQFlashIndex and constructs the declared cache outside timing; `requested_nodes` is the
    only cache budget input, while admission/runtime evidence derives requested/effective primary
    bytes from the admitted dimension, scalar width, degree, and actual cache-list size;
@@ -207,7 +211,15 @@ QuerySetReference, native QuerySet payload, and GroundTruthReference identities 
 exact zero-cache and fixed-cache input declarations, normalizes and writes exactly two immutable
 SearchProtocols once, then immediately rereads and validates both schemas, canonical checksums,
 search-execution identities, every Artifact/input identity, runner binary, environment, paths, and
-resources. It then reports two independent admission decisions:
+resources. Before a non-fixture invocation, the existing Validator fresh-validates PQArtifact and
+DiskLayoutArtifact into two new exclusive-create ValidationEvidence paths. The config supplies each
+evidence path/SHA-256/expected ArtifactRef; preflight requires schema-valid `result=VALID` evidence
+whose candidate and claimed aggregate checksum exactly match the corresponding ArtifactRef and
+binds both references into `search_execution` (and therefore its canonical checksum). Publication
+evidence and admission booleans cannot substitute for these two fresh references. Fixture mode may
+omit them and remain on the legacy full-validation path; an explicit fixture-evidence case covers
+the fast path without turning fixture evidence into formal admission evidence. It then reports two
+independent admission decisions:
 
 - **Common search admission** requires validated compatible PQ/Layout/QuerySet/GroundTruth
   identities; the exact runner binary and usable ABI/dynamic dependencies; successful existing
@@ -223,7 +235,12 @@ resources. It then reports two independent admission decisions:
 When common admission passes, the command emits exact search requests for review even if performance
 admission is false; it labels that request quality-only/non-normative for performance and does not
 start the C++ runner or search. After explicit approval, `search` consumes those frozen Protocols
-without renormalization. SearchProtocol keeps the declared performance-environment requirement and
+without renormalization. An evidence-bearing Protocol performs metadata/ref/lineage checks and
+payload existence/byte-length checks without rehashing large Artifact payloads or rescanning
+graph/layout structure; any mismatch fails closed. Dataset/GlobalGraph producer manifests or
+validation evidence are not reread per search. Legacy/no-evidence Protocols keep full lineage
+validation. Both paths still hash and verify the actual runner and its bound
+BuildManifest/source identity. SearchProtocol keeps the declared performance-environment requirement and
 SearchObservation keeps the actual environment fingerprint; the mismatch affects performance
 eligibility only and does not rewrite their identity/checksum rules.
 

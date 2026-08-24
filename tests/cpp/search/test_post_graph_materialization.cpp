@@ -1,4 +1,5 @@
 #include "search/diskann/fixed_descriptors.hpp"
+#include "search/diskann/native_search_formats.hpp"
 #include "search/diskann/post_graph_materializer.hpp"
 
 #include "baseline/cpp_main_stage_test_support.hpp"
@@ -142,6 +143,17 @@ void expect_terminal_times(const std::filesystem::path& path,
 }
 
 #if DISKANN_SEARCH_LINUX_NATIVE_TEST
+struct PayloadFact {
+  bool exists;
+  std::uintmax_t byte_length;
+  std::string sha256;
+};
+
+PayloadFact payload_fact(const std::filesystem::path& path) {
+  return {std::filesystem::is_regular_file(path),
+          std::filesystem::file_size(path), dp::sha256_file(path)};
+}
+
 int run_feature_runner(const std::vector<std::string>& arguments) {
   std::vector<char*> argv;
   argv.reserve(arguments.size() + 2);
@@ -269,12 +281,16 @@ void real_post_graph_closure() {
   const auto disk = staged.stage_root / "index_disk.index";
   const auto pivots = staged.stage_root / "index_pq_pivots.bin";
   const auto codes = staged.stage_root / "index_pq_compressed.bin";
-  std::filesystem::copy_file(layout_root / "disk.index", disk);
-  std::filesystem::copy_file(layout_root / "medoids.bin",
-                             std::filesystem::path(disk.string() +
-                                                   "_medoids.bin"));
-  std::filesystem::copy_file(pq_root / "pivots.bin", pivots);
-  std::filesystem::copy_file(pq_root / "compressed.bin", codes);
+  DP_EXPECT_EQ(ds::stage_native_payload_alias(layout_root / "disk.index", disk),
+               ds::NativeAliasMethod::kHardLink);
+  DP_EXPECT_EQ(ds::stage_native_payload_alias(
+                   layout_root / "medoids.bin",
+                   std::filesystem::path(disk.string() + "_medoids.bin")),
+               ds::NativeAliasMethod::kHardLink);
+  DP_EXPECT_EQ(ds::stage_native_payload_alias(pq_root / "pivots.bin", pivots),
+               ds::NativeAliasMethod::kHardLink);
+  DP_EXPECT_EQ(ds::stage_native_payload_alias(pq_root / "compressed.bin", codes),
+               ds::NativeAliasMethod::kHardLink);
   std::shared_ptr<AlignedFileReader> reader(new LinuxAlignedFileReader());
   diskann::PQFlashIndex<float> index(reader, diskann::Metric::L2);
   DP_EXPECT_EQ(index.load_from_separate_paths(
@@ -284,12 +300,27 @@ void real_post_graph_closure() {
   DP_EXPECT_EQ(index.get_data_dim(), static_cast<std::size_t>(kDimension));
   DP_EXPECT_EQ(pq_metadata.at("source_artifacts").size(), std::size_t{1});
   DP_EXPECT_EQ(layout_metadata.at("source_artifacts").size(), std::size_t{2});
+  const std::vector<std::filesystem::path> source_payloads{
+      layout_root / "disk.index", layout_root / "medoids.bin",
+      pq_root / "pivots.bin", pq_root / "compressed.bin"};
+  std::vector<PayloadFact> before;
+  for (const auto& path : source_payloads) before.push_back(payload_fact(path));
   DP_EXPECT_EQ(
       run_feature_runner(
           {"load-probe", "--workspace", workspace.root.string(),
            "--pq-artifact", pq.metadata_path.string(),
            "--disk-layout-artifact", layout.metadata_path.string()}),
       0);
+  for (std::size_t index = 0; index < source_payloads.size(); ++index) {
+    const auto after = payload_fact(source_payloads[index]);
+    DP_EXPECT_EQ(after.exists, before[index].exists);
+    DP_EXPECT_EQ(after.byte_length, before[index].byte_length);
+    DP_EXPECT_EQ(after.sha256, before[index].sha256);
+  }
+  DP_EXPECT_TRUE(!std::filesystem::exists(
+      workspace.temporary_root /
+      ("load-probe-" + pq.aggregate_checksum.substr(0, 12) + "-" +
+       layout.aggregate_checksum.substr(0, 12) + "-native-index")));
   if (std::getenv("DISKANN_SEARCH_REAL_FIXTURE_ROOT") != nullptr) {
     native_fixture::write_text(
         retained_root / "fixture.json",

@@ -159,6 +159,70 @@ def _known_file_check(repository_root: Path, declaration: Any) -> dict[str, Any]
     }
 
 
+def _confined_existing_file(root: Path, value: Any, label: str) -> Path:
+    if type(value) is not str:
+        raise SearchEvaluationError(f"{label} path is invalid")
+    relative = Path(value)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise SearchEvaluationError(f"{label} path escapes workspace")
+    path = (root / relative).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as error:
+        raise SearchEvaluationError(f"{label} path escapes workspace") from error
+    if not path.is_file():
+        raise SearchEvaluationError(f"{label} file is missing")
+    return path
+
+
+def _validate_search_admission_evidence(
+    *, root: Path, declaration: Any, artifact: Any, expected_type: str
+) -> None:
+    if type(declaration) is not dict or set(declaration) != {
+        "path", "sha256", "expected_artifact"
+    }:
+        raise SearchEvaluationError(
+            f"{expected_type} admission evidence reference is invalid"
+        )
+    expected_artifact = _artifact_ref(
+        declaration["expected_artifact"], expected_type
+    )
+    admitted_artifact = _artifact_ref(artifact, expected_type)
+    if expected_artifact != admitted_artifact:
+        raise SearchEvaluationError(
+            f"{expected_type} admission evidence expected ArtifactRef mismatch"
+        )
+    path = _confined_existing_file(
+        root, declaration["path"], f"{expected_type} admission evidence"
+    )
+    if type(declaration["sha256"]) is not str or _sha256(path) != declaration[
+        "sha256"
+    ]:
+        raise SearchEvaluationError(
+            f"{expected_type} admission evidence checksum mismatch"
+        )
+    try:
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+        _schema_validator(
+            "validation-evidence.schema.json", _repository_root()
+        ).validate(evidence)
+    except Exception as error:
+        raise SearchEvaluationError(
+            f"{expected_type} admission evidence schema is invalid"
+        ) from error
+    candidate = evidence.get("artifact_candidate")
+    expected_candidate = {
+        "artifact_type": admitted_artifact["artifact_type"],
+        "format_version": admitted_artifact["format_version"],
+        "metadata_path": admitted_artifact["metadata_path"],
+        "claimed_aggregate_checksum": admitted_artifact["aggregate_checksum"],
+    }
+    if evidence.get("result") != "VALID" or candidate != expected_candidate:
+        raise SearchEvaluationError(
+            f"{expected_type} admission evidence does not grant the ArtifactRef"
+        )
+
+
 def _write_immutable_bytes(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -1410,9 +1474,40 @@ def preflight(
     )
     common_pass = runner_ok and all(common.get(key) is True for key in common_keys)
     fixture_mode = config.get("fixture_mode") is True
+    evidence_sets: list[dict[str, Any]] = []
+    for declaration in declarations:
+        execution = declaration.get("search_execution", {})
+        evidence = execution.get("admission_evidence")
+        if evidence is None:
+            if not fixture_mode:
+                common_pass = False
+            continue
+        if type(evidence) is not dict or set(evidence) != {
+            "pq_artifact", "disk_layout_artifact"
+        }:
+            raise SearchEvaluationError("search admission evidence set is invalid")
+        _validate_search_admission_evidence(
+            root=root,
+            declaration=evidence["pq_artifact"],
+            artifact=execution.get("pq_artifact"),
+            expected_type="pq",
+        )
+        _validate_search_admission_evidence(
+            root=root,
+            declaration=evidence["disk_layout_artifact"],
+            artifact=execution.get("disk_layout_artifact"),
+            expected_type="disk_layout",
+        )
+        evidence_sets.append(evidence)
+    if evidence_sets and any(value != evidence_sets[0] for value in evidence_sets[1:]):
+        raise SearchEvaluationError(
+            "zero/fixed protocols must bind the same fresh admission evidence"
+        )
+    if not fixture_mode and len(evidence_sets) != len(declarations):
+        common_pass = False
     if not fixture_mode:
         # A real formal-search preflight cannot substitute declaration booleans for
-        # the exact input files and evidence it binds.
+        # the exact input files and freshly validated PQ/Layout evidence it binds.
         for declaration in declarations:
             execution = declaration.get("search_execution", {})
             for name in ("dataset_artifact", "pq_artifact", "disk_layout_artifact", "global_graph_artifact"):

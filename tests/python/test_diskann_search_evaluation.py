@@ -551,6 +551,102 @@ def _protocol(cache_mode: str) -> dict:
     return {"protocol_version": "1.0.0", "protocol_id": f"protocol-{cache_mode}", "status": "frozen", "search_execution": execution, "search_execution_checksum": checksum, "evaluation": evaluation, "canonicalization": "diskann-search-protocol-c14n-v1", "protocol_checksum": checksum}
 
 
+def _fresh_validation_evidence(artifact: dict, *, valid: bool = True) -> dict:
+    return {
+        "evidence_version": "1.0.0",
+        "validator_version": "artifact-contract-validator/1.1.0",
+        "artifact_candidate": {
+            "artifact_type": artifact["artifact_type"],
+            "format_version": artifact["format_version"],
+            "metadata_path": artifact["metadata_path"],
+            "claimed_aggregate_checksum": artifact["aggregate_checksum"],
+        },
+        "checks": [{
+            "check_id": "artifact.contract/v1",
+            "passed": valid,
+            "message": "fresh fixture validation",
+        }],
+        "result": "VALID" if valid else "INVALID",
+        **({"failure_category": "schema_invalid"} if not valid else {}),
+    }
+
+
+def _formal_preflight_config(
+    tmp_path: Path, *, fixture_mode: bool, include_evidence: bool
+) -> tuple[Path, list[dict], dict[str, Path]]:
+    zero = _protocol("zero")
+    fixed = _protocol("fixed_bfs")
+    runner = tmp_path / "bin/runner"
+    runner.parent.mkdir(parents=True, exist_ok=True)
+    runner.write_bytes(b"small-runner")
+    files: dict[str, Path] = {"runner": runner}
+    for declaration in (zero, fixed):
+        execution = declaration["search_execution"]
+        execution["runner_build"]["binary_path"] = "bin/runner"
+        execution["runner_build"]["binary_sha256"] = search._sha256(runner)
+        for name in (
+            "dataset_artifact", "pq_artifact", "disk_layout_artifact",
+            "global_graph_artifact",
+        ):
+            metadata = tmp_path / "normal" / execution[name]["metadata_path"]
+            metadata.parent.mkdir(parents=True, exist_ok=True)
+            metadata.write_text("{}", encoding="utf-8")
+        query = tmp_path / execution["query_set"]["native_payload"]["path"]
+        query.parent.mkdir(parents=True, exist_ok=True)
+        query.write_bytes(b"query")
+        truth = tmp_path / declaration["evaluation"]["ground_truth"]["payload"]["path"]
+        truth.parent.mkdir(parents=True, exist_ok=True)
+        truth.write_bytes(b"truth")
+    if include_evidence:
+        evidence_root = tmp_path / "manifests/evidence"
+        evidence_root.mkdir(parents=True, exist_ok=True)
+        evidence_refs = {}
+        for key, artifact_key in (
+            ("pq_artifact", "pq_artifact"),
+            ("disk_layout_artifact", "disk_layout_artifact"),
+        ):
+            artifact = zero["search_execution"][artifact_key]
+            path = evidence_root / f"fresh-{key}.json"
+            path.write_text(
+                json.dumps(_fresh_validation_evidence(artifact)), encoding="utf-8"
+            )
+            files[key] = path
+            evidence_refs[key] = {
+                "path": path.relative_to(tmp_path).as_posix(),
+                "sha256": search._sha256(path),
+                "expected_artifact": artifact,
+            }
+        for declaration in (zero, fixed):
+            declaration["search_execution"]["admission_evidence"] = json.loads(
+                json.dumps(evidence_refs)
+            )
+    config = {
+        "mode": "formal-search",
+        "fixture_mode": fixture_mode,
+        "protocols": [zero, fixed],
+        "common_admission": {
+            "artifacts_valid": True,
+            "inputs_compatible": True,
+            "runner_path": str(runner),
+            "runner_sha256": search._sha256(runner),
+            "abi_dependencies_usable": True,
+            "load_probe_pass": True,
+            "paths_confined": True,
+            "resources_sufficient": True,
+        },
+        "performance_admission": {
+            "native_linux": False,
+            "local_ssd": False,
+            "direct_io": False,
+            "linux_aio": False,
+            "parity_pass": False,
+        },
+    }
+    path = tmp_path / "formal.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    return path, [zero, fixed], files
+
+
 def test_protocol_normalization_freezes_only_requested_cache_nodes() -> None:
     zero = search.normalize_search_protocol(_protocol("zero"))
     fixed = search.normalize_search_protocol(_protocol("fixed_bfs"))
@@ -559,6 +655,113 @@ def test_protocol_normalization_freezes_only_requested_cache_nodes() -> None:
     assert "requested_primary_bytes" not in fixed["search_execution"]["cache"]
     assert fixed["search_execution"]["L_search"] == [100, 200, 400]
     assert fixed["search_execution"]["repetition_count"] == 3
+
+
+def test_non_fixture_preflight_binds_fresh_pq_layout_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, declarations, _ = _formal_preflight_config(
+        tmp_path, fixture_mode=False, include_evidence=True
+    )
+    prior_checksum = search.normalize_search_protocol(
+        json.loads(json.dumps(declarations[0]))
+    )["search_execution_checksum"]
+    legacy = json.loads(json.dumps(declarations[0]))
+    legacy["search_execution"].pop("admission_evidence")
+    assert search.normalize_search_protocol(legacy)[
+        "search_execution_checksum"
+    ] != prior_checksum
+    monkeypatch.setattr(
+        search, "_run_argv", lambda argv: pytest.fail("preflight must not search")
+    )
+    result = search.preflight(
+        mode="formal-search", config_path=config, workspace=tmp_path
+    )
+    assert result["common_search_admission"] is True
+    assert len(result["protocol_paths"]) == 2
+    emitted = json.loads(Path(result["protocol_paths"][0]).read_text(encoding="utf-8"))
+    assert emitted["search_execution"]["admission_evidence"] == declarations[0][
+        "search_execution"
+    ]["admission_evidence"]
+    assert emitted["search_execution_checksum"] == prior_checksum
+
+
+def test_non_fixture_preflight_rejects_boolean_only_artifact_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config, _, _ = _formal_preflight_config(
+        tmp_path, fixture_mode=False, include_evidence=False
+    )
+    monkeypatch.setattr(
+        search, "_run_argv", lambda argv: pytest.fail("preflight must not search")
+    )
+    result = search.preflight(
+        mode="formal-search", config_path=config, workspace=tmp_path
+    )
+    assert result["common_search_admission"] is False
+    assert result["protocol_paths"] == []
+    assert result["request_paths"] == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["missing", "sha_mismatch", "invalid", "candidate_mismatch", "ref_mismatch"],
+)
+def test_formal_preflight_rejects_invalid_fresh_admission_evidence(
+    tmp_path: Path, failure: str
+) -> None:
+    config, declarations, files = _formal_preflight_config(
+        tmp_path, fixture_mode=False, include_evidence=True
+    )
+    evidence = files["pq_artifact"]
+    if failure == "missing":
+        evidence.unlink()
+    elif failure == "sha_mismatch":
+        declarations[0]["search_execution"]["admission_evidence"]["pq_artifact"][
+            "sha256"
+        ] = "f" * 64
+        declarations[1]["search_execution"]["admission_evidence"]["pq_artifact"][
+            "sha256"
+        ] = "f" * 64
+    elif failure in {"invalid", "candidate_mismatch"}:
+        document = json.loads(evidence.read_text(encoding="utf-8"))
+        if failure == "invalid":
+            document = _fresh_validation_evidence(
+                declarations[0]["search_execution"]["pq_artifact"], valid=False
+            )
+        else:
+            document["artifact_candidate"]["claimed_aggregate_checksum"] = "e" * 64
+        evidence.write_text(json.dumps(document), encoding="utf-8")
+        for declaration in declarations:
+            declaration["search_execution"]["admission_evidence"]["pq_artifact"][
+                "sha256"
+            ] = search._sha256(evidence)
+    else:
+        for declaration in declarations:
+            declaration["search_execution"]["admission_evidence"]["pq_artifact"][
+                "expected_artifact"
+            ]["aggregate_checksum"] = "d" * 64
+    document = json.loads(config.read_text(encoding="utf-8"))
+    document["protocols"] = declarations
+    config.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(search.SearchEvaluationError):
+        search.preflight(mode="formal-search", config_path=config, workspace=tmp_path)
+    assert not (tmp_path / "protocols").exists()
+
+
+def test_fixture_preflight_can_bind_explicit_fixture_evidence_for_fast_path(
+    tmp_path: Path
+) -> None:
+    config, declarations, _ = _formal_preflight_config(
+        tmp_path, fixture_mode=True, include_evidence=True
+    )
+    result = search.preflight(
+        mode="formal-search", config_path=config, workspace=tmp_path
+    )
+    emitted = json.loads(Path(result["protocol_paths"][0]).read_text(encoding="utf-8"))
+    assert emitted["search_execution"]["admission_evidence"] == declarations[0][
+        "search_execution"
+    ]["admission_evidence"]
 
 
 def test_offline_metrics_keep_quality_separate_from_performance() -> None:
@@ -1130,7 +1333,19 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
         "implementation": {"implementation_id": "cpp_main_pqflash_search_instrumented_v1", "implementation_version": "1.0.0"},
         "source": source,
         "toolchain": {**python_toolchain, "os": "linux", "compiler_path": "/usr/bin/c++", "compiler_version": "11.4.0", "cmake_version": "3.22.1", "generator": "Unix Makefiles", "build_type": "Release", "cmake_definitions": ["DISKANN_CPP_MAIN_BASELINE=ON", "DISKANN_SEARCH_EVALUATION=ON"], "compile_commands": ["c++ -std=c++17 -mavx2 -fopenmp"], "link_commands": ["c++ diskann_search_evaluation_runner"]},
-        "dataset": dataset_identity, "parameters": {"binary_sha256": search._sha256(runner)},
+        "dataset": dataset_identity,
+        "parameters": {
+            "runner_binary": {
+                "path": runner.relative_to(workspace).as_posix(),
+                "sha256": search._sha256(runner),
+            },
+            "diskann_source": {
+                "repository": "https://github.com/microsoft/DiskANN.git",
+                "branch": "cpp_main",
+                "commit": "78256bbab4685e1774e78d331e081a153be26823",
+                "dirty_worktree": False,
+            },
+        },
         "resource_budget": {"memory_budget_bytes": runner.stat().st_size, "thread_budget": 1},
         "input_artifacts": [], "output_artifacts": [], "status": "SUCCEEDED",
         "started_at": "2026-08-22T00:00:00Z", "ended_at": "2026-08-22T00:00:01Z",
@@ -1157,6 +1372,27 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
             "build_manifest_path": runner_manifest_path.relative_to(workspace).as_posix(),
             "build_manifest_sha256": search._sha256(runner_manifest_path),
         }
+        if cache_mode == "zero":
+            pq_evidence = (
+                workspace
+                / "manifests/evidence/search-pq-native-real-pq-published.json"
+            )
+            layout_evidence = (
+                workspace
+                / "manifests/evidence/search-layout-native-real-layout-published.json"
+            )
+            protocol["search_execution"]["admission_evidence"] = {
+                "pq_artifact": {
+                    "path": pq_evidence.relative_to(workspace).as_posix(),
+                    "sha256": search._sha256(pq_evidence),
+                    "expected_artifact": fixture["pq_artifact"],
+                },
+                "disk_layout_artifact": {
+                    "path": layout_evidence.relative_to(workspace).as_posix(),
+                    "sha256": search._sha256(layout_evidence),
+                    "expected_artifact": fixture["disk_layout_artifact"],
+                },
+            }
         protocol["evaluation"]["ground_truth"] = truth_reference
         protocol = search.normalize_search_protocol(protocol)
         protocol_path = workspace / "protocols" / f"{protocol_id}.json"

@@ -267,6 +267,8 @@ Feature-specific Python Harness normalization (sole owner)
   -> immutable publication/reference or retained terminal failure
 
 formal-search preflight after exact PQ/Layout/QuerySet/GT identities exist
+  -> existing Validator fresh-validates PQ and Layout once into new exclusive evidence paths
+  -> bind evidence path/SHA/expected ArtifactRef in both exact declarations
   -> normalize and write exactly one zero-cache and one fixed-cache immutable SearchProtocol
   -> reread and validate both Protocols and common search admission
   -> independently classify performance admission from environment/Parity evidence
@@ -290,8 +292,11 @@ validate the PQArtifact; generate and validate the DiskLayoutArtifact; run Featu
 `materialize --operation query_set` to produce the immutable native QuerySet payload, row mapping,
 QuerySetReference, BuildManifest, and ValidationEvidence; run Feature-private
 `materialize --operation ground_truth` through shell-free argv to the pinned `compute_groundtruth`
-binary and validate its GroundTruthReference; then invoke the same `preflight` in **formal-search
-mode**. Formal-search mode reads exact zero/fixed-cache declarations, normalizes and writes the two
+binary and validate its GroundTruthReference; fresh-validate the exact PQArtifact and
+DiskLayoutArtifact once more with the existing Validator into new exclusive evidence paths, freeze
+their path/SHA/expected ArtifactRef in both declarations, and then invoke the same `preflight` in
+**formal-search mode**. Formal-search mode reads exact zero/fixed-cache declarations, validates and
+binds those fresh grants, normalizes and writes the two
 immutable SearchProtocols exactly once, immediately rereads and validates their schemas, checksums,
 search-execution identities, all Artifact/input identities, binary, environment, path, and resource
 bindings, and evaluates two independent results. **Common search admission** requires validated and
@@ -307,6 +312,15 @@ quality run while performance admission remains false; a broken binary, dependen
 fixed search path still fails common admission. Only a subsequent user approval bound to the exact
 request permits `search`; search consumes the frozen Protocol without normalizing again. There is no
 `protocol` command, second preflight, builder framework, registry, schema, or status system.
+
+At search startup, a new evidence-bearing Protocol uses the prevalidated fast admission path:
+metadata/ref/evidence/lineage checks plus required PQ/Layout payload existence and byte length. It
+does not rehash Dataset/GlobalGraph/PQ/Layout payloads, rescan graph/layout structure, or reread
+Artifact producer manifests. Legacy/no-evidence Protocols retain the prior full
+`validate_with_lineage` path. Both paths fail closed and independently validate the actual runner
+executable SHA, fixed implementation/source identity, and bound runner BuildManifest SHA/content.
+Loader aliases prefer hard links in confined temporary storage and copy only for explicit
+cross-filesystem/platform capability errors; source Artifacts remain immutable.
 
 ### Validation gates
 
