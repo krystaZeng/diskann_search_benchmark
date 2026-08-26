@@ -506,7 +506,7 @@ Search Runner.
 phase temporarily reopens implementation before returning to the unchanged Non-Task Manual
 Execution Boundary above; it authorizes none of that boundary's ten formal operations.
 
-- [ ] T022 [US1] Produce and admit two independent target-specific BuildManifest/v1 documents during the next real clean build lifecycle per US1, FR-010–FR-012, SC-001–SC-002, and the Plan's Compiler/Build Identity and pinned-provenance decisions (partial, HIGH)
+- [X] T022 [US1] Produce and admit two independent target-specific BuildManifest/v1 documents during the next real clean build lifecycle per US1, FR-010–FR-012, SC-001–SC-002, and the Plan's Compiler/Build Identity and pinned-provenance decisions (partial, HIGH)
   - **Depends on**: T021. The audited `native_reference_capture_runner` SHA-256
     `763ba2ddac4ce1cbcc427d58192146da65a243ddc8b25390a83548f0b01fa57f` and
     `build_disk_index` SHA-256
