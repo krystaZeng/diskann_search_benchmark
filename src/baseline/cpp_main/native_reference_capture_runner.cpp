@@ -121,6 +121,13 @@ Json verify_binary_identity(const std::filesystem::path& workspace_root,
              parameters.at("runner_binary").contains("sha256")) {
     recorded_sha =
         parameters.at("runner_binary").at("sha256").get<std::string>();
+  } else if (parameters.contains("build_closure") &&
+             parameters.at("build_closure").contains("binary") &&
+             parameters.at("build_closure").at("binary").contains("sha256")) {
+    recorded_sha = parameters.at("build_closure")
+                       .at("binary")
+                       .at("sha256")
+                       .get<std::string>();
   }
   if (recorded_sha != identity.at("sha256").get<std::string>()) {
     throw std::runtime_error("native Reference BuildManifest binary mismatch");
@@ -163,6 +170,81 @@ std::string aggregate_for(const Json& metadata) {
   return dp::aggregate_checksum(projection);
 }
 
+Json source_json(const dp::SourceIdentity& source) {
+  Json value{{"repository", source.repository},
+             {"branch", source.branch},
+             {"commit", source.commit},
+             {"dirty_worktree", source.dirty_worktree}};
+  if (source.dirty_source_checksum.has_value()) {
+    value["dirty_source_checksum"] = *source.dirty_source_checksum;
+  }
+  return value;
+}
+
+Json build_json(const native::BuildConfiguration& build) {
+  return {{"os", build.os},
+          {"compiler_path", build.compiler_path},
+          {"compiler_version", build.compiler_version},
+          {"cmake_version", build.cmake_version},
+          {"generator", build.generator},
+          {"build_type", build.build_type},
+          {"cmake_definitions", build.effective_cmake_definitions},
+          {"compile_commands", build.project_compile_options},
+          {"link_commands", build.linked_dependencies},
+          {"configure_command", build.configure_command},
+          {"build_command", build.build_command}};
+}
+
+Json admission_json(const native::SourceBuildEvidence& evidence) {
+  return {{"source", source_json(evidence.source)},
+          {"gitlink_commit", evidence.gitlink_commit},
+          {"upstream_source_dir", evidence.upstream_source_dir.string()},
+          {"upstream_binary_dir", evidence.upstream_binary_dir.string()},
+          {"upstream_library",
+           {{"path", evidence.upstream_library_file.string()},
+            {"sha256", evidence.upstream_library_sha256}}},
+          {"build", build_json(evidence.build)}};
+}
+
+Json document_identity(const std::filesystem::path& workspace_root,
+                       const std::filesystem::path& path,
+                       const std::string& stream_role = "") {
+  Json value{{"path", std::filesystem::relative(path, workspace_root).generic_string()},
+             {"byte_length", std::filesystem::file_size(path)},
+             {"sha256", dp::sha256_file(path)}};
+  if (!stream_role.empty()) value["stream_role"] = stream_role;
+  return value;
+}
+
+Json observer_json(const Json& request,
+                   const native::NativeReferenceCaptureResult& result) {
+  Json value{{"run_id", request.at("run_id")},
+             {"observer_mechanism", result.observer_mechanism},
+             {"observer_armed", result.observer_armed},
+             {"observer_ready_at", result.observer_ready_at},
+             {"child_launched_at", result.child_launched_at},
+             {"native_child_argv", result.native_child_argv},
+             {"source_graph_name", result.source_graph_name},
+             {"captured_graph_path",
+              request.at("capture").at("captured_graph_path")},
+             {"child_exit_code", result.child_exit_code},
+             {"exact_graph_event_observed", result.exact_graph_event_observed},
+             {"graph_hard_link_created", result.graph_hard_link_created},
+             {"capture_started_at", result.started_at},
+             {"capture_ended_at", result.ended_at},
+             {"terminal_result", result.terminal_result}};
+  if (!result.failure_reason.empty()) {
+    value["failure_reason"] = result.failure_reason;
+  }
+  return value;
+}
+
+Json request_identity(const std::filesystem::path& path) {
+  return {{"path", std::filesystem::absolute(path).string()},
+          {"byte_length", std::filesystem::file_size(path)},
+          {"sha256", dp::sha256_file(path)}};
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -171,14 +253,24 @@ int main(int argc, char** argv) {
     return 2;
   }
   Json request;
+  Json native_manifest;
+  Json dataset_metadata;
+  Json upstream_source;
+  Json parameters = Json::object();
   std::filesystem::path workspace_root;
   std::filesystem::path manifest_path;
   std::filesystem::path evidence_path;
   std::filesystem::path artifact_path;
   std::filesystem::path captured_graph;
   std::filesystem::path captured_medoids;
-  Json native_manifest;
-  std::string started_at = now_utc();
+  std::filesystem::path stdout_path;
+  std::filesystem::path stderr_path;
+  std::filesystem::path observer_path;
+  std::filesystem::path structural_projection_path;
+  std::filesystem::path source_directory;
+  std::string started_at;
+  bool lifecycle_established = false;
+  int native_child_exit_code = -1;
   try {
     request = read_json(argv[2]);
     if (request.at("request_version") != "native-reference-build-request/v1" ||
@@ -191,7 +283,7 @@ int main(int argc, char** argv) {
     }
     workspace_root = request.at("workspace_root").get<std::string>();
     const auto workspace = dp::create_workspace(workspace_root);
-    const Json upstream_source{
+    upstream_source = Json{
         {"repository", request.at("source").at("repository")},
         {"branch", request.at("source").at("branch")},
         {"commit", request.at("source").at("commit")},
@@ -226,8 +318,20 @@ int main(int argc, char** argv) {
     captured_medoids = confined(
         workspace_root,
         request.at("capture").at("captured_medoids_path").get<std::string>());
+    stdout_path = confined(
+        workspace_root, request.at("outputs").at("stdout_path").get<std::string>());
+    stderr_path = confined(
+        workspace_root, request.at("outputs").at("stderr_path").get<std::string>());
+    observer_path = confined(
+        workspace_root,
+        request.at("outputs").at("observer_evidence_path").get<std::string>());
+    structural_projection_path = confined(
+        workspace_root,
+        request.at("outputs").at("structural_projection_path").get<std::string>());
     for (const auto& path : {manifest_path, evidence_path, artifact_path,
-                            captured_graph, captured_medoids}) {
+                            captured_graph, captured_medoids, stdout_path,
+                            stderr_path, observer_path,
+                            structural_projection_path}) {
       if (std::filesystem::exists(path)) {
         throw std::runtime_error("native Reference output already exists");
       }
@@ -241,14 +345,14 @@ int main(int argc, char** argv) {
     if (!dataset_validation.valid()) {
       throw std::runtime_error("DatasetArtifact fresh validation failed");
     }
-    const auto dataset_metadata = read_json(
+    dataset_metadata = read_json(
         workspace.normal_root / dataset_reference.metadata_path);
     const auto vectors_record = dataset_metadata.at("payloads").at(0);
     const auto vectors =
         workspace.normal_root / dataset_reference.metadata_path.parent_path() /
         vectors_record.at("path").get<std::string>();
 
-    const auto source_directory =
+    source_directory =
         workspace.temporary_root /
         (request.at("run_id").get<std::string>() + "-native-output");
     if (std::filesystem::exists(source_directory)) {
@@ -280,15 +384,60 @@ int main(int argc, char** argv) {
         "--QD", std::to_string(controls.at("QD").get<int>()),
         "--PQ_disk_bytes", std::to_string(controls.at("disk_PQ_bytes").get<int>()),
         "--build_PQ_bytes", std::to_string(controls.at("build_PQ_bytes").get<int>())};
+    started_at = now_utc();
+    lifecycle_established = true;
+    parameters = {{"reference_role", request.at("reference_role")},
+                  {"request", request_identity(argv[2])},
+                  {"project_operation_owner",
+                   request.at("project_operation_owner")},
+                  {"native_binary", request.at("native_binary")},
+                  {"profile", request.at("profile")},
+                  {"controls", request.at("controls")},
+                  {"capture", request.at("capture")},
+                  {"native_child_argv", child}};
+
+    const auto source_before = native::admit_source_and_build(
+        native::configured_source_build_admission());
+    if (source_json(source_before.source) != upstream_source) {
+      throw std::runtime_error("pre-run upstream source admission mismatch");
+    }
+    parameters["upstream_admission"] = {{"pre", admission_json(source_before)}};
+
     native::NativeReferenceCaptureRequest capture{
         source_directory,
         graph_name,
         request.at("capture").at("source_medoids_name").get<std::string>(),
         captured_graph,
         captured_medoids,
+        stdout_path,
+        stderr_path,
         child};
     const auto capture_result = native::capture_native_reference(capture);
-    started_at = capture_result.started_at;
+    native_child_exit_code = capture_result.child_exit_code;
+    write_exclusive(observer_path, observer_json(request, capture_result));
+    if (std::filesystem::is_regular_file(stdout_path) &&
+        std::filesystem::is_regular_file(stderr_path)) {
+      parameters["native_child_logs"] =
+          {{"stdout", document_identity(workspace_root, stdout_path, "stdout")},
+           {"stderr", document_identity(workspace_root, stderr_path, "stderr")}};
+    }
+    parameters["observer_evidence"] =
+        document_identity(workspace_root, observer_path);
+
+    const auto source_after = native::admit_source_and_build(
+        native::configured_source_build_admission());
+    const bool consistent =
+        native::same_source_build_evidence(source_before, source_after);
+    parameters["upstream_admission"]["post"] = admission_json(source_after);
+    parameters["upstream_admission"]["consistent"] = consistent;
+    if (!consistent || source_json(source_after.source) != upstream_source) {
+      throw std::runtime_error("post-run upstream/build admission mismatch");
+    }
+    if (capture_result.terminal_result != "SUCCEEDED") {
+      throw std::runtime_error(capture_result.failure_reason.empty()
+                                   ? "native Reference capture failed"
+                                   : capture_result.failure_reason);
+    }
 
     const auto node_count =
         dataset_metadata.at("dataset").at("global_node_count").get<dp::NodeCount>();
@@ -367,6 +516,8 @@ int main(int argc, char** argv) {
         {"result", "VALID"}};
     write_exclusive(evidence_path, evidence);
 
+    const auto ended_at = now_utc();
+
     Json manifest{
         {"manifest_version", "1.0.0"},
         {"run_id", request.at("run_id")},
@@ -374,22 +525,10 @@ int main(int argc, char** argv) {
         {"implementation",
          {{"implementation_id", "framework_baseline_native_reference_capture_v1"},
           {"implementation_version", "1.0.0"}}},
-        {"source",
-         {{"repository", "https://github.com/microsoft/DiskANN.git"},
-          {"branch", "cpp_main"},
-          {"commit", "78256bbab4685e1774e78d331e081a153be26823"},
-          {"dirty_worktree", false}}},
+        {"source", upstream_source},
         {"toolchain", native_manifest.at("toolchain")},
         {"dataset", dataset_metadata.at("dataset")},
-        {"parameters",
-         {{"reference_role", request.at("reference_role")},
-          {"request_path", std::filesystem::absolute(argv[2]).string()},
-          {"request_sha256", dp::sha256_file(argv[2])},
-          {"project_operation_owner", request.at("project_operation_owner")},
-          {"native_binary", request.at("native_binary")},
-          {"profile", request.at("profile")},
-          {"controls", request.at("controls")},
-          {"capture", request.at("capture")}}},
+        {"parameters", parameters},
         {"resource_budget",
          {{"memory_budget_bytes",
            request.at("resource_budget").at("memory_budget_bytes")},
@@ -398,8 +537,8 @@ int main(int argc, char** argv) {
         {"input_artifacts", Json::array({request.at("dataset_artifact")})},
         {"output_artifacts", Json::array({artifact_ref(reference)})},
         {"status", "SUCCEEDED"},
-        {"started_at", capture_result.started_at},
-        {"ended_at", capture_result.ended_at},
+        {"started_at", started_at},
+        {"ended_at", ended_at},
         {"validation_evidence_path",
          std::filesystem::relative(evidence_path, workspace_root).generic_string()}};
     write_exclusive(manifest_path, manifest);
@@ -415,11 +554,30 @@ int main(int argc, char** argv) {
     if (!artifact_path.empty()) {
       std::error_code ignored;
       std::filesystem::remove(artifact_path, ignored);
+      std::filesystem::remove(evidence_path, ignored);
       std::filesystem::remove(captured_graph, ignored);
       std::filesystem::remove(captured_medoids, ignored);
     }
-    if (!manifest_path.empty() && !std::filesystem::exists(manifest_path)) {
+    if (lifecycle_established && !manifest_path.empty() &&
+        !std::filesystem::exists(manifest_path)) {
       try {
+        Json failure_logs = Json::object();
+        if (!stdout_path.empty() && std::filesystem::is_regular_file(stdout_path)) {
+          failure_logs["stdout"] =
+              document_identity(workspace_root, stdout_path, "stdout");
+        }
+        if (!stderr_path.empty() && std::filesystem::is_regular_file(stderr_path)) {
+          failure_logs["stderr"] =
+              document_identity(workspace_root, stderr_path, "stderr");
+        }
+        if (!failure_logs.empty()) {
+          parameters["native_child_logs"] = std::move(failure_logs);
+        }
+        if (!observer_path.empty() &&
+            std::filesystem::is_regular_file(observer_path)) {
+          parameters["observer_evidence"] =
+              document_identity(workspace_root, observer_path);
+        }
         Json failure{
             {"manifest_version", "1.0.0"},
             {"run_id", request.value("run_id", "native-reference-failed")},
@@ -427,29 +585,26 @@ int main(int argc, char** argv) {
             {"implementation",
              {{"implementation_id", "framework_baseline_native_reference_capture_v1"},
               {"implementation_version", "1.0.0"}}},
-            {"source",
-             {{"repository", "https://github.com/microsoft/DiskANN.git"},
-              {"branch", "cpp_main"},
-              {"commit", "78256bbab4685e1774e78d331e081a153be26823"},
-              {"dirty_worktree", false}}},
-            {"toolchain",
-             {{"os", "linux"}, {"compiler_path", "unknown"},
-              {"compiler_version", "unknown"}, {"cmake_version", "unknown"},
-              {"generator", "unknown"}, {"build_type", "unknown"},
-              {"cmake_definitions", Json::array()},
-              {"compile_commands", Json::array()},
-              {"link_commands", Json::array()}}},
-            {"dataset", request.value("dataset", Json::object())},
-            {"parameters", Json{{"request", request}}},
+            {"source", upstream_source},
+            {"toolchain", native_manifest.at("toolchain")},
+            {"dataset", dataset_metadata.at("dataset")},
+            {"parameters", parameters},
             {"resource_budget",
-             {{"memory_budget_bytes", 1}, {"thread_budget", 1}}},
-            {"input_artifacts", Json::array()},
+             {{"memory_budget_bytes",
+               request.at("resource_budget").at("memory_budget_bytes")},
+              {"thread_budget",
+               request.at("resource_budget").at("thread_budget")}}},
+            {"input_artifacts", Json::array({request.at("dataset_artifact")})},
             {"output_artifacts", Json::array()},
             {"status", "FAILED"},
             {"started_at", started_at},
             {"ended_at", ended_at},
             {"failure",
-             {{"category", "STAGE_FAILED"}, {"message", error.what()}}}};
+             {{"category", "native_reference_capture_failed"},
+              {"reason", error.what()}}}};
+        if (native_child_exit_code >= 0) {
+          failure["failure"]["exit_code"] = native_child_exit_code;
+        }
         write_exclusive(manifest_path, failure);
       } catch (const std::exception&) {
       }

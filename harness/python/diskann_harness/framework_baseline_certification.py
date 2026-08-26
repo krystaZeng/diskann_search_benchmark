@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shlex
 import subprocess
 import tempfile
@@ -23,6 +24,7 @@ from referencing import Registry, Resource
 
 from . import cpp_main_structural_parity as structural_parity
 from . import diskann_search_evaluation as search_evaluation
+from .checksum import aggregate_checksum
 from .manifests import ImmutableWriteError, write_immutable_json
 from .workspace import WorkspaceError, resolve_confined_path
 
@@ -1128,15 +1130,487 @@ def reference_preflight(
     }
 
 
-def _write_exclusive_text(path: Path, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _aggregate_artifact_metadata(metadata: dict[str, Any]) -> str:
+    return aggregate_checksum(
+        {
+            "schema_version": metadata["schema_version"],
+            "canonicalization": metadata["canonicalization"],
+            "artifact_type": metadata["artifact_type"],
+            "format_version": metadata["format_version"],
+            "dataset_checksum": metadata["dataset"]["dataset_checksum"],
+            "id_space": metadata["id_space"],
+            "capabilities": sorted(metadata["capabilities"]),
+            "payloads": [
+                {
+                    "role": item["role"],
+                    "byte_length": item["byte_length"],
+                    "sha256": item["sha256"],
+                }
+                for item in metadata["payloads"]
+            ],
+            "source_artifacts": metadata["source_artifacts"],
+            "structural": metadata["structural"],
+        }
+    )
+
+
+def _relative_file_identity(
+    workspace: Path, path: Path, *, stream_role: str | None = None
+) -> dict[str, Any]:
     try:
-        with path.open("x", encoding="utf-8") as output:
-            output.write(value)
-            output.flush()
-            os.fsync(output.fileno())
-    except FileExistsError as error:
-        raise FeatureCertificationError(f"immutable target already exists: {path}") from error
+        relative = path.resolve().relative_to(workspace)
+    except ValueError as error:
+        raise FeatureCertificationError("native closure file escapes workspace") from error
+    identity: dict[str, Any] = {
+        "path": relative.as_posix(),
+        "byte_length": path.stat().st_size,
+        "sha256": _sha256_file(path),
+    }
+    if stream_role is not None:
+        identity["stream_role"] = stream_role
+    return identity
+
+
+def _require_manifest_file_identity(
+    workspace: Path,
+    reference: Any,
+    expected_relative: str,
+    label: str,
+    *,
+    stream_role: str | None = None,
+) -> Path:
+    if type(reference) is not dict:
+        raise FeatureCertificationError(f"{label} identity is missing")
+    path = resolve_feature_output(workspace, expected_relative)
+    if reference != _relative_file_identity(
+        workspace, path, stream_role=stream_role
+    ):
+        raise FeatureCertificationError(f"{label} identity mismatch")
+    return path
+
+
+def _expected_upstream_source(request: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: request["source"][key]
+        for key in ("repository", "branch", "commit", "dirty_worktree")
+    }
+
+
+def _verify_manifest_common(
+    manifest: dict[str, Any],
+    request: dict[str, Any],
+    request_path: Path,
+    dataset: dict[str, Any],
+    repository: Path,
+    *,
+    require_consistent_admission: bool,
+) -> None:
+    _validate_with(
+        _runtime_validator(repository, "build-manifest.schema.json"),
+        manifest,
+        "native Reference terminal BuildManifest",
+    )
+    if (
+        manifest["run_id"] != request["run_id"]
+        or manifest["stage"] != "build"
+        or manifest["implementation"]
+        != {
+            "implementation_id": "framework_baseline_native_reference_capture_v1",
+            "implementation_version": "1.0.0",
+        }
+        or manifest["source"] != _expected_upstream_source(request)
+        or manifest["dataset"] != dataset
+        or manifest["input_artifacts"] != [request["dataset_artifact"]]
+        or manifest["resource_budget"]
+        != {
+            "memory_budget_bytes": request["resource_budget"]["memory_budget_bytes"],
+            "thread_budget": request["resource_budget"]["thread_budget"],
+        }
+    ):
+        raise FeatureCertificationError("native Reference Manifest binding mismatch")
+    native_manifest_path = _verify_document_reference(
+        Path(request["workspace_root"]), request["native_binary"]["build_manifest"]
+    )
+    native_manifest = _read_object(native_manifest_path)
+    if manifest["toolchain"] != native_manifest["toolchain"]:
+        raise FeatureCertificationError("native Reference Manifest toolchain mismatch")
+    started = _parse_terminal_time(manifest["started_at"], "native Reference start")
+    ended = _parse_terminal_time(manifest["ended_at"], "native Reference end")
+    if ended < started:
+        raise FeatureCertificationError("native Reference terminal timestamps are reversed")
+    parameters = manifest["parameters"]
+    request_binding = parameters.get("request")
+    if request_binding != {
+        "path": str(request_path.resolve()),
+        "byte_length": request_path.stat().st_size,
+        "sha256": _sha256_file(request_path),
+    }:
+        raise FeatureCertificationError("immutable native Reference request binding mismatch")
+    if (
+        parameters.get("project_operation_owner")
+        != request["project_operation_owner"]
+        or parameters.get("native_binary") != request["native_binary"]
+        or parameters.get("profile") != request["profile"]
+        or parameters.get("controls") != request["controls"]
+        or parameters.get("capture") != request["capture"]
+    ):
+        raise FeatureCertificationError("native Reference execution parameter mismatch")
+    admission = parameters.get("upstream_admission")
+    if require_consistent_admission:
+        if (
+            type(admission) is not dict
+            or admission.get("consistent") is not True
+            or admission.get("pre") != admission.get("post")
+            or type(admission.get("pre")) is not dict
+            or admission["pre"].get("source") != _expected_upstream_source(request)
+            or admission["pre"].get("gitlink_commit") != request["source"]["commit"]
+        ):
+            raise FeatureCertificationError("pre/post upstream admission binding mismatch")
+    elif admission is not None:
+        if type(admission) is not dict:
+            raise FeatureCertificationError("failure upstream admission is malformed")
+        for phase in ("pre", "post"):
+            evidence = admission.get(phase)
+            if evidence is not None and (
+                type(evidence) is not dict
+                or evidence.get("source") != _expected_upstream_source(request)
+                or evidence.get("gitlink_commit") != request["source"]["commit"]
+            ):
+                raise FeatureCertificationError(
+                    f"failure {phase}-run upstream admission mismatch"
+                )
+        if admission.get("consistent") is True and admission.get("pre") != admission.get("post"):
+            raise FeatureCertificationError("failure admission consistency is false")
+
+
+def _verify_native_observer(
+    observer: dict[str, Any], request: dict[str, Any], *, succeeded: bool
+) -> None:
+    required = {
+        "run_id",
+        "observer_mechanism",
+        "observer_armed",
+        "observer_ready_at",
+        "child_launched_at",
+        "native_child_argv",
+        "source_graph_name",
+        "captured_graph_path",
+        "child_exit_code",
+        "exact_graph_event_observed",
+        "graph_hard_link_created",
+        "capture_started_at",
+        "capture_ended_at",
+        "terminal_result",
+    }
+    if not required.issubset(observer):
+        raise FeatureCertificationError("native observer evidence is incomplete")
+    for label in (
+        "observer_ready_at",
+        "child_launched_at",
+        "capture_started_at",
+        "capture_ended_at",
+    ):
+        _parse_terminal_time(observer[label], f"observer {label}")
+    if (
+        observer["run_id"] != request["run_id"]
+        or observer["observer_mechanism"] != request["capture"]["mechanism"]
+        or observer["observer_armed"] is not True
+        or observer["source_graph_name"] != request["capture"]["source_graph_name"]
+        or observer["captured_graph_path"]
+        != request["capture"]["captured_graph_path"]
+        or type(observer["native_child_argv"]) is not list
+        or not observer["native_child_argv"]
+    ):
+        raise FeatureCertificationError("native observer evidence binding mismatch")
+    if succeeded and (
+        observer["terminal_result"] != "SUCCEEDED"
+        or observer["child_exit_code"] != 0
+        or observer["exact_graph_event_observed"] is not True
+        or observer["graph_hard_link_created"] is not True
+    ):
+        raise FeatureCertificationError("native observer success evidence mismatch")
+
+
+def _verify_cpp_success_closure(
+    request: dict[str, Any],
+    request_path: Path,
+    dataset: dict[str, Any],
+    repository: Path,
+) -> dict[str, Any]:
+    workspace = Path(request["workspace_root"]).resolve()
+    outputs = request["outputs"]
+    manifest_path = resolve_feature_output(workspace, outputs["build_manifest_path"])
+    manifest = _read_object(manifest_path)
+    _verify_manifest_common(
+        manifest,
+        request,
+        request_path,
+        dataset,
+        repository,
+        require_consistent_admission=True,
+    )
+    if manifest["status"] != "SUCCEEDED" or "failure" in manifest:
+        raise FeatureCertificationError("native Reference Manifest is not SUCCEEDED")
+
+    parameters = manifest["parameters"]
+    logs = parameters.get("native_child_logs")
+    if type(logs) is not dict or set(logs) != {"stdout", "stderr"}:
+        raise FeatureCertificationError("native child log evidence is incomplete")
+    stdout_path = _require_manifest_file_identity(
+        workspace,
+        logs["stdout"],
+        outputs["stdout_path"],
+        "native child stdout",
+        stream_role="stdout",
+    )
+    stderr_path = _require_manifest_file_identity(
+        workspace,
+        logs["stderr"],
+        outputs["stderr_path"],
+        "native child stderr",
+        stream_role="stderr",
+    )
+    observer_path = _require_manifest_file_identity(
+        workspace,
+        parameters.get("observer_evidence"),
+        outputs["observer_evidence_path"],
+        "native observer evidence",
+    )
+    observer = _read_object(observer_path)
+    _verify_native_observer(observer, request, succeeded=True)
+    if parameters.get("native_child_argv") != observer["native_child_argv"]:
+        raise FeatureCertificationError("native child argv evidence mismatch")
+
+    artifact_path = resolve_feature_output(
+        workspace, outputs["artifact_metadata_path"]
+    )
+    artifact = _read_object(artifact_path)
+    _validate_with(
+        _runtime_validator(repository, "global-graph-artifact-v2.schema.json"),
+        artifact,
+        "native Reference GlobalGraphArtifact/v2",
+    )
+    expected_source = dict(request["dataset_artifact"])
+    expected_source.pop("metadata_path")
+    if (
+        artifact["dataset"] != dataset
+        or artifact["source_artifacts"] != [expected_source]
+        or artifact["structural"]["lineage_mode"] != "direct_native_final"
+        or artifact["aggregate_checksum"] != _aggregate_artifact_metadata(artifact)
+    ):
+        raise FeatureCertificationError("native Reference Artifact identity mismatch")
+    payloads = {item["role"]: item for item in artifact["payloads"]}
+    for role, capture_key in (
+        ("global_graph", "captured_graph_path"),
+        ("medoids", "captured_medoids_path"),
+    ):
+        payload = payloads[role]
+        payload_path = resolve_feature_output(artifact_path.parent, payload["path"])
+        expected_path = resolve_feature_output(workspace, request["capture"][capture_key])
+        if (
+            payload_path != expected_path
+            or not payload_path.is_file()
+            or payload_path.stat().st_size != payload["byte_length"]
+            or _sha256_file(payload_path) != payload["sha256"]
+        ):
+            raise FeatureCertificationError(f"native Reference {role} payload mismatch")
+    artifact_ref = {
+        "metadata_path": artifact_path.relative_to(workspace / "normal").as_posix(),
+        "artifact_type": "global_graph",
+        "format_version": "global-graph-artifact/v2",
+        "aggregate_checksum": artifact["aggregate_checksum"],
+    }
+    if manifest["output_artifacts"] != [artifact_ref]:
+        raise FeatureCertificationError("native Reference Manifest output mismatch")
+
+    evidence_path = resolve_feature_output(
+        workspace, outputs["validation_evidence_path"]
+    )
+    evidence = _read_object(evidence_path)
+    _validate_with(
+        _runtime_validator(repository, "validation-evidence.schema.json"),
+        evidence,
+        "native Reference ValidationEvidence",
+    )
+    candidate = evidence["artifact_candidate"]
+    if (
+        evidence["result"] != "VALID"
+        or candidate
+        != {
+            "artifact_type": artifact_ref["artifact_type"],
+            "format_version": artifact_ref["format_version"],
+            "metadata_path": artifact_ref["metadata_path"],
+            "claimed_aggregate_checksum": artifact_ref["aggregate_checksum"],
+        }
+        or manifest.get("validation_evidence_path")
+        != outputs["validation_evidence_path"]
+    ):
+        raise FeatureCertificationError("native Reference ValidationEvidence mismatch")
+    return {
+        "manifest": manifest,
+        "artifact": artifact,
+        "artifact_ref": artifact_ref,
+        "validation_evidence": evidence,
+        "observer": observer,
+        "stdout_path": stdout_path,
+        "stderr_path": stderr_path,
+        "observer_path": observer_path,
+        "manifest_path": manifest_path,
+        "artifact_path": artifact_path,
+        "evidence_path": evidence_path,
+    }
+
+
+def _verify_cpp_failure_closure(
+    request: dict[str, Any],
+    request_path: Path,
+    dataset: dict[str, Any],
+    repository: Path,
+) -> dict[str, Any]:
+    workspace = Path(request["workspace_root"]).resolve()
+    outputs = request["outputs"]
+    manifest = _read_object(
+        resolve_feature_output(workspace, outputs["build_manifest_path"])
+    )
+    _verify_manifest_common(
+        manifest,
+        request,
+        request_path,
+        dataset,
+        repository,
+        require_consistent_admission=False,
+    )
+    if (
+        manifest["status"] not in {"FAILED", "CANCELLED", "INVALID_OUTPUT"}
+        or type(manifest.get("failure")) is not dict
+        or not manifest["failure"].get("reason")
+        or manifest["output_artifacts"] != []
+    ):
+        raise FeatureCertificationError("native Reference failure Manifest is invalid")
+    for key in (
+        "artifact_metadata_path",
+        "validation_evidence_path",
+        "structural_projection_path",
+    ):
+        if resolve_feature_output(workspace, outputs[key]).exists():
+            raise FeatureCertificationError("failed native operation published normal output")
+    parameters = manifest["parameters"]
+    logs = parameters.get("native_child_logs")
+    if logs is not None:
+        if type(logs) is not dict or not logs or not set(logs).issubset({"stdout", "stderr"}):
+            raise FeatureCertificationError("failed native child log evidence is malformed")
+        for stream in ("stdout", "stderr"):
+            if stream in logs:
+                _require_manifest_file_identity(
+                    workspace,
+                    logs[stream],
+                    outputs[f"{stream}_path"],
+                    f"failed native child {stream}",
+                    stream_role=stream,
+                )
+    observer_ref = parameters.get("observer_evidence")
+    if observer_ref is not None:
+        observer = _read_object(
+            _require_manifest_file_identity(
+                workspace,
+                observer_ref,
+                outputs["observer_evidence_path"],
+                "failed native observer evidence",
+            )
+        )
+        _verify_native_observer(observer, request, succeeded=False)
+    return manifest
+
+
+_NATIVE_STAGE_MARKERS = (
+    re.compile(r"^Time for partitioning data : [0-9]+\.[0-9]{6} seconds$"),
+    re.compile(r"^Time for building indices on shards: [0-9]+\.[0-9]{6} seconds$"),
+    re.compile(r"^Time for merging indices: [0-9]+\.[0-9]{6} seconds$"),
+)
+
+
+def _native_stage_sequence_observed(stdout: str) -> bool:
+    positions: list[int] = []
+    lines = stdout.splitlines()
+    for marker in _NATIVE_STAGE_MARKERS:
+        matches = [index for index, line in enumerate(lines) if marker.fullmatch(line)]
+        if len(matches) != 1:
+            return False
+        positions.append(matches[0])
+    return positions == sorted(positions) and len(set(positions)) == len(positions)
+
+
+def _write_native_structural_projection(
+    request: dict[str, Any],
+    request_path: Path,
+    closure: dict[str, Any],
+    repository: Path,
+) -> Path:
+    workspace = Path(request["workspace_root"]).resolve()
+    artifact = closure["artifact"]
+    stdout = closure["stdout_path"].read_text(encoding="utf-8", errors="strict")
+    source_mapping = (
+        repository / "specs/002-cpp-main-upstream-baseline/source-mapping.md"
+    )
+    if not source_mapping.is_file():
+        raise FeatureCertificationError("fixed upstream source mapping is missing")
+    projection: dict[str, Any] = {
+        "baseline_id": request["reference_role"],
+        "execution_status": "SUCCEEDED",
+        "source": {
+            "repository": request["source"]["repository"],
+            "branch": request["source"]["branch"],
+            "commit": request["source"]["commit"],
+            "clean_before": True,
+            "clean_after": True,
+        },
+        "dataset_checksum": artifact["dataset"]["dataset_checksum"],
+        "profile_checksum": request["profile"]["sha256"],
+        "branch_mode": request["controls"]["branch_mode"],
+        "partition_count": artifact["structural"]["partition_count"],
+        "global_graph": {
+            "available": True,
+            "validation_status": "PASS",
+            "id_space": artifact["id_space"],
+            "node_count": artifact["structural"]["global_node_count"],
+            "invalid_neighbor_count": 0,
+            "self_edge_count": 0,
+            "observed_max_degree": artifact["structural"]["observed_max_degree"],
+            "medoids_valid": True,
+            "dataset_lineage_checksum": artifact["dataset"]["dataset_checksum"],
+        },
+        "evidence_refs": [
+            request_path.relative_to(workspace).as_posix(),
+            closure["artifact_path"].relative_to(workspace).as_posix(),
+            closure["evidence_path"].relative_to(workspace).as_posix(),
+            closure["observer_path"].relative_to(workspace).as_posix(),
+            closure["manifest_path"].relative_to(workspace).as_posix(),
+            closure["stdout_path"].relative_to(workspace).as_posix(),
+            closure["stderr_path"].relative_to(workspace).as_posix(),
+            source_mapping.relative_to(repository).as_posix(),
+        ],
+        "evidence_identity": {
+            "request_sha256": _sha256_file(request_path),
+            "artifact_aggregate_checksum": artifact["aggregate_checksum"],
+            "validation_evidence_sha256": _sha256_file(closure["evidence_path"]),
+            "observer_evidence_sha256": _sha256_file(closure["observer_path"]),
+            "terminal_manifest_sha256": _sha256_file(closure["manifest_path"]),
+            "native_stdout_sha256": _sha256_file(closure["stdout_path"]),
+            "native_stderr_sha256": _sha256_file(closure["stderr_path"]),
+            "source_mapping_sha256": _sha256_file(source_mapping),
+        },
+    }
+    if _native_stage_sequence_observed(stdout):
+        projection["native_stage_sequence_observed"] = True
+    output = resolve_feature_output(
+        workspace, request["outputs"]["structural_projection_path"]
+    )
+    published = write_verified_document(
+        workspace, output.relative_to(workspace), projection
+    )
+    if _read_object(published) != projection:
+        raise FeatureCertificationError("structural projection reread mismatch")
+    return published
 
 
 def reference_execute(
@@ -1170,20 +1644,101 @@ def reference_execute(
         text=True,
         shell=False,
     )
-    stdout_path = resolve_feature_output(workspace, request["outputs"]["stdout_path"])
-    stderr_path = resolve_feature_output(workspace, request["outputs"]["stderr_path"])
-    _write_exclusive_text(stdout_path, completed.stdout)
-    _write_exclusive_text(stderr_path, completed.stderr)
     if immutable_request.read_bytes() != request_bytes:
         raise FeatureCertificationError("capture owner mutated immutable request")
-    return {
+    _assert_source_identities(request, repository)
+    post_runner = _verify_reference_binary_manifests(request, repository, dataset)
+    if post_runner != runner:
+        raise FeatureCertificationError("post-run capture owner identity mismatch")
+    result = {
         "returncode": completed.returncode,
         "request_path": str(immutable_request),
         "request_byte_length": len(request_bytes),
         "request_sha256": hashlib.sha256(request_bytes).hexdigest(),
-        "stdout_path": str(stdout_path),
-        "stderr_path": str(stderr_path),
+        "runner_diagnostic": {
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+        },
         "stage_invocations": {"partition": 0, "local_build": 0, "merge": 0},
+    }
+    terminal_manifest = resolve_feature_output(
+        workspace, request["outputs"]["build_manifest_path"]
+    )
+    if completed.returncode != 0:
+        if terminal_manifest.is_file():
+            try:
+                manifest = _verify_cpp_failure_closure(
+                    request, immutable_request, dataset, repository
+                )
+            except FeatureCertificationError as error:
+                return {
+                    **result,
+                    "status": "failed",
+                    "failure_class": "lifecycle-established-invalid",
+                    "terminal_status": None,
+                    "closure_error": str(error),
+                }
+            return {
+                **result,
+                "status": "failed",
+                "failure_class": "lifecycle-established",
+                "terminal_status": manifest["status"],
+            }
+        return {
+            **result,
+            "status": "failed",
+            "failure_class": "pre-lifecycle/bootstrap",
+            "terminal_status": None,
+        }
+
+    try:
+        closure = _verify_cpp_success_closure(
+            request, immutable_request, dataset, repository
+        )
+    except FeatureCertificationError as error:
+        return {
+            **result,
+            "returncode": 1,
+            "status": "incomplete",
+            "terminal_status": None,
+            "incomplete_reason": str(error),
+        }
+    try:
+        projection = _write_native_structural_projection(
+            request, immutable_request, closure, repository
+        )
+    except Exception as error:
+        return {
+            **result,
+            "returncode": 1,
+            "status": "incomplete",
+            "terminal_status": "SUCCEEDED",
+            "incomplete_reason": str(error),
+        }
+    missing = [
+        relative
+        for relative in request["outputs"].values()
+        if not resolve_feature_output(workspace, relative).is_file()
+    ]
+    if missing:
+        return {
+            **result,
+            "returncode": 1,
+            "status": "incomplete",
+            "terminal_status": "SUCCEEDED",
+            "incomplete_reason": "request outputs are missing: " + ", ".join(missing),
+        }
+    return {
+        **result,
+        "status": "complete",
+        "terminal_status": "SUCCEEDED",
+        "artifact_path": str(closure["artifact_path"]),
+        "manifest_path": str(closure["manifest_path"]),
+        "validation_evidence_path": str(closure["evidence_path"]),
+        "stdout_path": str(closure["stdout_path"]),
+        "stderr_path": str(closure["stderr_path"]),
+        "observer_evidence_path": str(closure["observer_path"]),
+        "structural_projection_path": str(projection),
     }
 
 

@@ -556,3 +556,53 @@ Execution Boundary above; it authorizes none of that boundary's ten formal opera
     post-commit clean-build closure passes. No formal Reference request, Reference capture, SIFT1M,
     DiskLayout, Search, Structural/Quality Gate, certification decision, or production P/B/M has
     run. `/speckit-implement` then stops again at the unchanged manual boundary.
+
+---
+
+## Phase 8: Convergence — Native Reference Execution Output/Lifecycle Closure
+
+- [ ] T023 [US1] Close the Native Reference execution output and terminal lifecycle per US1, FR-010–FR-012, SC-001–SC-002, and Plan D1 (partial, HIGH)
+  - **Depends on**: T022. The clean binaries and target BuildManifests at Project commit
+    `b4f13a17c2e7ac8b3fa05c3aaaf17242a70a3ad7` are pre-fix audit evidence only; after this task
+    changes source they MUST NOT be used as the next formal execution identity.
+  - **Test first**: extend the existing C++ capture and Feature 006 Python tests to cover pre/post
+    fixed-upstream source/build admission, identical admitted evidence, single child/owner
+    invocation, native child stdout/stderr separation and empty-stream hashes, observer success and
+    failure facts, safe fixture-only post-run evidence mismatch, schema-valid lifecycle-established
+    `FAILED | CANCELLED | INVALID_OUTPUT` Manifests using `failure.reason`, bootstrap failure without
+    fabricated terminal evidence, operation-owned partial normal-output cleanup, and no retry.
+    Cover Python pre/post Project/upstream admission, complete C++ closure verification, every
+    log/observer/Manifest/Artifact/Evidence mismatch, evidence-only structural projection with
+    complete/missing/partial/contradictory stage-sequence proof, projection failure retention, and
+    exact seven-output completion.
+  - **Implement**: keep `native_reference_capture_runner` as the sole native operation owner for
+    execution-time upstream/build admission, observer setup, one native child launch, child
+    stdout/stderr capture, exact hard-link graph retention, medoids, observer evidence, post-run
+    admission, GlobalGraphArtifact/v2, independent ValidationEvidence, and terminal BuildManifest.
+    Publish normal Artifact/VALID evidence/SUCCEEDED Manifest only after identical pre/post
+    admission and complete payload validation. Bind actual Dataset, toolchain, request, binary,
+    controls, resources, argv, logs, observer, admission, timestamps, and output Artifact without
+    claiming the later structural projection.
+  - **Wrapper closure**: keep `reference_execute()` shell-free and invoke the C++ owner exactly once;
+    perform Project/upstream admission before and after it, preserve wrapper diagnostics separately,
+    verify the immutable request and complete C++ success/failure closure, generate the structural
+    projection only from retained admitted evidence, and return `complete`, `incomplete`, or
+    `failed`. Return `complete` only when all seven declared outputs are present and consistent.
+    Do not create or rewrite native child logs in Python, infer complete P0/B0/M0 sequence from child
+    success/final graph alone, or delete valid C++ evidence when projection publication fails.
+  - **Isolation**: modify only the bounded Feature 006 capture owner/orchestration and directly
+    related tests. Do not modify `source_build_identity.hpp/.cpp`, any existing schema/version,
+    upstream, Feature 001–005, Registry, Pipeline stages, or the six-operation CLI boundary; do not
+    generate or execute a formal request or operation.
+  - **Dirty-worktree validation**: run the directly affected incremental C++ target/fixture,
+    Feature 006 Python tests, BuildManifest schema and existing source/build identity regressions,
+    `py_compile`, schema/source-sync read-only checks, `git diff --check`, and Project/upstream
+    identity audit. Fixture outputs are development evidence only.
+  - **Post-commit closure**: after human review and a new clean Project commit, perform one new
+    exclusive clean Linux build, generate the new capture-owner binary and target-specific
+    BuildManifest, run clean C++/Python execution-closure tests, and audit clean Project/upstream
+    identity. Only then may T023 be marked `[X]`.
+  - **Complete when**: the C++/Python responsibilities, success and failure lifecycles, observer and
+    native logs, evidence-derived projection, and seven-output wrapper closure all pass from the new
+    clean identity, with no formal Reference/SIFT1M/Search/Gate/certification or production P/B/M
+    operation. `/speckit-implement` stops again at the unchanged manual boundary.

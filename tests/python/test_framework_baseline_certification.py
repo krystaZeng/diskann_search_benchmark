@@ -11,6 +11,7 @@ import pytest
 
 from diskann_harness import framework_baseline_certification as fbc
 from diskann_harness import diskann_search_evaluation as search
+from diskann_harness.checksum import aggregate_checksum
 from diskann_harness.framework_baseline_certification import (
     FeatureCertificationError,
     SCHEMA_FILENAMES,
@@ -357,6 +358,248 @@ def _reference_request_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]
         },
     }
     return workspace, request
+
+
+_COMPLETE_NATIVE_STAGE_STDOUT = (
+    "Time for partitioning data : 0.100000 seconds\n"
+    "Time for building indices on shards: 0.200000 seconds\n"
+    "Time for merging indices: 0.300000 seconds\n"
+)
+
+
+def _artifact_aggregate(metadata: dict[str, object]) -> str:
+    return aggregate_checksum(
+        {
+            "schema_version": metadata["schema_version"],
+            "canonicalization": metadata["canonicalization"],
+            "artifact_type": metadata["artifact_type"],
+            "format_version": metadata["format_version"],
+            "dataset_checksum": metadata["dataset"]["dataset_checksum"],
+            "id_space": metadata["id_space"],
+            "capabilities": metadata["capabilities"],
+            "payloads": [
+                {
+                    "role": item["role"],
+                    "byte_length": item["byte_length"],
+                    "sha256": item["sha256"],
+                }
+                for item in metadata["payloads"]
+            ],
+            "source_artifacts": metadata["source_artifacts"],
+            "structural": metadata["structural"],
+        }
+    )
+
+
+def _write_cpp_native_closure_fixture(
+    workspace: Path,
+    request: dict[str, object],
+    request_path: Path,
+    *,
+    status: str = "SUCCEEDED",
+    stdout: str = _COMPLETE_NATIVE_STAGE_STDOUT,
+    stderr: str = "native-child-stderr\n",
+    exit_code: int = 0,
+) -> None:
+    outputs = request["outputs"]
+    capture = request["capture"]
+    stdout_path = workspace / outputs["stdout_path"]
+    stderr_path = workspace / outputs["stderr_path"]
+    observer_path = workspace / outputs["observer_evidence_path"]
+    manifest_path = workspace / outputs["build_manifest_path"]
+    for path in (stdout_path, stderr_path, observer_path, manifest_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    stdout_path.write_bytes(stdout.encode("utf-8"))
+    stderr_path.write_bytes(stderr.encode("utf-8"))
+    observer = {
+        "run_id": request["run_id"],
+        "observer_mechanism": capture["mechanism"],
+        "observer_armed": True,
+        "observer_ready_at": "2026-08-27T00:00:01Z",
+        "child_launched_at": "2026-08-27T00:00:02Z",
+        "native_child_argv": [request["native_binary"]["path"], "--fixture"],
+        "source_graph_name": capture["source_graph_name"],
+        "captured_graph_path": capture["captured_graph_path"],
+        "child_exit_code": exit_code,
+        "exact_graph_event_observed": status == "SUCCEEDED",
+        "graph_hard_link_created": status == "SUCCEEDED",
+        "capture_started_at": "2026-08-27T00:00:00Z",
+        "capture_ended_at": "2026-08-27T00:00:03Z",
+        "terminal_result": status,
+    }
+    if status != "SUCCEEDED":
+        observer["failure_reason"] = "fixture native child failed"
+    observer_path.write_text(
+        json.dumps(observer, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+    def relative_identity(path: Path, *, stream_role: str | None = None) -> dict[str, object]:
+        value: dict[str, object] = {
+            "path": path.relative_to(workspace).as_posix(),
+            "byte_length": path.stat().st_size,
+            "sha256": _sha256(path),
+        }
+        if stream_role is not None:
+            value["stream_role"] = stream_role
+        return value
+
+    native_manifest_path = workspace / request["native_binary"]["build_manifest"]["path"]
+    native_manifest = json.loads(native_manifest_path.read_text(encoding="utf-8"))
+    admitted = {
+        "source": {
+            key: request["source"][key]
+            for key in ("repository", "branch", "commit", "dirty_worktree")
+        },
+        "gitlink_commit": request["source"]["commit"],
+        "upstream_source_dir": str(REPOSITORY_ROOT / "upstream/diskann-cpp-main"),
+        "upstream_binary_dir": str(workspace / "clean-build/cpp-main-upstream"),
+        "upstream_library": {
+            "path": str(workspace / "clean-build/cpp-main-upstream/src/libdiskann_s.a"),
+            "sha256": "9" * 64,
+        },
+        "build": native_manifest["toolchain"],
+    }
+    parameters = {
+        "reference_role": request["reference_role"],
+        "request": {
+            "path": str(request_path.resolve()),
+            "byte_length": request_path.stat().st_size,
+            "sha256": _sha256(request_path),
+        },
+        "project_operation_owner": request["project_operation_owner"],
+        "native_binary": request["native_binary"],
+        "profile": request["profile"],
+        "controls": request["controls"],
+        "capture": request["capture"],
+        "native_child_argv": observer["native_child_argv"],
+        "upstream_admission": {
+            "pre": admitted,
+            "post": copy.deepcopy(admitted),
+            "consistent": True,
+        },
+        "native_child_logs": {
+            "stdout": relative_identity(stdout_path, stream_role="stdout"),
+            "stderr": relative_identity(stderr_path, stream_role="stderr"),
+        },
+        "observer_evidence": relative_identity(observer_path),
+    }
+    manifest: dict[str, object] = {
+        "manifest_version": "1.0.0",
+        "run_id": request["run_id"],
+        "stage": "build",
+        "implementation": {
+            "implementation_id": "framework_baseline_native_reference_capture_v1",
+            "implementation_version": "1.0.0",
+        },
+        "source": admitted["source"],
+        "toolchain": native_manifest["toolchain"],
+        "dataset": FIXTURE_DATASET_IDENTITY,
+        "parameters": parameters,
+        "resource_budget": {
+            "memory_budget_bytes": request["resource_budget"]["memory_budget_bytes"],
+            "thread_budget": request["resource_budget"]["thread_budget"],
+        },
+        "input_artifacts": [request["dataset_artifact"]],
+        "output_artifacts": [],
+        "status": status,
+        "started_at": "2026-08-27T00:00:00Z",
+        "ended_at": "2026-08-27T00:00:04Z",
+    }
+    if status == "SUCCEEDED":
+        graph = workspace / capture["captured_graph_path"]
+        medoids = workspace / capture["captured_medoids_path"]
+        graph.parent.mkdir(parents=True, exist_ok=True)
+        graph.write_bytes(b"fixture-native-global-graph")
+        medoids.write_bytes(b"fixture-native-medoids")
+        artifact_path = workspace / outputs["artifact_metadata_path"]
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        source_artifact = dict(request["dataset_artifact"])
+        source_artifact.pop("metadata_path")
+        metadata: dict[str, object] = {
+            "schema_version": "1.0.0",
+            "canonicalization": "diskann-artifact-c14n-v1",
+            "artifact_type": "global_graph",
+            "format_version": "global-graph-artifact/v2",
+            "dataset": FIXTURE_DATASET_IDENTITY,
+            "id_space": "global",
+            "structural": {
+                "lineage_mode": "direct_native_final",
+                "global_node_count": FIXTURE_DATASET_IDENTITY["global_node_count"],
+                "declared_max_degree": 16,
+                "observed_max_degree": 2,
+                "partition_count": 2,
+                "medoid_count": 2,
+            },
+            "capabilities": ["graph.global_adjacency/v1", "graph.medoids/v1"],
+            "source_artifacts": [source_artifact],
+            "payloads": [
+                {
+                    "role": "global_graph",
+                    "path": graph.relative_to(artifact_path.parent).as_posix(),
+                    "media_type": "application/vnd.diskann.cpp-main.global-graph;version=1",
+                    "byte_length": graph.stat().st_size,
+                    "sha256": _sha256(graph),
+                },
+                {
+                    "role": "medoids",
+                    "path": medoids.relative_to(artifact_path.parent).as_posix(),
+                    "media_type": "application/vnd.diskann.cpp-main.uint32-medoids;version=1",
+                    "byte_length": medoids.stat().st_size,
+                    "sha256": _sha256(medoids),
+                },
+            ],
+        }
+        metadata["aggregate_checksum"] = _artifact_aggregate(metadata)
+        artifact_path.write_text(
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        artifact_ref = {
+            "metadata_path": artifact_path.relative_to(workspace / "normal").as_posix(),
+            "artifact_type": "global_graph",
+            "format_version": "global-graph-artifact/v2",
+            "aggregate_checksum": metadata["aggregate_checksum"],
+        }
+        evidence_path = workspace / outputs["validation_evidence_path"]
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(
+            json.dumps(
+                {
+                    "evidence_version": "1.0.0",
+                    "validator_version": "artifact-contract-validator/1.1.0",
+                    "artifact_candidate": {
+                        "artifact_type": "global_graph",
+                        "format_version": "global-graph-artifact/v2",
+                        "metadata_path": artifact_ref["metadata_path"],
+                        "claimed_aggregate_checksum": metadata["aggregate_checksum"],
+                    },
+                    "checks": [
+                        {
+                            "check_id": "artifact.contract/v2",
+                            "passed": True,
+                            "message": "fixture direct native final graph is valid",
+                        }
+                    ],
+                    "result": "VALID",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        manifest["output_artifacts"] = [artifact_ref]
+        manifest["validation_evidence_path"] = outputs["validation_evidence_path"]
+    else:
+        manifest["failure"] = {
+            "category": "native_child_failed",
+            "reason": "fixture native child failed",
+            "exit_code": exit_code,
+        }
+    manifest_path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
 
 
 def _write_fake_cmake_evidence(repository: Path, build: Path) -> None:
@@ -720,7 +963,13 @@ def test_reference_preflight_is_immutable_nonexecuting_and_execute_is_shell_free
     workspace, request = _reference_request_fixture(tmp_path)
     config = tmp_path / "reference-config.json"
     config.write_text(json.dumps({"request": request}), encoding="utf-8")
-    monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
+    identity_checks = 0
+
+    def admit_identities(*args: object) -> None:
+        nonlocal identity_checks
+        identity_checks += 1
+
+    monkeypatch.setattr(fbc, "_assert_source_identities", admit_identities)
     monkeypatch.setattr(
         fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
     )
@@ -749,13 +998,18 @@ def test_reference_preflight_is_immutable_nonexecuting_and_execute_is_shell_free
     def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         observed.append(argv)
         assert kwargs["shell"] is False
-        return subprocess.CompletedProcess(argv, 0, "capture-ok\n", "")
+        _write_cpp_native_closure_fixture(workspace, request, request_path)
+        return subprocess.CompletedProcess(
+            argv, 0, "capture-owner-control-json\n", "capture-owner-diagnostic\n"
+        )
 
     monkeypatch.setattr(fbc.subprocess, "run", fake_run)
     execution = fbc.reference_execute(
         request_path, repository_root=REPOSITORY_ROOT
     )
     assert execution["returncode"] == 0
+    assert execution["status"] == "complete"
+    assert identity_checks == 3  # preflight plus execution pre/post admission
     assert observed == [
         [
             request["project_operation_owner"]["binary"]["path"],
@@ -763,7 +1017,262 @@ def test_reference_preflight_is_immutable_nonexecuting_and_execute_is_shell_free
             str(request_path.resolve()),
         ]
     ]
-    assert (workspace / request["outputs"]["stdout_path"]).read_text() == "capture-ok\n"
+    assert (
+        workspace / request["outputs"]["stdout_path"]
+    ).read_text() == _COMPLETE_NATIVE_STAGE_STDOUT
+    assert "capture-owner-control-json" not in (
+        workspace / request["outputs"]["stdout_path"]
+    ).read_text()
+    assert "capture-owner-diagnostic" not in (
+        workspace / request["outputs"]["stderr_path"]
+    ).read_text()
+    assert execution["runner_diagnostic"] == {
+        "stdout": "capture-owner-control-json\n",
+        "stderr": "capture-owner-diagnostic\n",
+    }
+    for relative in request["outputs"].values():
+        assert (workspace / relative).is_file()
+    projection = json.loads(
+        (workspace / request["outputs"]["structural_projection_path"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert projection["native_stage_sequence_observed"] is True
+    assert projection["baseline_id"] == request["reference_role"]
+
+
+@pytest.mark.parametrize(
+    ("stdout", "expected"),
+    [
+        (_COMPLETE_NATIVE_STAGE_STDOUT, True),
+        ("", False),
+        ("Time for partitioning data : 0.100000 seconds\n", False),
+        (
+            "Time for partitioning data : 0.100000 seconds\n"
+            "Time for building indices on shards: 0.200000 seconds\n"
+            "Time for building indices on shards: 0.250000 seconds\n"
+            "Time for merging indices: 0.300000 seconds\n",
+            False,
+        ),
+    ],
+)
+def test_native_stage_sequence_requires_complete_ordered_exact_evidence(
+    stdout: str, expected: bool
+) -> None:
+    assert fbc._native_stage_sequence_observed(stdout) is expected
+
+
+def test_native_stage_markers_are_fixed_source_mapped_evidence() -> None:
+    source = (
+        REPOSITORY_ROOT / "upstream/diskann-cpp-main/src/disk_utils.cpp"
+    ).read_text(encoding="utf-8")
+    timer = (
+        REPOSITORY_ROOT / "upstream/diskann-cpp-main/include/timer.h"
+    ).read_text(encoding="utf-8")
+    mapping = (
+        REPOSITORY_ROOT
+        / "specs/002-cpp-main-upstream-baseline/source-mapping.md"
+    ).read_text(encoding="utf-8")
+    assert 'elapsed_seconds_for_step("partitioning data ")' in source
+    assert 'elapsed_seconds_for_step("building indices on shards")' in source
+    assert 'elapsed_seconds_for_step("merging indices")' in source
+    assert 'std::string("Time for ")' in timer
+    assert "SM-013" in mapping and "SM-019" in mapping and "SM-024" in mapping
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "manifest_log_sha",
+        "log_bytes",
+        "observer_result",
+        "artifact_payload_size",
+        "evidence_result",
+    ],
+)
+def test_reference_execute_fails_closed_on_cpp_closure_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    request_path = workspace / "requests/reference.json"
+    request_path.parent.mkdir(parents=True)
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        _write_cpp_native_closure_fixture(workspace, request, request_path)
+        manifest_path = workspace / request["outputs"]["build_manifest_path"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if mutation == "manifest_log_sha":
+            manifest["parameters"]["native_child_logs"]["stdout"]["sha256"] = "0" * 64
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        elif mutation == "log_bytes":
+            (workspace / request["outputs"]["stdout_path"]).write_text("changed")
+        elif mutation == "observer_result":
+            observer_path = workspace / request["outputs"]["observer_evidence_path"]
+            observer = json.loads(observer_path.read_text(encoding="utf-8"))
+            observer["terminal_result"] = "FAILED"
+            observer_path.write_text(json.dumps(observer), encoding="utf-8")
+        elif mutation == "artifact_payload_size":
+            artifact_path = workspace / request["outputs"]["artifact_metadata_path"]
+            artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+            artifact["payloads"][0]["byte_length"] += 1
+            artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+        else:
+            evidence_path = workspace / request["outputs"]["validation_evidence_path"]
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+            evidence["result"] = "INVALID"
+            evidence["failure_category"] = "fixture_mismatch"
+            evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "runner\n", "")
+
+    monkeypatch.setattr(fbc.subprocess, "run", fake_run)
+    result = fbc.reference_execute(request_path, repository_root=REPOSITORY_ROOT)
+    assert result["status"] == "incomplete"
+    assert result["returncode"] != 0
+    assert not (
+        workspace / request["outputs"]["structural_projection_path"]
+    ).exists()
+
+
+def test_reference_execute_preserves_terminal_failure_and_bootstrap_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    request_path = workspace / "requests/reference.json"
+    request_path.parent.mkdir(parents=True)
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
+    launches = 0
+
+    def failed_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal launches
+        launches += 1
+        _write_cpp_native_closure_fixture(
+            workspace, request, request_path, status="FAILED", exit_code=9
+        )
+        return subprocess.CompletedProcess(argv, 1, "", "owner failed\n")
+
+    monkeypatch.setattr(fbc.subprocess, "run", failed_run)
+    result = fbc.reference_execute(request_path, repository_root=REPOSITORY_ROOT)
+    assert result["status"] == "failed"
+    assert result["failure_class"] == "lifecycle-established"
+    assert launches == 1
+    manifest = json.loads(
+        (workspace / request["outputs"]["build_manifest_path"]).read_text()
+    )
+    assert manifest["failure"]["reason"] == "fixture native child failed"
+    assert manifest["output_artifacts"] == []
+    assert not (workspace / request["outputs"]["artifact_metadata_path"]).exists()
+    assert not (workspace / request["outputs"]["validation_evidence_path"]).exists()
+    assert not (workspace / request["outputs"]["structural_projection_path"]).exists()
+
+    bootstrap_root = tmp_path / "b"
+    bootstrap_root.mkdir()
+    bootstrap_workspace, bootstrap_request = _reference_request_fixture(bootstrap_root)
+    bootstrap_path = bootstrap_workspace / "requests/reference.json"
+    bootstrap_path.parent.mkdir(parents=True)
+    bootstrap_path.write_text(json.dumps(bootstrap_request), encoding="utf-8")
+    monkeypatch.setattr(
+        fbc.subprocess,
+        "run",
+        lambda argv, **kwargs: subprocess.CompletedProcess(argv, 2, "", "bootstrap\n"),
+    )
+    bootstrap = fbc.reference_execute(
+        bootstrap_path, repository_root=REPOSITORY_ROOT
+    )
+    assert bootstrap["status"] == "failed"
+    assert bootstrap["failure_class"] == "pre-lifecycle/bootstrap"
+    assert not (
+        bootstrap_workspace
+        / bootstrap_request["outputs"]["build_manifest_path"]
+    ).exists()
+
+
+def test_projection_failure_keeps_valid_cpp_closure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    request_path = workspace / "requests/reference.json"
+    request_path.parent.mkdir(parents=True)
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        _write_cpp_native_closure_fixture(workspace, request, request_path)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(fbc.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        fbc,
+        "_write_native_structural_projection",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            FeatureCertificationError("projection fixture failure")
+        ),
+        raising=False,
+    )
+    result = fbc.reference_execute(request_path, repository_root=REPOSITORY_ROOT)
+    assert result["status"] == "incomplete"
+    assert result["returncode"] != 0
+    for key in (
+        "artifact_metadata_path",
+        "build_manifest_path",
+        "validation_evidence_path",
+        "stdout_path",
+        "stderr_path",
+        "observer_evidence_path",
+    ):
+        assert (workspace / request["outputs"][key]).is_file()
+    assert not (workspace / request["outputs"]["structural_projection_path"]).exists()
+
+
+def test_reference_execute_post_identity_mismatch_preserves_cpp_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    request_path = workspace / "requests/reference.json"
+    request_path.parent.mkdir(parents=True)
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    checks = 0
+
+    def identity_admission(*args: object) -> None:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            raise FeatureCertificationError("post-run Project identity mismatch")
+
+    monkeypatch.setattr(fbc, "_assert_source_identities", identity_admission)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        _write_cpp_native_closure_fixture(workspace, request, request_path)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(fbc.subprocess, "run", fake_run)
+    with pytest.raises(FeatureCertificationError, match="post-run Project"):
+        fbc.reference_execute(request_path, repository_root=REPOSITORY_ROOT)
+    assert checks == 2
+    for key in (
+        "artifact_metadata_path",
+        "build_manifest_path",
+        "validation_evidence_path",
+        "stdout_path",
+        "stderr_path",
+        "observer_evidence_path",
+    ):
+        assert (workspace / request["outputs"][key]).is_file()
+    assert not (workspace / request["outputs"]["structural_projection_path"]).exists()
 
 
 def test_reference_preflight_and_execute_fail_closed_before_launch(

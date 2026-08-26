@@ -105,6 +105,13 @@ void copy_exclusive(const std::filesystem::path& source,
                         "native medoids retention did not complete");
   }
 }
+
+void sync_and_close(int& descriptor) {
+  if (descriptor < 0) return;
+  static_cast<void>(::fsync(descriptor));
+  static_cast<void>(::close(descriptor));
+  descriptor = -1;
+}
 #endif
 
 }  // namespace
@@ -118,26 +125,54 @@ NativeReferenceCaptureResult capture_native_reference(
 #else
   NativeReferenceCaptureResult result;
   result.started_at = now_utc();
+  result.native_child_argv = request.child_argv;
+  result.source_graph_name = request.source_graph_name;
+  result.captured_graph_path = request.captured_graph_path;
   if (!std::filesystem::is_directory(request.source_directory) ||
       !exact_filename(request.source_graph_name) ||
       !exact_filename(request.source_medoids_name) ||
-      request.child_argv.empty() || request.child_argv.front().empty()) {
+      request.child_argv.empty() || request.child_argv.front().empty() ||
+      request.stdout_path.empty() || request.stderr_path.empty()) {
     throw PipelineError(ErrorCategory::kSchemaInvalid,
                         "native capture request is invalid");
   }
   std::filesystem::create_directories(request.captured_graph_path.parent_path());
   std::filesystem::create_directories(
       request.captured_medoids_path.parent_path());
+  std::filesystem::create_directories(request.stdout_path.parent_path());
+  std::filesystem::create_directories(request.stderr_path.parent_path());
   if (std::filesystem::exists(request.captured_graph_path) ||
-      std::filesystem::exists(request.captured_medoids_path)) {
+      std::filesystem::exists(request.captured_medoids_path) ||
+      std::filesystem::exists(request.stdout_path) ||
+      std::filesystem::exists(request.stderr_path)) {
     throw PipelineError(ErrorCategory::kInternal,
                         "native capture output already exists");
   }
   require_same_filesystem(request.source_directory,
                           request.captured_graph_path.parent_path());
 
+  int stdout_descriptor =
+      ::open(request.stdout_path.c_str(),
+             O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+             S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (stdout_descriptor < 0) {
+    throw PipelineError(ErrorCategory::kInternal,
+                        "cannot exclusive-create native child stdout");
+  }
+  int stderr_descriptor =
+      ::open(request.stderr_path.c_str(),
+             O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+             S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (stderr_descriptor < 0) {
+    sync_and_close(stdout_descriptor);
+    throw PipelineError(ErrorCategory::kInternal,
+                        "cannot exclusive-create native child stderr");
+  }
+
   const int inotify = ::inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
   if (inotify < 0) {
+    sync_and_close(stdout_descriptor);
+    sync_and_close(stderr_descriptor);
     throw PipelineError(ErrorCategory::kInternal,
                         "cannot initialize native capture observer");
   }
@@ -146,9 +181,13 @@ NativeReferenceCaptureResult capture_native_reference(
       IN_CREATE | IN_CLOSE_WRITE | IN_MOVED_TO);
   if (watch < 0) {
     ::close(inotify);
+    sync_and_close(stdout_descriptor);
+    sync_and_close(stderr_descriptor);
     throw PipelineError(ErrorCategory::kInternal,
                         "cannot pre-arm native capture observer");
   }
+  result.observer_armed = true;
+  result.observer_ready_at = now_utc();
 
   std::vector<char*> argv;
   argv.reserve(request.child_argv.size() + 1);
@@ -158,15 +197,24 @@ NativeReferenceCaptureResult capture_native_reference(
   argv.push_back(nullptr);
   const pid_t child = ::fork();
   if (child == 0) {
+    if (::dup2(stdout_descriptor, STDOUT_FILENO) < 0 ||
+        ::dup2(stderr_descriptor, STDERR_FILENO) < 0) {
+      _exit(126);
+    }
+    ::close(stdout_descriptor);
+    ::close(stderr_descriptor);
     ::execv(argv.front(), argv.data());
     _exit(127);
   }
   if (child < 0) {
     ::inotify_rm_watch(inotify, watch);
     ::close(inotify);
+    sync_and_close(stdout_descriptor);
+    sync_and_close(stderr_descriptor);
     throw PipelineError(ErrorCategory::kInternal,
                         "cannot launch native Reference child");
   }
+  result.child_launched_at = now_utc();
 
   bool child_finished = false;
   int child_status = 0;
@@ -214,30 +262,64 @@ NativeReferenceCaptureResult capture_native_reference(
     result.child_exit_code = WIFEXITED(child_status)
                                  ? WEXITSTATUS(child_status)
                                  : -1;
-    if (result.child_exit_code != 0 || !result.exact_graph_event_observed ||
-        !result.graph_hard_link_created) {
-      throw PipelineError(ErrorCategory::kInternal,
-                          "native Reference child or exact capture failed");
+    if (result.child_exit_code != 0) {
+      result.failure_reason = "native Reference child exited nonzero";
+    } else if (!result.exact_graph_event_observed) {
+      result.failure_reason = "exact native graph event was not observed";
+    } else if (!result.graph_hard_link_created) {
+      result.failure_reason = "native graph hard-link capture did not complete";
+    } else {
+      copy_exclusive(request.source_directory / request.source_medoids_name,
+                     request.captured_medoids_path);
     }
-    copy_exclusive(request.source_directory / request.source_medoids_name,
-                   request.captured_medoids_path);
-  } catch (...) {
+  } catch (const std::exception& error) {
+    result.failure_reason = error.what();
     if (!child_finished) {
       ::kill(child, SIGTERM);
       static_cast<void>(::waitpid(child, &child_status, 0));
     }
-    std::error_code ignored;
-    std::filesystem::remove(request.captured_graph_path, ignored);
-    std::filesystem::remove(request.captured_medoids_path, ignored);
-    ::inotify_rm_watch(inotify, watch);
-    ::close(inotify);
-    throw;
   }
   ::inotify_rm_watch(inotify, watch);
   ::close(inotify);
+  sync_and_close(stdout_descriptor);
+  sync_and_close(stderr_descriptor);
+  if (result.failure_reason.empty()) {
+    result.terminal_result = "SUCCEEDED";
+  } else {
+    std::error_code ignored;
+    std::filesystem::remove(request.captured_graph_path, ignored);
+    std::filesystem::remove(request.captured_medoids_path, ignored);
+  }
   result.ended_at = now_utc();
   return result;
 #endif
+}
+
+bool same_source_build_evidence(const SourceBuildEvidence& left,
+                                const SourceBuildEvidence& right) {
+  const auto same_source =
+      left.source.repository == right.source.repository &&
+      left.source.branch == right.source.branch &&
+      left.source.commit == right.source.commit &&
+      left.source.dirty_worktree == right.source.dirty_worktree &&
+      left.source.dirty_source_checksum == right.source.dirty_source_checksum;
+  const auto& a = left.build;
+  const auto& b = right.build;
+  return same_source && left.gitlink_commit == right.gitlink_commit &&
+         left.upstream_source_dir == right.upstream_source_dir &&
+         left.upstream_binary_dir == right.upstream_binary_dir &&
+         left.upstream_library_file == right.upstream_library_file &&
+         left.upstream_library_sha256 == right.upstream_library_sha256 &&
+         a.os == b.os && a.compiler_path == b.compiler_path &&
+         a.compiler_version == b.compiler_version &&
+         a.cmake_version == b.cmake_version && a.generator == b.generator &&
+         a.build_type == b.build_type &&
+         a.effective_cmake_definitions == b.effective_cmake_definitions &&
+         a.project_compile_options == b.project_compile_options &&
+         a.configure_command == b.configure_command &&
+         a.build_command == b.build_command &&
+         a.upstream_library_file == b.upstream_library_file &&
+         a.linked_dependencies == b.linked_dependencies;
 }
 
 }  // namespace diskann_pipeline::cpp_main
