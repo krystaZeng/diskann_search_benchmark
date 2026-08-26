@@ -497,3 +497,62 @@ If the formal certification searches do not use Project commit
 reusable. That later formal execution must stop with missing/stale parity evidence unless a new,
 separately approved exact-current parity result is supplied; these tasks do not modify or rerun the
 Search Runner.
+
+---
+
+## Phase 7: Convergence — Formal Reference Binary Provenance Closure
+
+**Purpose**: Close the one implementation-only US1 provenance gap found after T021. This append-only
+phase temporarily reopens implementation before returning to the unchanged Non-Task Manual
+Execution Boundary above; it authorizes none of that boundary's ten formal operations.
+
+- [ ] T022 [US1] Produce and admit two independent target-specific BuildManifest/v1 documents during the next real clean build lifecycle per US1, FR-010–FR-012, SC-001–SC-002, and the Plan's Compiler/Build Identity and pinned-provenance decisions (partial, HIGH)
+  - **Depends on**: T021. The audited `native_reference_capture_runner` SHA-256
+    `763ba2ddac4ce1cbcc427d58192146da65a243ddc8b25390a83548f0b01fa57f` and
+    `build_disk_index` SHA-256
+    `92ec5128f9de48d62d24ec34fb5c70808ac69d8d83a877e1b008d08635400883`
+    remain old clean-build audit evidence only and MUST NOT be reused as the formal identities after
+    this task changes source.
+  - **Test first**: extend `tests/python/test_framework_baseline_certification.py` with a bounded
+    clean-build fixture that proves the two fixed targets produce separate schema-valid
+    `contracts/v1/schemas/build-manifest.schema.json` documents. Cover the positive
+    `reference_preflight()` admission and fail-closed source repository/branch/commit/dirty-state,
+    binary path/byte-length/SHA, Manifest file SHA, compiler/CMake/Release/compile/link evidence,
+    and toolchain mismatch cases. Prove no Manifest is published before its target reaches a
+    terminal build status and that failed target builds retain terminal `FAILED` evidence with
+    actual runtime timestamps. Keep the existing six-operation CLI boundary unchanged.
+  - **Implement**: add only a Feature 006-private, two-target build-closure helper in
+    `harness/python/diskann_harness/framework_baseline_certification.py`. It MUST own the actual
+    configure plus individually timed `native_reference_capture_runner` and `build_disk_index`
+    target builds, capture real `started_at`/`ended_at`, terminal status, configure/build/link
+    commands, compiler/CMake/generator/Release and applicable `-O3`/`-DNDEBUG`/C++17/AVX/OpenMP
+    evidence, and actual binary absolute path, byte length, and SHA-256. The capture-owner Manifest
+    MUST bind the clean Project repository/branch/commit/dirty state; the `build_disk_index`
+    Manifest MUST independently bind the fixed upstream repository/`cpp_main`/commit/clean state.
+    Reuse the existing BuildManifest/v1 codec, schema, path confinement, and exclusive-create
+    persistence; do not add a schema, public CLI operation, Registry, Pipeline stage, public build
+    identity subsystem, or third Manifest for `diskann_pipeline_runner`.
+  - **Isolation**: do not change
+    `harness/python/diskann_harness/runner.py::build_project()`, upstream targets, or existing callers
+    of `src/baseline/cpp_main/source_build_identity.*`. If an additive shared helper becomes strictly
+    necessary, preserve every existing API and behavior and add regression coverage in the same
+    directly affected test suite before using it. Do not affect Feature 001–005, OGP, HNSW-Merger,
+    or other build paths.
+  - **Admission**: strengthen only Feature 006 `reference_preflight()` in
+    `harness/python/diskann_harness/framework_baseline_certification.py` so each request binary is
+    admitted against its own validated Manifest content, exact source role, actual binary identity,
+    toolchain/build evidence, terminal `SUCCEEDED` status, and document reference SHA. Missing,
+    stale, cross-bound, mismatched, failed, or manually reconstructed evidence MUST fail closed.
+  - **Clean-build closure**: after human review and a new clean Project commit, use a new exclusive
+    out-of-tree Linux build directory to run only the directly relevant clean configure, two target
+    builds, Manifest validation, positive/negative preflight fixture tests, applicable existing
+    Feature 006 regressions, `py_compile`, source/schema validation, `git diff --check`, and
+    Project/upstream identity audit. The two newly generated binary identities and Manifests must
+    come from that same real clean-build lifecycle; do not backfill this task from the audited
+    `eba0c2fd8846f0486a0ba2fdee8de9b6acee6ea8` build.
+  - **Complete when**: both independent terminal Manifests bind their actual distinct source and
+    binary identities plus complete real build evidence, pass the existing schema and Feature 006
+    admission, every listed mismatch fails closed, existing build paths remain unchanged, and the
+    post-commit clean-build closure passes. No formal Reference request, Reference capture, SIFT1M,
+    DiskLayout, Search, Structural/Quality Gate, certification decision, or production P/B/M has
+    run. `/speckit-implement` then stops again at the unchanged manual boundary.

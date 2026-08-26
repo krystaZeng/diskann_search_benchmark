@@ -25,28 +25,232 @@ from diskann_harness.framework_baseline_certification import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
+FIXTURE_DATASET_IDENTITY = {
+    "dataset_id": "reference-build-fixture-v1",
+    "dataset_checksum": "1" * 64,
+    "global_node_count": 6,
+    "vector_dimension": 2,
+    "scalar_type": "float32",
+    "distance_metric": "l2",
+}
+
+FIXTURE_CMAKE_DEFINITIONS = [
+    "BUILD_TESTING=ON",
+    "CMAKE_BUILD_TYPE=Release",
+    "CMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "DISKANN_CPP_MAIN_BASELINE=ON",
+    "DISKANN_SEARCH_EVALUATION=ON",
+]
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _file_identity(path: Path) -> dict[str, object]:
+    return {
+        "path": str(path.resolve()),
+        "byte_length": path.stat().st_size,
+        "sha256": _sha256(path),
+    }
+
+
+def _write_build_manifest_fixture(
+    workspace: Path,
+    *,
+    name: str,
+    target: str,
+    source_role: str,
+    implementation_id: str,
+    source: dict[str, object],
+    binary: Path,
+) -> Path:
+    build_root = workspace / "clean-build"
+    cache = build_root / "CMakeCache.txt"
+    compile_commands = build_root / "compile_commands.json"
+    link_relative = (
+        "baseline/cpp_main/CMakeFiles/native_reference_capture_runner.dir/link.txt"
+        if target == "native_reference_capture_runner"
+        else "cpp-main-upstream/apps/CMakeFiles/build_disk_index.dir/link.txt"
+    )
+    link_command = build_root / link_relative
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    if not cache.exists():
+        cache.write_text(
+            "\n".join(
+                [
+                    "CMAKE_BUILD_TYPE:STRING=Release",
+                    "CMAKE_COMMAND:INTERNAL=/usr/bin/cmake",
+                    "CMAKE_CACHE_MAJOR_VERSION:INTERNAL=3",
+                    "CMAKE_CACHE_MINOR_VERSION:INTERNAL=22",
+                    "CMAKE_CACHE_PATCH_VERSION:INTERNAL=1",
+                    "CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++",
+                    "CMAKE_GENERATOR:INTERNAL=Unix Makefiles",
+                    "BUILD_TESTING:BOOL=ON",
+                    "DISKANN_CPP_MAIN_BASELINE:BOOL=ON",
+                    "DISKANN_SEARCH_EVALUATION:BOOL=ON",
+                    "CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        owner_source = (
+            REPOSITORY_ROOT
+            / "src/baseline/cpp_main/native_reference_capture_runner.cpp"
+        )
+        native_source = (
+            REPOSITORY_ROOT / "upstream/diskann-cpp-main/apps/build_disk_index.cpp"
+        )
+        compile_commands.write_text(
+            json.dumps(
+                [
+                    {
+                        "directory": str(build_root),
+                        "command": (
+                            f"/usr/bin/c++ -O3 -DNDEBUG -std=c++17 "
+                            f"-c {owner_source}"
+                        ),
+                        "file": str(owner_source),
+                    },
+                    {
+                        "directory": str(build_root),
+                        "command": (
+                            f"/usr/bin/c++ -O3 -DNDEBUG -mavx2 -fopenmp "
+                            f"-std=gnu++17 -c {native_source}"
+                        ),
+                        "file": str(native_source),
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+    compile_command = (
+        f"/usr/bin/c++ -O3 -DNDEBUG -std=c++17 -c "
+        f"{REPOSITORY_ROOT / 'src/baseline/cpp_main/native_reference_capture_runner.cpp'}"
+        if target == "native_reference_capture_runner"
+        else f"/usr/bin/c++ -O3 -DNDEBUG -mavx2 -fopenmp -std=gnu++17 -c "
+        f"{REPOSITORY_ROOT / 'upstream/diskann-cpp-main/apps/build_disk_index.cpp'}"
+    )
+    link_command.parent.mkdir(parents=True, exist_ok=True)
+    link_command.write_text(
+        f"/usr/bin/c++ -O3 -DNDEBUG -fopenmp {target}.o -o {binary}\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "manifest_version": "1.0.0",
+        "run_id": f"{name}-build",
+        "stage": "build",
+        "implementation": {
+            "implementation_id": implementation_id,
+            "implementation_version": "1.0.0",
+        },
+        "source": source,
+        "toolchain": {
+            "os": "Linux-x86_64",
+            "compiler_path": "/usr/bin/c++",
+            "compiler_version": "11.4.0",
+            "cmake_version": "3.22.1",
+            "generator": "Unix Makefiles",
+            "build_type": "Release",
+            "cmake_definitions": FIXTURE_CMAKE_DEFINITIONS,
+            "compile_commands": [compile_command],
+            "link_commands": [
+                f"/usr/bin/c++ -O3 -DNDEBUG -fopenmp {target}.o -o {binary}"
+            ],
+        },
+        "dataset": FIXTURE_DATASET_IDENTITY,
+        "parameters": {
+            "build_closure": {
+                "source_role": source_role,
+                "target": target,
+                "configure_command": (
+                    f"cmake -S {REPOSITORY_ROOT} -B {build_root}"
+                ),
+                "build_command": (
+                    f"cmake --build {build_root} --target {target} --parallel 6"
+                ),
+                "configure_started_at": "2026-08-26T00:00:00Z",
+                "configure_ended_at": "2026-08-26T00:00:01Z",
+                "binary": _file_identity(binary),
+                "evidence": {
+                    "cmake_cache": _file_identity(cache),
+                    "compile_commands": _file_identity(compile_commands),
+                    "link_command": _file_identity(link_command),
+                },
+                "applicable_flags": (
+                    ["-O3", "-DNDEBUG", "-std=c++17", "-fopenmp"]
+                    if target == "native_reference_capture_runner"
+                    else [
+                        "-O3",
+                        "-DNDEBUG",
+                        "-std=gnu++17",
+                        "-mavx2",
+                        "-fopenmp",
+                    ]
+                ),
+            }
+        },
+        "resource_budget": {
+            "memory_budget_bytes": 1024,
+            "thread_budget": 6,
+        },
+        "input_artifacts": [],
+        "output_artifacts": [],
+        "status": "SUCCEEDED",
+        "started_at": "2026-08-26T00:00:01Z",
+        "ended_at": "2026-08-26T00:00:02Z",
+    }
+    path = workspace / "manifests" / "build" / f"{name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    return path
+
+
 def _reference_request_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    binary_dir = workspace / "binaries"
-    binary_dir.mkdir()
-    owner = binary_dir / "native_reference_capture_runner"
-    native = binary_dir / "build_disk_index"
+    owner = workspace / "clean-build/src/baseline/cpp_main/native_reference_capture_runner"
+    native = workspace / "clean-build/cpp-main-upstream/apps/build_disk_index"
+    owner.parent.mkdir(parents=True)
+    native.parent.mkdir(parents=True)
     owner.write_bytes(b"owner-fixture")
     native.write_bytes(b"native-fixture")
     owner.chmod(0o755)
     native.chmod(0o755)
-    manifests = workspace / "manifests" / "build"
-    manifests.mkdir(parents=True)
-    owner_manifest = manifests / "owner.json"
-    native_manifest = manifests / "native.json"
-    owner_manifest.write_text("{}", encoding="utf-8")
-    native_manifest.write_text("{}", encoding="utf-8")
+    project_source = {
+        "repository": "https://github.com/krystaZeng/diskann_search_benchmark.git",
+        "branch": "feature/framework-baseline-certification",
+        "commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
+        "dirty_worktree": False,
+    }
+    upstream_source = {
+        "repository": "https://github.com/microsoft/DiskANN.git",
+        "branch": "cpp_main",
+        "commit": "78256bbab4685e1774e78d331e081a153be26823",
+        "dirty_worktree": False,
+    }
+    owner_manifest = _write_build_manifest_fixture(
+        workspace,
+        name="owner",
+        target="native_reference_capture_runner",
+        source_role="project_capture_owner",
+        implementation_id="framework_baseline_native_reference_capture_v1",
+        source=project_source,
+        binary=owner,
+    )
+    native_manifest = _write_build_manifest_fixture(
+        workspace,
+        name="native",
+        target="build_disk_index",
+        source_role="fixed_upstream_build_disk_index",
+        implementation_id="cpp_main_build_disk_index_native_v1",
+        source=upstream_source,
+        binary=native,
+    )
     evidence = workspace / "manifests" / "evidence" / "dataset.json"
     evidence.parent.mkdir(parents=True)
     evidence.write_text("{}", encoding="utf-8")
@@ -72,10 +276,7 @@ def _reference_request_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]
         "project_operation_owner": {
             "implementation_id": "framework_baseline_native_reference_capture_v1",
             "implementation_version": "1.0.0",
-            "repository": "https://github.com/krystaZeng/diskann_search_benchmark.git",
-            "branch": "feature/framework-baseline-certification",
-            "commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
-            "dirty_worktree": False,
+            **project_source,
             "binary": {
                 "implementation_id": "framework_baseline_native_reference_capture_v1",
                 "path": str(owner.resolve()),
@@ -158,6 +359,80 @@ def _reference_request_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]
     return workspace, request
 
 
+def _write_fake_cmake_evidence(repository: Path, build: Path) -> None:
+    build.mkdir(parents=True, exist_ok=True)
+    (build / "CMakeCache.txt").write_text(
+        "\n".join(
+            [
+                "CMAKE_BUILD_TYPE:STRING=Release",
+                "CMAKE_COMMAND:INTERNAL=/usr/bin/cmake",
+                "CMAKE_CACHE_MAJOR_VERSION:INTERNAL=3",
+                "CMAKE_CACHE_MINOR_VERSION:INTERNAL=22",
+                "CMAKE_CACHE_PATCH_VERSION:INTERNAL=1",
+                "CMAKE_CXX_COMPILER:FILEPATH=/usr/bin/c++",
+                "CMAKE_GENERATOR:INTERNAL=Unix Makefiles",
+                "BUILD_TESTING:BOOL=ON",
+                "DISKANN_CPP_MAIN_BASELINE:BOOL=ON",
+                "DISKANN_SEARCH_EVALUATION:BOOL=ON",
+                "CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=ON",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    owner_source = repository / "src/baseline/cpp_main/native_reference_capture_runner.cpp"
+    native_source = repository / "upstream/diskann-cpp-main/apps/build_disk_index.cpp"
+    (build / "compile_commands.json").write_text(
+        json.dumps(
+            [
+                {
+                    "directory": str(build),
+                    "command": f"/usr/bin/c++ -O3 -DNDEBUG -std=c++17 -c {owner_source}",
+                    "file": str(owner_source),
+                },
+                {
+                    "directory": str(build),
+                    "command": (
+                        f"/usr/bin/c++ -O3 -DNDEBUG -mavx2 -fopenmp "
+                        f"-std=gnu++17 -c {native_source}"
+                    ),
+                    "file": str(native_source),
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    links = {
+        "baseline/cpp_main/CMakeFiles/native_reference_capture_runner.dir/link.txt": (
+            "/usr/bin/c++ -O3 -DNDEBUG -fopenmp owner.o -o "
+            "../../src/baseline/cpp_main/native_reference_capture_runner\n"
+        ),
+        "cpp-main-upstream/apps/CMakeFiles/build_disk_index.dir/link.txt": (
+            "/usr/bin/c++ -O3 -DNDEBUG -mavx2 -fopenmp native.o -o build_disk_index\n"
+        ),
+    }
+    for relative, command in links.items():
+        path = build / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(command, encoding="utf-8")
+
+
+def _fake_source_identity(repository: Path, project: Path) -> dict[str, object]:
+    if repository == project:
+        return {
+            "repository": "https://github.com/krystaZeng/diskann_search_benchmark.git",
+            "branch": "feature/framework-baseline-certification",
+            "commit": "a" * 40,
+            "dirty_worktree": False,
+        }
+    return {
+        "repository": "https://github.com/microsoft/DiskANN.git",
+        "branch": "cpp_main",
+        "commit": "78256bbab4685e1774e78d331e081a153be26823",
+        "dirty_worktree": False,
+    }
+
+
 def test_feature_local_schema_loader_is_bounded_and_strict() -> None:
     assert SCHEMA_FILENAMES == {
         "global-graph-artifact-v2.schema.json",
@@ -236,6 +511,209 @@ def test_reference_lifecycle_has_one_preflight_and_execution_owner() -> None:
     assert callable(fbc.reference_execute)
 
 
+def test_reference_binary_build_closure_writes_two_independent_terminal_manifests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = REPOSITORY_ROOT
+    nlohmann = tmp_path / "nlohmann"
+    nlohmann.mkdir()
+    build = tmp_path / "clean-build"
+    workspace = tmp_path / "manifest-workspace"
+    workspace.mkdir()
+    owner_manifest = workspace / "manifests/build/owner.json"
+    native_manifest = workspace / "manifests/build/native.json"
+    observed: list[list[str]] = []
+
+    def fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        observed.append(argv)
+        assert kwargs["shell"] is False
+        if argv[:3] == ["cmake", "-S", str(repository)]:
+            assert not owner_manifest.exists()
+            assert not native_manifest.exists()
+            _write_fake_cmake_evidence(repository, build)
+            return subprocess.CompletedProcess(argv, 0, "configured", "")
+        if argv == ["/usr/bin/c++", "--version"]:
+            return subprocess.CompletedProcess(argv, 0, "g++ 11.4.0\n", "")
+        if argv == ["/usr/bin/cmake", "--version"]:
+            return subprocess.CompletedProcess(argv, 0, "cmake version 3.22.1\n", "")
+        if argv[:3] == ["cmake", "--build", str(build)]:
+            target = argv[argv.index("--target") + 1]
+            if target == "native_reference_capture_runner":
+                assert not owner_manifest.exists()
+                binary = build / "src/baseline/cpp_main/native_reference_capture_runner"
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.write_bytes(b"clean-owner-binary")
+                binary.chmod(0o755)
+            elif target == "build_disk_index":
+                assert owner_manifest.is_file()
+                assert not native_manifest.exists()
+                binary = build / "cpp-main-upstream/apps/build_disk_index"
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.write_bytes(b"clean-native-binary")
+                binary.chmod(0o755)
+            else:  # pragma: no cover - fixed target contract
+                raise AssertionError(f"unexpected target: {target}")
+            return subprocess.CompletedProcess(argv, 0, f"built {target}", "")
+        raise AssertionError(f"unexpected process invocation: {argv}")
+
+    timestamps = iter(
+        [
+            "2026-08-26T00:00:00Z",
+            "2026-08-26T00:00:01Z",
+            "2026-08-26T00:00:02Z",
+            "2026-08-26T00:00:03Z",
+            "2026-08-26T00:00:04Z",
+            "2026-08-26T00:00:05Z",
+        ]
+    )
+    monkeypatch.setattr(fbc.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        fbc,
+        "_source_identity",
+        lambda path, **_: _fake_source_identity(Path(path), repository),
+        raising=False,
+    )
+    monkeypatch.setattr(fbc, "_utc_now", lambda: next(timestamps), raising=False)
+
+    result = fbc._build_reference_binary_closure(
+        repository_root=repository,
+        build_dir=build,
+        manifest_workspace=workspace,
+        owner_manifest_path="manifests/build/owner.json",
+        native_manifest_path="manifests/build/native.json",
+        dataset=FIXTURE_DATASET_IDENTITY,
+        nlohmann_source=nlohmann,
+        memory_budget_bytes=4096,
+        parallel=6,
+    )
+
+    assert set(result) == {"project_capture_owner", "fixed_upstream_build_disk_index"}
+    validator = fbc._runtime_validator(REPOSITORY_ROOT, "build-manifest.schema.json")
+    owner = json.loads(owner_manifest.read_text(encoding="utf-8"))
+    native = json.loads(native_manifest.read_text(encoding="utf-8"))
+    validator.validate(owner)
+    validator.validate(native)
+    assert owner["status"] == native["status"] == "SUCCEEDED"
+    assert owner["source"]["repository"].endswith("diskann_search_benchmark.git")
+    assert native["source"] == {
+        "repository": "https://github.com/microsoft/DiskANN.git",
+        "branch": "cpp_main",
+        "commit": "78256bbab4685e1774e78d331e081a153be26823",
+        "dirty_worktree": False,
+    }
+    assert owner["started_at"] == "2026-08-26T00:00:02Z"
+    assert owner["ended_at"] == "2026-08-26T00:00:03Z"
+    assert native["started_at"] == "2026-08-26T00:00:04Z"
+    assert native["ended_at"] == "2026-08-26T00:00:05Z"
+    for manifest, target in (
+        (owner, "native_reference_capture_runner"),
+        (native, "build_disk_index"),
+    ):
+        closure = manifest["parameters"]["build_closure"]
+        assert closure["target"] == target
+        assert closure["binary"]["sha256"] == _sha256(Path(closure["binary"]["path"]))
+        assert manifest["toolchain"]["build_type"] == "Release"
+        assert manifest["toolchain"]["compile_commands"]
+        assert manifest["toolchain"]["link_commands"]
+        assert {"-O3", "-DNDEBUG"}.issubset(closure["applicable_flags"])
+        for evidence in closure["evidence"].values():
+            evidence_path = Path(evidence["path"])
+            assert evidence["byte_length"] == evidence_path.stat().st_size
+            assert evidence["sha256"] == _sha256(evidence_path)
+    built_targets = [
+        call[call.index("--target") + 1]
+        for call in observed
+        if "--target" in call
+    ]
+    assert built_targets == ["native_reference_capture_runner", "build_disk_index"]
+
+
+def test_reference_binary_build_closure_retains_failed_terminal_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = REPOSITORY_ROOT
+    nlohmann = tmp_path / "nlohmann"
+    nlohmann.mkdir()
+    build = tmp_path / "clean-build"
+    workspace = tmp_path / "manifest-workspace"
+    workspace.mkdir()
+    owner_manifest = workspace / "manifests/build/owner.json"
+    native_manifest = workspace / "manifests/build/native.json"
+
+    def fake_run(
+        argv: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert kwargs["shell"] is False
+        if argv[:3] == ["cmake", "-S", str(repository)]:
+            _write_fake_cmake_evidence(repository, build)
+            return subprocess.CompletedProcess(argv, 0, "configured", "")
+        if argv == ["/usr/bin/c++", "--version"]:
+            return subprocess.CompletedProcess(argv, 0, "g++ 11.4.0\n", "")
+        if argv == ["/usr/bin/cmake", "--version"]:
+            return subprocess.CompletedProcess(argv, 0, "cmake version 3.22.1\n", "")
+        if argv[:3] == ["cmake", "--build", str(build)]:
+            target = argv[argv.index("--target") + 1]
+            if target == "native_reference_capture_runner":
+                binary = build / "src/baseline/cpp_main/native_reference_capture_runner"
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.write_bytes(b"clean-owner-binary")
+                binary.chmod(0o755)
+                return subprocess.CompletedProcess(argv, 0, "built owner", "")
+            assert not native_manifest.exists()
+            return subprocess.CompletedProcess(argv, 17, "", "fixture target failed")
+        raise AssertionError(f"unexpected process invocation: {argv}")
+
+    timestamps = iter(
+        [
+            "2026-08-26T00:00:00Z",
+            "2026-08-26T00:00:01Z",
+            "2026-08-26T00:00:02Z",
+            "2026-08-26T00:00:03Z",
+            "2026-08-26T00:00:04Z",
+            "2026-08-26T00:00:05Z",
+        ]
+    )
+    monkeypatch.setattr(fbc.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        fbc,
+        "_source_identity",
+        lambda path, **_: _fake_source_identity(Path(path), repository),
+        raising=False,
+    )
+    monkeypatch.setattr(fbc, "_utc_now", lambda: next(timestamps), raising=False)
+
+    with pytest.raises(FeatureCertificationError, match="target build closure failed"):
+        fbc._build_reference_binary_closure(
+            repository_root=repository,
+            build_dir=build,
+            manifest_workspace=workspace,
+            owner_manifest_path="manifests/build/owner.json",
+            native_manifest_path="manifests/build/native.json",
+            dataset=FIXTURE_DATASET_IDENTITY,
+            nlohmann_source=nlohmann,
+            memory_budget_bytes=4096,
+            parallel=6,
+        )
+
+    owner = json.loads(owner_manifest.read_text(encoding="utf-8"))
+    native = json.loads(native_manifest.read_text(encoding="utf-8"))
+    validator = fbc._runtime_validator(REPOSITORY_ROOT, "build-manifest.schema.json")
+    validator.validate(owner)
+    validator.validate(native)
+    assert owner["status"] == "SUCCEEDED"
+    assert native["status"] == "FAILED"
+    assert native["failure"] == {
+        "category": "target_build_failed",
+        "reason": "fixture target failed",
+        "exit_code": 17,
+    }
+    assert native["started_at"] == "2026-08-26T00:00:04Z"
+    assert native["ended_at"] == "2026-08-26T00:00:05Z"
+    assert not (build / "cpp-main-upstream/apps/build_disk_index").exists()
+
+
 def test_reference_preflight_is_immutable_nonexecuting_and_execute_is_shell_free(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -243,7 +721,9 @@ def test_reference_preflight_is_immutable_nonexecuting_and_execute_is_shell_free
     config = tmp_path / "reference-config.json"
     config.write_text(json.dumps({"request": request}), encoding="utf-8")
     monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
-    monkeypatch.setattr(fbc, "_fresh_validate_dataset", lambda *args: None)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
 
     def no_launch(*args: object, **kwargs: object) -> object:
         raise AssertionError("preflight launched a process")
@@ -293,7 +773,9 @@ def test_reference_preflight_and_execute_fail_closed_before_launch(
     config = tmp_path / "reference-config.json"
     config.write_text(json.dumps({"request": request}), encoding="utf-8")
     monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
-    monkeypatch.setattr(fbc, "_fresh_validate_dataset", lambda *args: None)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
     request_path = workspace / "requests" / "reference.json"
     fbc.reference_preflight(config, request_path, repository_root=REPOSITORY_ROOT)
 
@@ -310,6 +792,117 @@ def test_reference_preflight_and_execute_fail_closed_before_launch(
     with pytest.raises(FeatureCertificationError, match="binary identity"):
         fbc.reference_execute(request_path, repository_root=REPOSITORY_ROOT)
     assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "failure_case",
+    [
+        "missing",
+        "manifest_sha",
+        "cross_bound",
+        "stale_target",
+        "source_repository",
+        "source_branch",
+        "source_commit",
+        "source_dirty",
+        "source_role",
+        "binary_path",
+        "binary_size",
+        "binary_sha",
+        "toolchain_compiler",
+        "toolchain_cmake",
+        "toolchain_release",
+        "compile_evidence",
+        "link_evidence",
+        "build_flags",
+        "failed",
+    ],
+)
+def test_reference_preflight_rejects_target_build_manifest_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_case: str,
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    owner_identity = request["project_operation_owner"]["binary"]
+    native_identity = request["native_binary"]
+    owner_manifest = workspace / owner_identity["build_manifest"]["path"]
+    native_manifest = workspace / native_identity["build_manifest"]["path"]
+
+    if failure_case == "missing":
+        owner_manifest.unlink()
+    elif failure_case == "manifest_sha":
+        owner_manifest.write_bytes(owner_manifest.read_bytes() + b"\n")
+    elif failure_case == "cross_bound":
+        owner_identity["build_manifest"] = copy.deepcopy(native_identity["build_manifest"])
+    else:
+        manifest = json.loads(owner_manifest.read_text(encoding="utf-8"))
+        closure = manifest["parameters"]["build_closure"]
+        if failure_case == "stale_target":
+            closure["target"] = "build_disk_index"
+        elif failure_case == "source_repository":
+            manifest["source"]["repository"] = "https://example.invalid/project.git"
+        elif failure_case == "source_branch":
+            manifest["source"]["branch"] = "wrong-branch"
+        elif failure_case == "source_commit":
+            manifest["source"]["commit"] = "b" * 40
+        elif failure_case == "source_dirty":
+            manifest["source"]["dirty_worktree"] = True
+            manifest["source"]["dirty_source_checksum"] = "d" * 64
+        elif failure_case == "source_role":
+            closure["source_role"] = "fixed_upstream_build_disk_index"
+        elif failure_case == "binary_path":
+            closure["binary"]["path"] = native_identity["path"]
+        elif failure_case == "binary_size":
+            closure["binary"]["byte_length"] += 1
+        elif failure_case == "binary_sha":
+            closure["binary"]["sha256"] = "f" * 64
+        elif failure_case == "toolchain_compiler":
+            manifest["toolchain"]["compiler_path"] = "/usr/bin/clang++"
+        elif failure_case == "toolchain_cmake":
+            manifest["toolchain"]["cmake_version"] = "9.9.9"
+        elif failure_case == "toolchain_release":
+            manifest["toolchain"]["build_type"] = "Debug"
+        elif failure_case == "compile_evidence":
+            manifest["toolchain"]["compile_commands"] = [
+                "/usr/bin/c++ -O3 -DNDEBUG -std=c++17 -c reconstructed.cpp"
+            ]
+        elif failure_case == "link_evidence":
+            manifest["toolchain"]["link_commands"] = [
+                "/usr/bin/c++ -O3 -DNDEBUG reconstructed.o -o reconstructed"
+            ]
+        elif failure_case == "build_flags":
+            closure["applicable_flags"] = ["-O3", "-std=c++17"]
+        elif failure_case == "failed":
+            manifest["status"] = "FAILED"
+            manifest["failure"] = {
+                "category": "target_build_failed",
+                "reason": "fixture failure",
+                "exit_code": 9,
+            }
+        owner_manifest.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        owner_identity["build_manifest"] = {
+            "path": owner_manifest.relative_to(workspace).as_posix(),
+            "byte_length": owner_manifest.stat().st_size,
+            "sha256": _sha256(owner_manifest),
+        }
+
+    config = tmp_path / "reference-config.json"
+    config.write_text(json.dumps({"request": request}), encoding="utf-8")
+    monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
+    monkeypatch.setattr(
+        fbc, "_fresh_validate_dataset", lambda *args: FIXTURE_DATASET_IDENTITY
+    )
+    with pytest.raises(FeatureCertificationError):
+        fbc.reference_preflight(
+            config,
+            workspace / "requests" / "reference.json",
+            repository_root=REPOSITORY_ROOT,
+        )
+    assert not (workspace / "requests/reference.json").exists()
 
 
 def _structural_projection(*, reference: bool) -> dict[str, object]:
