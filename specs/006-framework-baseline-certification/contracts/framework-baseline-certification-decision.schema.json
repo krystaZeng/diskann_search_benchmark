@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/006/framework-baseline-certification-decision.schema.json",
+  "title": "Feature 006 Framework Baseline Certification Decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_version",
+    "generated_at",
+    "scope",
+    "roles",
+    "decision",
+    "structural_gate",
+    "search_runner_parity",
+    "mandatory_admission",
+    "artifacts",
+    "shared_inputs",
+    "protocols",
+    "observations",
+    "evaluation_reports",
+    "quality_parity",
+    "build_manifests",
+    "validation_evidence",
+    "audit_exclusions",
+    "rationale",
+    "claims",
+    "canonicalization",
+    "decision_checksum"
+  ],
+  "properties": {
+    "decision_version": {"const": "framework-baseline-certification-decision/v1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "scope": {
+      "const": "sift1m_l2_static_unfiltered_cpp_main_p0_b0_m0_only"
+    },
+    "roles": {
+      "const": {
+        "reference": "cpp_main_native_sharded_reference_v1",
+        "framework": "cpp_main_p0_b0_m0_framework_candidate_v1"
+      }
+    },
+    "decision": {"enum": ["CERTIFIED", "NOT_CERTIFIED", "INCONCLUSIVE"]},
+    "structural_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "report", "result"],
+      "properties": {
+        "policy": {"$ref": "#/$defs/documentRef"},
+        "report": {"$ref": "#/$defs/documentRef"},
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE", "NOT_REACHED"]}
+      }
+    },
+    "search_runner_parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "identity", "runner_build_manifest", "evidence", "reason"],
+      "properties": {
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]},
+        "identity": {
+          "const": {
+            "project_commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
+            "runner_sha256": "97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856",
+            "implementation_id": "cpp_main_pqflash_search_instrumented_v1",
+            "diskann_commit": "78256bbab4685e1774e78d331e081a153be26823"
+          }
+        },
+        "runner_build_manifest": {"$ref": "#/$defs/optionalDocumentRef"},
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zero", "fixed"],
+          "properties": {
+            "zero": {"$ref": "#/$defs/optionalDocumentRef"},
+            "fixed": {"$ref": "#/$defs/optionalDocumentRef"}
+          }
+        },
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "mandatory_admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "checks"],
+      "properties": {
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]},
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["check_id", "status", "reason", "evidence"],
+            "properties": {
+              "check_id": {"type": "string", "minLength": 1},
+              "status": {"enum": ["PASS", "FAIL", "MISSING"]},
+              "reason": {"type": "string", "minLength": 1},
+              "evidence": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/documentRef"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset",
+        "shared_pq",
+        "reference_graph",
+        "reference_disk_layout",
+        "framework_graph",
+        "framework_disk_layout"
+      ],
+      "properties": {
+        "dataset": {"$ref": "#/$defs/optionalArtifactRef"},
+        "shared_pq": {"$ref": "#/$defs/optionalArtifactRef"},
+        "reference_graph": {"$ref": "#/$defs/optionalArtifactRef"},
+        "reference_disk_layout": {"$ref": "#/$defs/optionalArtifactRef"},
+        "framework_graph": {"$ref": "#/$defs/optionalArtifactRef"},
+        "framework_disk_layout": {"$ref": "#/$defs/optionalArtifactRef"}
+      }
+    },
+    "shared_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_set", "ground_truth"],
+      "properties": {
+        "query_set": {"$ref": "#/$defs/optionalDocumentRef"},
+        "ground_truth": {"$ref": "#/$defs/optionalDocumentRef"}
+      }
+    },
+    "protocols": {"$ref": "#/$defs/roleEvidenceSet"},
+    "observations": {"$ref": "#/$defs/roleEvidenceSet"},
+    "evaluation_reports": {"$ref": "#/$defs/roleEvidenceSet"},
+    "quality_parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "policy", "evidence", "reason"],
+      "properties": {
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]},
+        "policy": {"$ref": "#/$defs/optionalDocumentRef"},
+        "evidence": {"$ref": "#/$defs/optionalDocumentRef"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "build_manifests": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/documentRef"}
+    },
+    "validation_evidence": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/documentRef"}
+    },
+    "audit_exclusions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/auditRef"}
+    },
+    "rationale": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason_code", "message"],
+        "properties": {
+          "reason_code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixed_scope_framework_certified",
+        "graph_byte_or_adjacency_parity",
+        "complete_native_framework_equivalence",
+        "framework_wide_certification",
+        "performance_certification",
+        "paper_feature_certification"
+      ],
+      "properties": {
+        "fixed_scope_framework_certified": {"type": "boolean"},
+        "graph_byte_or_adjacency_parity": {"const": false},
+        "complete_native_framework_equivalence": {"const": false},
+        "framework_wide_certification": {"const": false},
+        "performance_certification": {"const": false},
+        "paper_feature_certification": {"const": false}
+      }
+    },
+    "canonicalization": {"const": "diskann-json-sort-keys-sha256-v1"},
+    "decision_checksum": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "CERTIFIED"}}},
+      "then": {
+        "properties": {
+          "structural_gate": {"properties": {"result": {"const": "PASS"}}},
+          "search_runner_parity": {"properties": {"result": {"const": "PASS"}}},
+          "mandatory_admission": {"properties": {"result": {"const": "PASS"}}},
+          "quality_parity": {"properties": {"result": {"const": "PASS"}}},
+          "claims": {
+            "properties": {"fixed_scope_framework_certified": {"const": true}}
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "claims": {
+            "properties": {"fixed_scope_framework_certified": {"const": false}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "structural_gate": {"properties": {"result": {"const": "FAIL"}}}
+        }
+      },
+      "then": {"properties": {"decision": {"const": "NOT_CERTIFIED"}}}
+    },
+    {
+      "if": {
+        "properties": {
+          "structural_gate": {
+            "properties": {"result": {"enum": ["INCONCLUSIVE", "NOT_REACHED"]}}
+          }
+        }
+      },
+      "then": {"properties": {"decision": {"const": "INCONCLUSIVE"}}}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "documentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byte_length", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "byte_length": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "optionalDocumentRef": {
+      "oneOf": [
+        {"$ref": "#/$defs/documentRef"},
+        {"type": "null"}
+      ]
+    },
+    "optionalArtifactRef": {
+      "oneOf": [
+        {
+          "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/artifactRef"
+        },
+        {"type": "null"}
+      ]
+    },
+    "roleEvidenceSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "framework"],
+      "properties": {
+        "reference": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/documentRef"}
+        },
+        "framework": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/documentRef"}
+        }
+      }
+    },
+    "auditRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "path", "terminal_status", "reason"],
+      "properties": {
+        "identity": {"type": "string", "minLength": 1},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "terminal_status": {
+          "enum": [
+            "SUCCEEDED",
+            "FAILED",
+            "INVALID_OUTPUT",
+            "CANCELLED",
+            "IDENTITY_MISMATCHED",
+            "EXCLUDED",
+            "MISSING"
+          ]
+        },
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -18,6 +18,21 @@ add_cpp_main_baseline_test(
 target_link_libraries(cpp_main_native_formats PRIVATE nlohmann_json::nlohmann_json)
 
 add_cpp_main_baseline_test(
+  native_reference_capture
+  test_native_reference_capture.cpp)
+target_link_libraries(
+  native_reference_capture
+  PRIVATE diskann_cpp_main_stages nlohmann_json::nlohmann_json)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_dependencies(native_reference_capture native_reference_capture_runner)
+  target_compile_definitions(
+    native_reference_capture
+    PRIVATE
+      NATIVE_REFERENCE_CAPTURE_RUNNER="$<TARGET_FILE:native_reference_capture_runner>")
+endif()
+set_tests_properties(native_reference_capture PROPERTIES SKIP_RETURN_CODE 77)
+
+add_cpp_main_baseline_test(
   cpp_main_source_build_admission
   test_cpp_main_source_build_admission.cpp)
 target_compile_definitions(

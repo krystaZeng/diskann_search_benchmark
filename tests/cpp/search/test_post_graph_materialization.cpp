@@ -52,6 +52,12 @@ struct Inputs {
       {{1, 2, 3}, {0, 2, 4}, {0, 1, 5},
        {0, 4, 5}, {1, 3, 5}, {2, 3, 4}},
       {0, 3})};
+  dp::ArtifactRef global_v2{
+      native_fixture::materialize_direct_native_global_v2(
+          workspace, dataset,
+          {{1, 2, 3}, {0, 2, 4}, {0, 1, 5},
+           {0, 4, 5}, {1, 3, 5}, {2, 3, 4}},
+          {0, 3})};
 };
 
 std::string now_utc() {
@@ -409,6 +415,11 @@ int main() {
                dp::ArtifactType::kPQ);
   DP_EXPECT_EQ(ds::fixed_disk_layout_descriptor().provides.artifact_type,
                dp::ArtifactType::kDiskLayout);
+  DP_EXPECT_EQ(
+      ds::fixed_disk_layout_descriptor()
+          .requires.input_artifacts.at(1).accepted_format_versions,
+      std::vector<std::string>({"global-graph-artifact/v1",
+                                "global-graph-artifact/v2"}));
 
   Inputs inputs;
   const auto graph_before = dp::sha256_file(
@@ -471,11 +482,27 @@ int main() {
   DP_EXPECT_TRUE(pq_valid.valid());
   DP_EXPECT_TRUE(layout_valid.valid());
 
+  auto v2_request = request(inputs, "search-layout-small-v2");
+  v2_request.global_graph = inputs.global_v2;
+  const auto layout_v2 = materializer.materialize_disk_layout(v2_request);
+  DP_EXPECT_EQ(layout_v2.status, dp::StageStatus::kSucceeded);
+  DP_EXPECT_TRUE(layout_v2.artifact.has_value());
+  if (layout_v2.artifact) {
+    DP_EXPECT_TRUE(validator.validate_with_lineage(*layout_v2.artifact).valid());
+    DP_EXPECT_TRUE(layout_v2.artifact->aggregate_checksum !=
+                   layout.artifact->aggregate_checksum);
+    const auto metadata = native_fixture::read_json(
+        dp::test::metadata_path(inputs.workspace, *layout_v2.artifact));
+    DP_EXPECT_EQ(
+        metadata.at("source_artifacts").at(1).at("format_version"),
+        "global-graph-artifact/v2");
+  }
+
   auto declared = request(inputs, "search-layout-declared-centroids");
   declared.centroid_policy = "declared_centroids";
   const auto rejected = materializer.materialize_disk_layout(declared);
   DP_EXPECT_EQ(rejected.status, dp::StageStatus::kFailed);
-  DP_EXPECT_EQ(layout_calls, 1);
+  DP_EXPECT_EQ(layout_calls, 2);
   DP_EXPECT_TRUE(!rejected.artifact.has_value());
   expect_terminal_times(rejected.build_manifest_path, declared);
 

@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/006/native-reference-build-request.schema.json",
+  "title": "Feature 006 Native Reference Build Request v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_version",
+    "run_id",
+    "study_class",
+    "reference_role",
+    "reproduction_mode",
+    "execution_authorized",
+    "workspace_root",
+    "source",
+    "project_operation_owner",
+    "native_binary",
+    "dataset_artifact",
+    "dataset_validation_evidence",
+    "profile",
+    "controls",
+    "capture",
+    "resource_budget",
+    "outputs"
+  ],
+  "properties": {
+    "request_version": {"const": "native-reference-build-request/v1"},
+    "run_id": {"$ref": "#/$defs/stableId"},
+    "study_class": {"const": "baseline_validation"},
+    "reference_role": {"const": "cpp_main_native_sharded_reference_v1"},
+    "reproduction_mode": {"const": "upstream_faithful"},
+    "execution_authorized": {"const": false},
+    "workspace_root": {"$ref": "#/$defs/absolutePath"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commit", "source_path", "dirty_worktree"],
+      "properties": {
+        "repository": {"const": "https://github.com/microsoft/DiskANN.git"},
+        "branch": {"const": "cpp_main"},
+        "commit": {"const": "78256bbab4685e1774e78d331e081a153be26823"},
+        "source_path": {"const": "upstream/diskann-cpp-main"},
+        "dirty_worktree": {"const": false}
+      }
+    },
+    "project_operation_owner": {"$ref": "#/$defs/projectOwner"},
+    "native_binary": {
+      "allOf": [
+        {"$ref": "#/$defs/binaryIdentity"},
+        {
+          "type": "object",
+          "properties": {
+            "implementation_id": {"const": "cpp_main_build_disk_index_native_v1"}
+          }
+        }
+      ]
+    },
+    "dataset_artifact": {
+      "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/artifactRef"
+    },
+    "dataset_validation_evidence": {"$ref": "#/$defs/documentRef"},
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "status"],
+      "properties": {
+        "path": {
+          "const": "experiments/configs/cpp-main-upstream-baseline/baseline-run-profile.yaml"
+        },
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "status": {"const": "draft"}
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "data_type",
+        "distance_metric",
+        "branch_mode",
+        "R",
+        "L",
+        "B",
+        "build_DRAM_budget_gib",
+        "num_threads",
+        "QD",
+        "disk_PQ_bytes",
+        "build_PQ_bytes",
+        "opq",
+        "labels"
+      ],
+      "properties": {
+        "data_type": {"const": "float"},
+        "distance_metric": {"const": "l2"},
+        "branch_mode": {"const": "sharded"},
+        "R": {"const": 16},
+        "L": {"const": 32},
+        "B": {"const": 0.03},
+        "build_DRAM_budget_gib": {"const": 0.6},
+        "num_threads": {"const": 6},
+        "QD": {"const": 0},
+        "disk_PQ_bytes": {"const": 0},
+        "build_PQ_bytes": {"const": 0},
+        "opq": {"const": false},
+        "labels": {"const": false}
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mechanism",
+        "source_graph_name",
+        "source_medoids_name",
+        "captured_graph_path",
+        "captured_medoids_path",
+        "same_filesystem_required",
+        "copy_fallback_allowed",
+        "exclusive_create"
+      ],
+      "properties": {
+        "mechanism": {"const": "prearmed_inotify_same_filesystem_hardlink"},
+        "source_graph_name": {"type": "string", "pattern": "_mem\\.index$"},
+        "source_medoids_name": {
+          "type": "string",
+          "pattern": "_disk\\.index_medoids\\.bin$"
+        },
+        "captured_graph_path": {"$ref": "#/$defs/relativePath"},
+        "captured_medoids_path": {"$ref": "#/$defs/relativePath"},
+        "same_filesystem_required": {"const": true},
+        "copy_fallback_allowed": {"const": false},
+        "exclusive_create": {"const": true}
+      }
+    },
+    "resource_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_budget_bytes", "thread_budget", "disk_budget_bytes"],
+      "properties": {
+        "memory_budget_bytes": {"type": "integer", "minimum": 1},
+        "thread_budget": {"const": 6},
+        "disk_budget_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_metadata_path",
+        "build_manifest_path",
+        "validation_evidence_path",
+        "stdout_path",
+        "stderr_path",
+        "observer_evidence_path",
+        "structural_projection_path"
+      ],
+      "properties": {
+        "artifact_metadata_path": {"$ref": "#/$defs/relativePath"},
+        "build_manifest_path": {"$ref": "#/$defs/relativePath"},
+        "validation_evidence_path": {"$ref": "#/$defs/relativePath"},
+        "stdout_path": {"$ref": "#/$defs/relativePath"},
+        "stderr_path": {"$ref": "#/$defs/relativePath"},
+        "observer_evidence_path": {"$ref": "#/$defs/relativePath"},
+        "structural_projection_path": {"$ref": "#/$defs/relativePath"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "absolutePath": {"type": "string", "pattern": "^/[^\\u0000]+$"},
+    "documentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "byte_length", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "byte_length": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "binaryIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation_id",
+        "path",
+        "byte_length",
+        "sha256",
+        "build_manifest"
+      ],
+      "properties": {
+        "implementation_id": {"$ref": "#/$defs/stableId"},
+        "path": {"$ref": "#/$defs/absolutePath"},
+        "byte_length": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "build_manifest": {"$ref": "#/$defs/documentRef"}
+      }
+    },
+    "projectOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementation_id",
+        "implementation_version",
+        "repository",
+        "branch",
+        "commit",
+        "dirty_worktree",
+        "binary"
+      ],
+      "properties": {
+        "implementation_id": {"const": "framework_baseline_native_reference_capture_v1"},
+        "implementation_version": {"const": "1.0.0"},
+        "repository": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "branch": {"type": "string", "minLength": 1},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty_worktree": {"const": false},
+        "binary": {"$ref": "#/$defs/binaryIdentity"}
+      }
+    }
+  }
+}

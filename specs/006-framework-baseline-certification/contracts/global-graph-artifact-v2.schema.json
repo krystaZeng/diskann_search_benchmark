@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/v1/global-graph-artifact-v2.schema.json",
+  "title": "GlobalGraphArtifact Metadata v2",
+  "description": "Additive direct_native_final lineage for an exact final merged graph and medoids emitted by the fixed native sharded DiskANN path. GlobalGraphArtifact/v1 is unchanged.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "canonicalization",
+    "artifact_type",
+    "format_version",
+    "dataset",
+    "id_space",
+    "structural",
+    "capabilities",
+    "source_artifacts",
+    "payloads",
+    "aggregate_checksum"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "canonicalization": {"const": "diskann-artifact-c14n-v1"},
+    "artifact_type": {"const": "global_graph"},
+    "format_version": {"const": "global-graph-artifact/v2"},
+    "dataset": {
+      "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/datasetIdentity"
+    },
+    "id_space": {"const": "global"},
+    "structural": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineage_mode",
+        "global_node_count",
+        "declared_max_degree",
+        "observed_max_degree",
+        "partition_count",
+        "medoid_count"
+      ],
+      "properties": {
+        "lineage_mode": {"const": "direct_native_final"},
+        "global_node_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967296
+        },
+        "declared_max_degree": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "observed_max_degree": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "partition_count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4294967295
+        },
+        "medoid_count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "capabilities": {
+      "allOf": [
+        {
+          "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/capabilityArray"
+        },
+        {"minItems": 2},
+        {"contains": {"const": "graph.global_adjacency/v1"}},
+        {"contains": {"const": "graph.medoids/v1"}}
+      ]
+    },
+    "source_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/sourceArtifactIdentity"
+            },
+            {
+              "type": "object",
+              "properties": {"artifact_type": {"const": "dataset"}}
+            }
+          ]
+        }
+      ]
+    },
+    "payloads": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/payloadRef"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "role": {"const": "global_graph"},
+                "media_type": {
+                  "const": "application/vnd.diskann.cpp-main.global-graph;version=1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/payloadRef"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "role": {"const": "medoids"},
+                "media_type": {
+                  "const": "application/vnd.diskann.cpp-main.uint32-medoids;version=1"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "aggregate_checksum": {
+      "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/sha256"
+    }
+  }
+}

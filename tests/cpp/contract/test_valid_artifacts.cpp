@@ -86,6 +86,27 @@ int main() {
   DP_EXPECT_EQ(global.evidence.result, dp::ValidationResult::kValid);
 
   {
+    diskann_pipeline::cpp_main::test::TemporaryDirectory temporary(
+        "direct-native-v2-valid");
+    const auto workspace = dp::create_workspace(temporary.path / "workspace");
+    diskann_pipeline::cpp_main::test::NativeDatasetFixture native_dataset(
+        workspace, 4, 2);
+    const auto direct =
+        diskann_pipeline::cpp_main::test::materialize_direct_native_global_v2(
+            workspace, native_dataset,
+            {{1, 2}, {0, 3}, {0, 3}, {1, 2}}, {0, 2});
+    dp::Validator native_validator(workspace);
+    const auto validated_dataset = native_validator.validate(
+        native_dataset.reference);
+    DP_EXPECT_TRUE(validated_dataset.valid());
+    const auto validated_direct = native_validator.validate(
+        direct, {*validated_dataset.validated_artifact});
+    DP_EXPECT_TRUE(validated_direct.valid());
+    DP_EXPECT_EQ(validated_direct.validated_artifact->reference().format_version,
+                 std::string("global-graph-artifact/v2"));
+  }
+
+  {
     dp::search::test::SearchArtifactFixture search_fixture;
     dp::Validator search_validator(search_fixture.base.workspace);
     const auto search_dataset =

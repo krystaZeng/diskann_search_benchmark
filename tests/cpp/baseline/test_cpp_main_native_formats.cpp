@@ -204,6 +204,20 @@ int main() {
       native::validate_merged_global_graph(sparse_global_path, 3, 2)
           .observed_max_degree,
       std::uint32_t{1});
+  auto truncated_global = graph(2, 1, {{1}, {0, 2}, {1}});
+  truncated_global.pop_back();
+  write_bytes(temporary.path / "truncated-global.graph", truncated_global);
+  DP_EXPECT_THROW(native::validate_merged_global_graph(
+      temporary.path / "truncated-global.graph", 3, 2));
+  auto trailing_global = graph(2, 1, {{1}, {0, 2}, {1}});
+  trailing_global.push_back(0);
+  write_bytes(temporary.path / "trailing-global.graph", trailing_global);
+  DP_EXPECT_THROW(native::validate_merged_global_graph(
+      temporary.path / "trailing-global.graph", 3, 2));
+  write_bytes(temporary.path / "self-global.graph",
+              graph(2, 1, {{0, 1}, {0}, {1}}));
+  DP_EXPECT_THROW(native::validate_merged_global_graph(
+      temporary.path / "self-global.graph", 3, 2));
 
   const auto medoids_path = temporary.path / "medoids.bin";
   write_bytes(medoids_path, uint32_matrix({0, 2}));

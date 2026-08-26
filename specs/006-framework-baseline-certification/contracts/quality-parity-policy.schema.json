@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/006/quality-parity-policy.schema.json",
+  "title": "Feature 006 Quality Parity Policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy_version",
+    "status",
+    "scope",
+    "created_at",
+    "roles",
+    "threshold",
+    "artifacts",
+    "shared_inputs",
+    "protocols",
+    "controls",
+    "evaluator",
+    "eligibility",
+    "decision_rule",
+    "canonicalization",
+    "policy_checksum"
+  ],
+  "properties": {
+    "policy_version": {"const": "quality-parity-policy/v1"},
+    "status": {"const": "frozen"},
+    "scope": {"const": "feature_006_sift1m_l2_static_quality_parity"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "framework"],
+      "properties": {
+        "reference": {"const": "cpp_main_native_sharded_reference_v1"},
+        "framework": {"const": "cpp_main_p0_b0_m0_framework_candidate_v1"}
+      }
+    },
+    "threshold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metrics",
+        "source_report_scale",
+        "comparison_scale",
+        "maximum_shortfall",
+        "equal_or_higher_framework_passes"
+      ],
+      "properties": {
+        "metrics": {"const": ["recall_at_10", "recall_at_100"]},
+        "source_report_scale": {"const": "percentage_0_to_100"},
+        "comparison_scale": {"const": "fraction_0_to_1"},
+        "maximum_shortfall": {"const": 0.01},
+        "equal_or_higher_framework_passes": {"const": true}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset",
+        "shared_pq",
+        "reference_graph",
+        "reference_disk_layout",
+        "framework_graph",
+        "framework_disk_layout"
+      ],
+      "properties": {
+        "dataset": {"$ref": "#/$defs/artifactRef"},
+        "shared_pq": {"$ref": "#/$defs/artifactRef"},
+        "reference_graph": {
+          "allOf": [
+            {"$ref": "#/$defs/artifactRef"},
+            {
+              "properties": {
+                "artifact_type": {"const": "global_graph"},
+                "format_version": {"const": "global-graph-artifact/v2"}
+              }
+            }
+          ]
+        },
+        "reference_disk_layout": {"$ref": "#/$defs/diskLayoutRef"},
+        "framework_graph": {
+          "allOf": [
+            {"$ref": "#/$defs/artifactRef"},
+            {
+              "properties": {
+                "artifact_type": {"const": "global_graph"},
+                "format_version": {"const": "global-graph-artifact/v1"}
+              }
+            }
+          ]
+        },
+        "framework_disk_layout": {"$ref": "#/$defs/diskLayoutRef"}
+      }
+    },
+    "shared_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_set", "ground_truth"],
+      "properties": {
+        "query_set": {"$ref": "#/$defs/canonicalDocumentRef"},
+        "ground_truth": {"$ref": "#/$defs/canonicalDocumentRef"}
+      }
+    },
+    "protocols": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "framework"],
+      "properties": {
+        "reference": {"$ref": "#/$defs/cacheProtocolPair"},
+        "framework": {"$ref": "#/$defs/cacheProtocolPair"}
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "K",
+        "L_search",
+        "beamwidth",
+        "thread_count",
+        "io_limit",
+        "warmup_policy",
+        "query_order",
+        "timing_boundary",
+        "repetition_count",
+        "schedule",
+        "entry_policy",
+        "cache_controls",
+        "control_projection_checksum"
+      ],
+      "properties": {
+        "K": {"const": 100},
+        "L_search": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 100}
+        },
+        "beamwidth": {"const": 2},
+        "thread_count": {"const": 6},
+        "io_limit": {"const": 4294967295},
+        "warmup_policy": {"const": "none"},
+        "query_order": {"const": "query_row_index_ascending"},
+        "timing_boundary": {"const": "cpp_main_search_disk_index_query_batch_v1"},
+        "repetition_count": {"const": 3},
+        "schedule": {"const": "repetition_major_then_L_order"},
+        "entry_policy": {"const": "end_to_end"},
+        "cache_controls": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zero", "fixed"],
+          "properties": {
+            "zero": {
+              "const": {"mode": "zero", "requested_nodes": 0}
+            },
+            "fixed": {
+              "const": {
+                "mode": "fixed_bfs",
+                "requested_nodes": 10000,
+                "construction": "medoid_bfs",
+                "shuffle": false
+              }
+            }
+          }
+        },
+        "control_projection_checksum": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "evaluator": {
+      "const": {
+        "implementation_id": "cpp_main_search_metrics_evaluator_v1",
+        "version": "1.0.0",
+        "reproduction_mode": "instrumented"
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quality_policy",
+        "aggregation",
+        "attempted_repetitions_per_point",
+        "minimum_eligible_for_existing_aggregate",
+        "replacement_repetitions"
+      ],
+      "properties": {
+        "quality_policy": {
+          "const": "complete_valid_ground_truth_identity_search_semantics_v1"
+        },
+        "aggregation": {"const": "median_eligible"},
+        "attempted_repetitions_per_point": {"const": 3},
+        "minimum_eligible_for_existing_aggregate": {"const": 1},
+        "replacement_repetitions": {"const": false}
+      }
+    },
+    "decision_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "point_rule",
+        "cross_point_compensation",
+        "threshold_violation",
+        "missing_or_unevaluable_aggregate"
+      ],
+      "properties": {
+        "point_rule": {"const": "all_metrics_at_every_declared_cache_l"},
+        "cross_point_compensation": {"const": false},
+        "threshold_violation": {"const": "FAIL"},
+        "missing_or_unevaluable_aggregate": {"const": "INCONCLUSIVE"}
+      }
+    },
+    "canonicalization": {"const": "diskann-json-sort-keys-sha256-v1"},
+    "policy_checksum": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "artifactRef": {
+      "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/artifactRef"
+    },
+    "diskLayoutRef": {
+      "allOf": [
+        {"$ref": "#/$defs/artifactRef"},
+        {
+          "properties": {
+            "artifact_type": {"const": "disk_layout"},
+            "format_version": {"const": "disk-layout-artifact/v1"}
+          }
+        }
+      ]
+    },
+    "documentRef": {
+      "type": "object",
+      "required": ["path", "byte_length", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "byte_length": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "canonicalDocumentRef": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/documentRef"},
+        {
+          "type": "object",
+          "required": ["canonical_checksum"],
+          "properties": {
+            "canonical_checksum": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      ]
+    },
+    "protocolRef": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/documentRef"},
+        {
+          "type": "object",
+          "required": [
+            "protocol_id",
+            "protocol_checksum",
+            "search_execution_checksum",
+            "cache_mode"
+          ],
+          "properties": {
+            "protocol_id": {"type": "string", "minLength": 1},
+            "protocol_checksum": {"$ref": "#/$defs/sha256"},
+            "search_execution_checksum": {"$ref": "#/$defs/sha256"},
+            "cache_mode": {"enum": ["zero", "fixed_bfs"]}
+          }
+        }
+      ]
+    },
+    "cacheProtocolPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zero", "fixed"],
+      "properties": {
+        "zero": {
+          "allOf": [
+            {"$ref": "#/$defs/protocolRef"},
+            {"properties": {"cache_mode": {"const": "zero"}}}
+          ]
+        },
+        "fixed": {
+          "allOf": [
+            {"$ref": "#/$defs/protocolRef"},
+            {"properties": {"cache_mode": {"const": "fixed_bfs"}}}
+          ]
+        }
+      }
+    }
+  }
+}

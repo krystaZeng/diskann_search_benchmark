@@ -47,6 +47,11 @@
       "sha256": "9501fb6933066afc3e1264949d4fc7e62c42f1075f4bce43b929ca0ea0425851"
     },
     {
+      "source": "specs/006-framework-baseline-certification/contracts/global-graph-artifact-v2.schema.json",
+      "target": "contracts/v1/schemas/global-graph-artifact-v2.schema.json",
+      "sha256": "2607e64182f13139e90e2989777d6ddacca7bbea8e99f53fcddff1c2da5433ad"
+    },
+    {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/global-graph-artifact.schema.json",
       "target": "contracts/v1/schemas/global-graph-artifact.schema.json",
       "sha256": "2ca8e99abbb94893045d13730d99041078ec2a4c767f845f4c41e47f8d98e34a"

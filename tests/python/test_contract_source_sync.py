@@ -19,6 +19,7 @@ def test_runtime_contract_sources_are_complete_stable_and_byte_identical() -> No
 
     feature_001 = ROOT / "specs/001-modular-cpp-diskann-pipeline/contracts"
     feature_005 = ROOT / "specs/005-diskann-search-evaluation/contracts"
+    feature_006 = ROOT / "specs/006-framework-baseline-certification/contracts"
     source_by_target = {entry["target"]: entry["source"] for entry in entries}
     assert source_by_target["contracts/v1/schemas/common.schema.json"] == (
         feature_005 / "common.schema.json"
@@ -34,12 +35,18 @@ def test_runtime_contract_sources_are_complete_stable_and_byte_identical() -> No
     ] == (feature_005 / "disk-layout-artifact.schema.json").relative_to(
         ROOT
     ).as_posix()
+    assert source_by_target[
+        "contracts/v1/schemas/global-graph-artifact-v2.schema.json"
+    ] == (feature_006 / "global-graph-artifact-v2.schema.json").relative_to(
+        ROOT
+    ).as_posix()
     for target, source in source_by_target.items():
         if target in {
             "contracts/v1/schemas/common.schema.json",
             "contracts/v1/schemas/build-manifest.schema.json",
             "contracts/v1/schemas/pq-artifact.schema.json",
             "contracts/v1/schemas/disk-layout-artifact.schema.json",
+            "contracts/v1/schemas/global-graph-artifact-v2.schema.json",
         }:
             continue
         assert source.startswith(feature_001.relative_to(ROOT).as_posix() + "/")

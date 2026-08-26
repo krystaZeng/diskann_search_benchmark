@@ -7,6 +7,7 @@ add_library(
   diskann_cpp_main_stages STATIC
   descriptors.cpp
   cpp_main_vector_accessor.cpp
+  native_reference_capture.cpp
   p0_partition.cpp
   b0_local_build.cpp
   m0_merge.cpp)
@@ -34,6 +35,24 @@ set_target_properties(
     RUNTIME_OUTPUT_DIRECTORY
       "${CMAKE_BINARY_DIR}/src/baseline/cpp_main")
 diskann_pipeline_apply_cxx17(cpp_main_baseline_runner)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  add_executable(
+    native_reference_capture_runner
+    native_reference_capture_runner.cpp)
+  target_link_libraries(
+    native_reference_capture_runner
+    PRIVATE diskann_cpp_main_stages nlohmann_json::nlohmann_json)
+  target_include_directories(
+    native_reference_capture_runner
+    PRIVATE "${PROJECT_SOURCE_DIR}/src")
+  set_target_properties(
+    native_reference_capture_runner
+    PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY
+        "${CMAKE_BINARY_DIR}/src/baseline/cpp_main")
+  diskann_pipeline_apply_cxx17(native_reference_capture_runner)
+endif()
 target_compile_definitions(
   diskann_pipeline_core
   PRIVATE

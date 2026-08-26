@@ -1,8 +1,11 @@
 #include "diskann_pipeline/validation.hpp"
 
+#include "baseline/cpp_main_stage_test_support.hpp"
 #include "support/contract_artifact_fixture.hpp"
 #include "search/search_artifact_test_support.hpp"
 #include "support/test_assert.hpp"
+
+#include <functional>
 
 namespace dp = diskann_pipeline;
 
@@ -12,6 +15,23 @@ dp::ArtifactValidationResult validate_partition(dp::test::ContractArtifactFixtur
   dp::Validator validator(fixture.workspace);
   const auto dataset = validator.validate(fixture.dataset);
   return validator.validate(fixture.partition, {*dataset.validated_artifact});
+}
+
+dp::ArtifactValidationResult validate_direct_v2(
+    const std::function<void(dp::test::Json&)>& mutation,
+    bool recompute = true) {
+  diskann_pipeline::cpp_main::test::TemporaryDirectory temporary(
+      "direct-native-v2-invalid");
+  const auto workspace = dp::create_workspace(temporary.path / "workspace");
+  diskann_pipeline::cpp_main::test::NativeDatasetFixture dataset(workspace, 4,
+                                                                  2);
+  auto graph =
+      diskann_pipeline::cpp_main::test::materialize_direct_native_global_v2(
+          workspace, dataset, {{1, 2}, {0, 3}, {0, 3}, {1, 2}}, {0, 2});
+  dp::test::mutate_metadata(workspace, graph, mutation, recompute);
+  dp::Validator validator(workspace);
+  const auto validated_dataset = validator.validate(dataset.reference);
+  return validator.validate(graph, {*validated_dataset.validated_artifact});
 }
 
 }  // namespace
@@ -25,6 +45,42 @@ int main() {
                             "p0-map.json");
     DP_EXPECT_EQ(validate_partition(fixture).evidence.failure_category.value(),
                  dp::ErrorCategory::kPayloadMissing);
+  }
+  {
+    auto result = validate_direct_v2(
+        [](auto& json) { json["format_version"] = "global-graph-artifact/v1"; });
+    DP_EXPECT_TRUE(!result.valid());
+  }
+  {
+    auto result = validate_direct_v2(
+        [](auto& json) { json["structural"]["lineage_mode"] = "other"; });
+    DP_EXPECT_TRUE(!result.valid());
+  }
+  {
+    auto result = validate_direct_v2(
+        [](auto& json) { json["source_artifacts"] = dp::test::Json::array(); });
+    DP_EXPECT_TRUE(!result.valid());
+  }
+  {
+    auto result = validate_direct_v2([](auto& json) {
+      json["dataset"]["dataset_checksum"] = std::string(64, '0');
+    });
+    DP_EXPECT_TRUE(!result.valid());
+  }
+  {
+    auto result = validate_direct_v2(
+        [](auto& json) { json["structural"]["observed_max_degree"] = 1; });
+    DP_EXPECT_TRUE(!result.valid());
+  }
+  {
+    auto result = validate_direct_v2(
+        [](auto& json) { json["structural"]["medoid_count"] = 3; });
+    DP_EXPECT_TRUE(!result.valid());
+  }
+  {
+    auto result = validate_direct_v2(
+        [](auto& json) { json["payloads"][1]["role"] = "centroids"; });
+    DP_EXPECT_TRUE(!result.valid());
   }
   {
     dp::search::test::SearchArtifactFixture fixture;

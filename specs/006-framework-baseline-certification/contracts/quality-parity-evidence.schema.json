@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/specs/006/quality-parity-evidence.schema.json",
+  "title": "Feature 006 Quality Parity Evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_version",
+    "generated_at",
+    "policy",
+    "roles",
+    "artifacts",
+    "shared_inputs",
+    "evaluation_reports",
+    "observation_attempts",
+    "groups",
+    "result",
+    "audit_exclusions",
+    "canonicalization",
+    "evidence_checksum"
+  ],
+  "properties": {
+    "evidence_version": {"const": "quality-parity-evidence/v1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "policy": {"$ref": "#/$defs/canonicalDocumentRef"},
+    "roles": {
+      "const": {
+        "reference": "cpp_main_native_sharded_reference_v1",
+        "framework": "cpp_main_p0_b0_m0_framework_candidate_v1"
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset",
+        "shared_pq",
+        "reference_graph",
+        "reference_disk_layout",
+        "framework_graph",
+        "framework_disk_layout"
+      ],
+      "properties": {
+        "dataset": {"$ref": "#/$defs/artifactRef"},
+        "shared_pq": {"$ref": "#/$defs/artifactRef"},
+        "reference_graph": {"$ref": "#/$defs/artifactRef"},
+        "reference_disk_layout": {"$ref": "#/$defs/artifactRef"},
+        "framework_graph": {"$ref": "#/$defs/artifactRef"},
+        "framework_disk_layout": {"$ref": "#/$defs/artifactRef"}
+      }
+    },
+    "shared_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_set", "ground_truth"],
+      "properties": {
+        "query_set": {"$ref": "#/$defs/canonicalDocumentRef"},
+        "ground_truth": {"$ref": "#/$defs/canonicalDocumentRef"}
+      }
+    },
+    "evaluation_reports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "framework"],
+      "properties": {
+        "reference": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {"$ref": "#/$defs/reportRef"}
+        },
+        "framework": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {"$ref": "#/$defs/reportRef"}
+        }
+      }
+    },
+    "observation_attempts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "framework"],
+      "properties": {
+        "reference": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/observationAttempt"}
+        },
+        "framework": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/observationAttempt"}
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/groupFinding"}
+    },
+    "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]},
+    "audit_exclusions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/auditRef"}
+    },
+    "canonicalization": {"const": "diskann-json-sort-keys-sha256-v1"},
+    "evidence_checksum": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "artifactRef": {
+      "$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/artifactRef"
+    },
+    "documentRef": {
+      "type": "object",
+      "required": ["path", "byte_length", "sha256"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "byte_length": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "canonicalDocumentRef": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/documentRef"},
+        {
+          "type": "object",
+          "required": ["canonical_checksum"],
+          "properties": {
+            "canonical_checksum": {"$ref": "#/$defs/sha256"}
+          }
+        }
+      ]
+    },
+    "reportRef": {
+      "type": "object",
+      "unevaluatedProperties": false,
+      "allOf": [
+        {"$ref": "#/$defs/documentRef"},
+        {
+          "type": "object",
+          "required": ["report_id", "report_checksum", "protocol_checksum", "cache_mode"],
+          "properties": {
+            "report_id": {"type": "string", "minLength": 1},
+            "report_checksum": {"$ref": "#/$defs/sha256"},
+            "protocol_checksum": {"$ref": "#/$defs/sha256"},
+            "cache_mode": {"enum": ["zero", "fixed_bfs"]}
+          }
+        }
+      ]
+    },
+    "qualityMetrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recall_at_10_percent", "recall_at_100_percent"],
+      "properties": {
+        "recall_at_10_percent": {"type": "number", "minimum": 0, "maximum": 100},
+        "recall_at_100_percent": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "observationAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observation_id",
+        "path",
+        "byte_length",
+        "sha256",
+        "cache_mode",
+        "L_search",
+        "repetition_index",
+        "terminal_status",
+        "quality_eligible",
+        "quality_eligibility_reason"
+      ],
+      "properties": {
+        "observation_id": {"type": "string", "minLength": 1},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "byte_length": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "cache_mode": {"enum": ["zero", "fixed_bfs"]},
+        "L_search": {"type": "integer", "minimum": 100},
+        "repetition_index": {"type": "integer", "minimum": 0, "maximum": 2},
+        "terminal_status": {
+          "enum": ["SUCCEEDED", "FAILED", "INVALID_OUTPUT", "CANCELLED"]
+        },
+        "quality_eligible": {"type": "boolean"},
+        "quality_eligibility_reason": {"type": "string", "minLength": 1},
+        "quality_metrics": {"$ref": "#/$defs/qualityMetrics"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"quality_eligible": {"const": true}}},
+          "then": {
+            "required": ["quality_metrics"],
+            "properties": {"terminal_status": {"const": "SUCCEEDED"}}
+          },
+          "else": {"not": {"required": ["quality_metrics"]}}
+        }
+      ]
+    },
+    "aggregateSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempted_count", "eligible_count", "aggregation"],
+      "properties": {
+        "attempted_count": {"const": 3},
+        "eligible_count": {"type": "integer", "minimum": 0, "maximum": 3},
+        "aggregation": {"const": "median_eligible"},
+        "metrics": {"$ref": "#/$defs/qualityMetrics"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"eligible_count": {"const": 0}}},
+          "then": {"not": {"required": ["metrics"]}},
+          "else": {"required": ["metrics"]}
+        }
+      ]
+    },
+    "metricFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "reference_percent",
+        "framework_percent",
+        "reference_fraction",
+        "framework_fraction",
+        "shortfall_fraction",
+        "maximum_shortfall_fraction",
+        "result"
+      ],
+      "properties": {
+        "metric": {"enum": ["recall_at_10", "recall_at_100"]},
+        "reference_percent": {"type": "number", "minimum": 0, "maximum": 100},
+        "framework_percent": {"type": "number", "minimum": 0, "maximum": 100},
+        "reference_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "framework_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "shortfall_fraction": {"type": "number", "minimum": -1, "maximum": 1},
+        "maximum_shortfall_fraction": {"const": 0.01},
+        "result": {"enum": ["PASS", "FAIL"]}
+      }
+    },
+    "groupFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cache_mode",
+        "L_search",
+        "reference",
+        "framework",
+        "metric_findings",
+        "result",
+        "reason"
+      ],
+      "properties": {
+        "cache_mode": {"enum": ["zero", "fixed_bfs"]},
+        "L_search": {"type": "integer", "minimum": 100},
+        "reference": {"$ref": "#/$defs/aggregateSummary"},
+        "framework": {"$ref": "#/$defs/aggregateSummary"},
+        "metric_findings": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {"$ref": "#/$defs/metricFinding"}
+        },
+        "result": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "auditRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "path", "sha256", "terminal_status", "reason"],
+      "properties": {
+        "identity": {"type": "string", "minLength": 1},
+        "path": {"$ref": "#/$defs/relativePath"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "terminal_status": {
+          "enum": [
+            "SUCCEEDED",
+            "FAILED",
+            "INVALID_OUTPUT",
+            "CANCELLED",
+            "IDENTITY_MISMATCHED",
+            "EXCLUDED"
+          ]
+        },
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

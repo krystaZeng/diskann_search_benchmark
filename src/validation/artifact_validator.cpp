@@ -541,6 +541,56 @@ void validate_artifact_semantics(
                         "unsupported Artifact semantic validator");
   }
 
+  if (artifact.reference.format_version == "global-graph-artifact/v2") {
+    if (validated_sources.size() != 1 ||
+        validated_sources[0].reference().artifact_type !=
+            ArtifactType::kDataset ||
+        artifact.source_artifacts.size() != 1 ||
+        artifact.payloads.size() != 2 ||
+        artifact.payloads[0].role != "global_graph" ||
+        artifact.payloads[0].media_type != cpp_main::kGlobalGraphMediaType ||
+        artifact.payloads[1].role != kGlobalGraphMedoidsPayloadRole ||
+        artifact.payloads[1].media_type != cpp_main::kMedoidsMediaType ||
+        !has_capability(artifact, "graph.global_adjacency/v1") ||
+        !has_capability(artifact, kGlobalGraphMedoidsCapability) ||
+        structural.at("lineage_mode") != "direct_native_final") {
+      throw PipelineError(
+          ErrorCategory::kSourceMismatch,
+          "GlobalGraph/v2 requires one Dataset source and exact native payloads");
+    }
+    const auto global_count =
+        structural.at("global_node_count").get<NodeCount>();
+    const auto declared =
+        structural.at("declared_max_degree").get<std::uint32_t>();
+    const auto observed_claim =
+        structural.at("observed_max_degree").get<std::uint32_t>();
+    const auto partition_count_value =
+        structural.at("partition_count").get<NodeCount>();
+    const auto medoid_count =
+        structural.at("medoid_count").get<NodeCount>();
+    if (global_count != artifact.dataset.global_node_count ||
+        partition_count_value < 2 || medoid_count != partition_count_value ||
+        declared == 0 || observed_claim > declared) {
+      throw PipelineError(ErrorCategory::kNodeCountMismatch,
+                          "GlobalGraph/v2 structural facts are inconsistent");
+    }
+    const auto graph = cpp_main::validate_merged_global_graph(
+        payload_path(artifact, artifact.payloads[0]), global_count, declared);
+    if (graph.observed_max_degree != observed_claim) {
+      throw PipelineError(ErrorCategory::kDegreeExceeded,
+                          "GlobalGraph/v2 observed degree claim differs");
+    }
+    const auto medoids = cpp_main::validate_medoids(
+        payload_path(artifact, artifact.payloads[1]), medoid_count,
+        global_count);
+    if (std::find(medoids.begin(), medoids.end(), graph.entry_point) ==
+        medoids.end()) {
+      throw PipelineError(ErrorCategory::kIdRangeInvalid,
+                          "GlobalGraph/v2 entry point is absent from medoids");
+    }
+    return;
+  }
+
   if (validated_sources.size() < 2 ||
       validated_sources[0].reference().artifact_type != ArtifactType::kPartition) {
     throw PipelineError(ErrorCategory::kSourceMismatch,

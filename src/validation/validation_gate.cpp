@@ -95,7 +95,9 @@ PayloadRef parse_payload(const Json& value) {
   return result;
 }
 
-void validate_structural_shape(ArtifactType type, const Json& structural) {
+void validate_structural_shape(ArtifactType type,
+                               std::string_view format_version,
+                               const Json& structural) {
   switch (type) {
     case ArtifactType::kDataset:
       detail::require_object_shape(
@@ -129,10 +131,21 @@ void validate_structural_shape(ArtifactType type, const Json& structural) {
            "observed_max_degree", "source_partition_checksum"});
       break;
     case ArtifactType::kGlobalGraph:
-      detail::require_object_shape(
-          structural,
-          {"global_node_count", "declared_max_degree", "observed_max_degree",
-           "source_partition_artifact", "source_local_graph_artifacts"});
+      if (format_version == "global-graph-artifact/v2") {
+        detail::require_object_shape(
+            structural,
+            {"lineage_mode", "global_node_count", "declared_max_degree",
+             "observed_max_degree", "partition_count", "medoid_count"});
+        if (structural.at("lineage_mode") != "direct_native_final") {
+          throw PipelineError(ErrorCategory::kSchemaInvalid,
+                              "GlobalGraph/v2 lineage mode is invalid");
+        }
+      } else {
+        detail::require_object_shape(
+            structural,
+            {"global_node_count", "declared_max_degree", "observed_max_degree",
+             "source_partition_artifact", "source_local_graph_artifacts"});
+      }
       break;
     case ArtifactType::kPQ:
       detail::require_object_shape(
@@ -243,12 +256,14 @@ AdmittedArtifact admit_artifact(const WorkspaceRef& workspace,
       }
       result.payloads.push_back(std::move(parsed));
     }
-    validate_structural_shape(metadata_type, result.structural);
+    validate_structural_shape(metadata_type, reference.format_version,
+                              result.structural);
     if (metadata_type == ArtifactType::kLocalGraph) {
       require_sha256(
           result.structural.at("source_partition_checksum").get<std::string>(),
           "source_partition_checksum");
-    } else if (metadata_type == ArtifactType::kGlobalGraph) {
+    } else if (metadata_type == ArtifactType::kGlobalGraph &&
+               reference.format_version == "global-graph-artifact/v1") {
       parse_source(result.structural.at("source_partition_artifact"));
       const auto& local_sources =
           result.structural.at("source_local_graph_artifacts");
