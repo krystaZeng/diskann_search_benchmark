@@ -62,10 +62,16 @@ or general certification platform
 `CERTIFIED`
 
 **Search Runner Identity**: reusable Search Runner Parity PASS is limited to Project commit
-`10f8520d8617fdaf8de3abf8a87842346ae4c96f`, runner SHA-256
-`97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856`,
+`8cd169255c483999be0628e53045f2c3248b5b5e`, runner SHA-256
+`4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d`,
 implementation `cpp_main_pqflash_search_instrumented_v1`, and fixed DiskANN commit
 `78256bbab4685e1774e78d331e081a153be26823`
+
+**Search Runner Parity Admission**: the Feature-local admission additionally requires the frozen
+zero/fixed parity document SHAs, Protocol file and canonical checksums, search-execution checksums,
+fixed upstream oracle binary SHA, the complete 3 × 3 L/repetition matrix, and each linked
+Observation/Protocol/oracle terminal identity. Only the exact PASS package is admitted; a missing,
+stale, cross-bound, or mismatched package is `INCONCLUSIVE`.
 
 **Compiler/Build Identity**: each future formal request binds actual compiler path/version, CMake
 version/generator, Release, `-O3`, `-DNDEBUG`, C++17, applicable AVX/OpenMP flags, Feature CMake

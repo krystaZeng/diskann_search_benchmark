@@ -179,11 +179,13 @@ The final source/provenance audit recorded:
 - Feature 002 policy/helper and Feature 005 protocol/observation/report/evaluator files have no diff
   from Project HEAD; the frozen Feature 002 policy SHA-256 remains
   `fcc6310415bdae8ce62231c2e6edf3ed8330b8234b8e8a90cb708e830299bd1d`;
-- Search Runner Parity admission remains exact to Project commit
-  `10f8520d8617fdaf8de3abf8a87842346ae4c96f`, runner SHA-256
-  `97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856`, implementation
+- Search Runner Parity admission is exact to Project commit
+  `8cd169255c483999be0628e53045f2c3248b5b5e`, runner SHA-256
+  `4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d`, implementation
   `cpp_main_pqflash_search_instrumented_v1`, and DiskANN commit
-  `78256bbab4685e1774e78d331e081a153be26823`;
+  `78256bbab4685e1774e78d331e081a153be26823`. Admission also requires the frozen exact zero/fixed
+  evidence, Protocol-file, Protocol-canonical, search-execution, oracle, Observation, and oracle
+  terminal-Manifest links; a missing or mismatched link is `INCONCLUSIVE`;
 - Artifact, BuildManifest, ValidationEvidence, structural report, SearchEvaluationReport, Quality
   Parity evidence, and final decision remain independent documents.
 

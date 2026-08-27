@@ -490,8 +490,8 @@ policy permits those four searches to seek execution approval.
 10. Any Linux formal performance experiment, which remains non-certifying and outside Feature 006.
 
 If the formal certification searches do not use Project commit
-`10f8520d8617fdaf8de3abf8a87842346ae4c96f`, runner SHA-256
-`97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856`, implementation
+`8cd169255c483999be0628e53045f2c3248b5b5e`, runner SHA-256
+`4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d`, implementation
 `cpp_main_pqflash_search_instrumented_v1`, and DiskANN commit
 `78256bbab4685e1774e78d331e081a153be26823` exactly, the retained Search Runner Parity PASS is not
 reusable. That later formal execution must stop with missing/stale parity evidence unless a new,

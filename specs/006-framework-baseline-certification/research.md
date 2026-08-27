@@ -196,14 +196,31 @@ cache/L aggregate; all findings are conjoined and never averaged or compensated 
 
 ## R5. Search Runner Parity admission
 
+**Superseded historical identity**: The originally planned reusable PASS bound Project commit
+`10f8520d8617fdaf8de3abf8a87842346ae4c96f` to runner SHA-256
+`97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856`. It is retained here as
+historical evidence but is superseded for active Feature 006 admission by the fresh exact-current
+zero/fixed PASS package below.
+
 **Decision**: Treat the user-frozen reusable PASS as admissible only when the certification search
 binds the complete exact identity tuple:
 
-- Project commit `10f8520d8617fdaf8de3abf8a87842346ae4c96f`;
-- runner SHA-256 `97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856`;
+- Project commit `8cd169255c483999be0628e53045f2c3248b5b5e`;
+- runner SHA-256 `4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d`;
 - implementation `cpp_main_pqflash_search_instrumented_v1` and its version/mode;
 - fixed DiskANN repository, branch, and commit;
 - exact runner BuildManifest and zero/fixed parity evidence paths and SHA-256.
+
+The active exact package additionally freezes oracle SHA-256
+`51846c26b3b743a4c2065f6bbc733329bc4865cf19dd5370b87738ef9a3d573d`; zero evidence SHA
+`61d0e7d2e4379666a3406f79677b34e07f6c7b26223fa3b4a05243f3cd76e8d3`, Protocol file SHA
+`e8460a326db797ae6b39c6c532cc08e6d06f9b9c09fb7cefea2f7be35bdccbc5`, Protocol checksum
+`f285c6436f9fea69697fea36a70731ea3e619fab23d8524cd9820047726e0f76`, and execution checksum
+`312f950fc4870e12712ba961719f725885fdfc85ed92184db9eac6a95b438b5d`; fixed evidence SHA
+`9ab05ba9f5969de2dce1c92beea63bcacb420f67e07b2496bb14b80160444148`, Protocol file SHA
+`635e9e1d548185e4c1d44d88a200c3bc48790d4ba586496df9da105802058912`, Protocol checksum
+`86eb2702abfd25461552e8d7db1749b5506012b508fd346d5af36b9e272389f5`, and execution checksum
+`da8dce48bac56d5742b98077296edc6e70fe3dcafdaf3cd7fd94fcfed4239f55`.
 
 An identity mismatch or stale/missing/incompletely bound PASS is not silently upgraded. A current,
 complete FAIL is conclusive negative evidence and maps to `NOT_CERTIFIED`; a missing, stale,

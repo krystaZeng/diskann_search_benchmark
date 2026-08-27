@@ -636,8 +636,8 @@ def _f006_decision(policy: dict) -> dict:
         "search_runner_parity": {
             "result": "PASS",
             "identity": {
-                "project_commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
-                "runner_sha256": "97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856",
+                "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+                "runner_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
                 "implementation_id": "cpp_main_pqflash_search_instrumented_v1",
                 "diskann_commit": "78256bbab4685e1774e78d331e081a153be26823",
             },

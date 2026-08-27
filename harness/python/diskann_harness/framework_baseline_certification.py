@@ -49,10 +49,53 @@ PINNED_DISKANN = {
 }
 
 FROZEN_RUNNER_PARITY_IDENTITY = {
-    "project_commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
-    "runner_sha256": "97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856",
+    "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+    "runner_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
     "implementation_id": "cpp_main_pqflash_search_instrumented_v1",
     "diskann_commit": "78256bbab4685e1774e78d331e081a153be26823",
+}
+
+FROZEN_RUNNER_PARITY_PACKAGE = {
+    "oracle_sha256": (
+        "51846c26b3b743a4c2065f6bbc733329"
+        "bc4865cf19dd5370b87738ef9a3d573d"
+    ),
+    "zero": {
+        "evidence_sha256": (
+            "61d0e7d2e4379666a3406f79677b34e0"
+            "7f6c7b26223fa3b4a05243f3cd76e8d3"
+        ),
+        "protocol_file_sha256": (
+            "e8460a326db797ae6b39c6c532cc08e6"
+            "d06f9b9c09fb7cefea2f7be35bdccbc5"
+        ),
+        "protocol_checksum": (
+            "f285c6436f9fea69697fea36a70731ea"
+            "3e619fab23d8524cd9820047726e0f76"
+        ),
+        "search_execution_checksum": (
+            "312f950fc4870e12712ba961719f7258"
+            "85fdfc85ed92184db9eac6a95b438b5d"
+        ),
+    },
+    "fixed": {
+        "evidence_sha256": (
+            "9ab05ba9f5969de2dce1c92beea63bc"
+            "acb420f67e07b2496bb14b80160444148"
+        ),
+        "protocol_file_sha256": (
+            "635e9e1d548185e4c1d44d88a200c3b"
+            "c48790d4ba586496df9da105802058912"
+        ),
+        "protocol_checksum": (
+            "86eb2702abfd25461552e8d7db1749b5"
+            "506012b508fd346d5af36b9e272389f5"
+        ),
+        "search_execution_checksum": (
+            "da8dce48bac56d5742b98077296edc6e"
+            "70fe3dcafdaf3cd7fd94fcfed4239f55"
+        ),
+    },
 }
 
 CERTIFICATION_ROLES = {
@@ -2541,6 +2584,229 @@ def _verify_decision_document_ref(
         return False, None
 
 
+def _admit_search_runner_parity(
+    workspace: Path,
+    parity_input: dict[str, Any],
+    *,
+    repository_root: Path,
+) -> dict[str, str]:
+    """Admit only the frozen, independently-provenanced exact PASS package."""
+
+    def require(condition: Any, reason: str) -> None:
+        if condition is not True:
+            raise FeatureCertificationError(reason)
+
+    def relative_document(path_value: Any, sha256: Any, label: str) -> dict[str, Any]:
+        require(type(path_value) is str and type(sha256) is str, f"{label} reference is invalid")
+        path = resolve_feature_output(workspace, path_value)
+        require(path.is_file() and _sha256_file(path) == sha256, f"{label} identity mismatch")
+        return _read_object(path)
+
+    try:
+        identity = parity_input.get("identity")
+        require(identity == FROZEN_RUNNER_PARITY_IDENTITY, "runner parity identity is stale")
+        require(parity_input.get("result") == "PASS", "only the frozen exact PASS package is admitted")
+
+        runner_path = _verify_document_reference(
+            workspace, parity_input["runner_build_manifest"]
+        )
+        runner = _read_object(runner_path)
+        _validate_with(
+            _runtime_validator(repository_root, "build-manifest.schema.json"),
+            runner,
+            "runner provenance BuildManifest",
+        )
+        expected_project_source = {
+            "repository": "https://github.com/krystaZeng/diskann_search_benchmark.git",
+            "branch": "feature/framework-baseline-certification",
+            "commit": FROZEN_RUNNER_PARITY_IDENTITY["project_commit"],
+            "dirty_worktree": False,
+        }
+        require(runner.get("status") == "SUCCEEDED", "runner provenance is not SUCCEEDED")
+        require(runner.get("source") == expected_project_source, "runner provenance source mismatch")
+        parameters = runner.get("parameters", {})
+        require(
+            parameters.get("runner_binary", {}).get("sha256")
+            == FROZEN_RUNNER_PARITY_IDENTITY["runner_sha256"],
+            "runner provenance binary mismatch",
+        )
+        require(
+            parameters.get("diskann_source")
+            == {**PINNED_DISKANN, "dirty_worktree": False},
+            "runner provenance DiskANN source mismatch",
+        )
+        toolchain = runner.get("toolchain", {})
+        compile_commands = toolchain.get("compile_commands")
+        link_commands = toolchain.get("link_commands")
+        require(
+            type(toolchain.get("os")) is str
+            and toolchain["os"].lower() == "linux"
+            and toolchain.get("build_type") == "Release"
+            and type(toolchain.get("compiler_path")) is str
+            and bool(toolchain["compiler_path"])
+            and type(toolchain.get("compiler_version")) is str
+            and bool(toolchain["compiler_version"])
+            and type(toolchain.get("cmake_version")) is str
+            and bool(toolchain["cmake_version"])
+            and type(toolchain.get("generator")) is str
+            and bool(toolchain["generator"])
+            and type(compile_commands) is list
+            and bool(compile_commands)
+            and all(type(item) is str and item for item in compile_commands)
+            and type(link_commands) is list
+            and bool(link_commands)
+            and all(type(item) is str and item for item in link_commands),
+            "runner provenance toolchain evidence is incomplete",
+        )
+        compile_text = " ".join(compile_commands)
+        require(
+            all(flag in compile_text for flag in ("-O3", "-DNDEBUG", "-std=c++17"))
+            and ("-mavx2" in compile_text or "-mavx" in compile_text)
+            and "-fopenmp" in compile_text,
+            "runner provenance compile flags mismatch",
+        )
+
+        expected_matrix = {
+            (l_search, repetition)
+            for l_search in (100, 200, 400)
+            for repetition in (0, 1, 2)
+        }
+        for cache_key, cache_mode in (("zero", "zero"), ("fixed", "fixed_bfs")):
+            frozen = FROZEN_RUNNER_PARITY_PACKAGE[cache_key]
+            evidence_reference = parity_input["evidence"][cache_key]
+            evidence_path = _verify_document_reference(workspace, evidence_reference)
+            require(
+                evidence_reference["sha256"] == frozen["evidence_sha256"],
+                f"{cache_key} parity evidence is not the frozen document",
+            )
+            evidence = _read_object(evidence_path)
+            require(evidence.get("result") == "PASS", f"{cache_key} parity is not PASS")
+            require(
+                evidence.get("instrumented_exit_code") == 0,
+                f"{cache_key} instrumented runner did not succeed",
+            )
+            controls = evidence.get("controls", {})
+            require(
+                controls.get("cache", {}).get("mode") == cache_mode
+                and controls.get("search_execution_checksum")
+                == frozen["search_execution_checksum"],
+                f"{cache_key} parity controls mismatch",
+            )
+            points = evidence.get("points")
+            require(type(points) is list and len(points) == 9, f"{cache_key} parity point count mismatch")
+            matrix = [
+                (point.get("L_search"), point.get("repetition_index"))
+                for point in points
+                if type(point) is dict
+            ]
+            require(
+                len(matrix) == 9
+                and len(set(matrix)) == 9
+                and set(matrix) == expected_matrix,
+                f"{cache_key} parity matrix mismatch",
+            )
+            for point in points:
+                require(
+                    point.get("result") == "PASS"
+                    and point.get("ordered_ids_equal") is True
+                    and point.get("distances_within_tolerance") is True
+                    and point.get("mean_ios_equal") is True,
+                    f"{cache_key} parity point is not exact PASS",
+                )
+                observation = relative_document(
+                    point.get("observation_path"),
+                    point.get("observation_sha256"),
+                    f"{cache_key} observation",
+                )
+                source_build = observation.get("source_build", {})
+                require(
+                    observation.get("search_execution", {}).get("canonical_checksum")
+                    == frozen["search_execution_checksum"]
+                    and observation.get("implementation", {}).get("implementation_id")
+                    == FROZEN_RUNNER_PARITY_IDENTITY["implementation_id"]
+                    and source_build.get("binary_sha256")
+                    == FROZEN_RUNNER_PARITY_IDENTITY["runner_sha256"]
+                    and source_build.get("diskann_repository") == PINNED_DISKANN["repository"]
+                    and source_build.get("diskann_branch") == PINNED_DISKANN["branch"]
+                    and source_build.get("diskann_commit") == PINNED_DISKANN["commit"],
+                    f"{cache_key} observation execution identity mismatch",
+                )
+                protocol_reference = observation.get("protocol", {})
+                require(
+                    protocol_reference.get("protocol_checksum")
+                    == frozen["protocol_checksum"],
+                    f"{cache_key} observation Protocol checksum mismatch",
+                )
+                protocol = relative_document(
+                    protocol_reference.get("path"),
+                    frozen["protocol_file_sha256"],
+                    f"{cache_key} Protocol",
+                )
+                normalized_protocol = search_evaluation.normalize_search_protocol(protocol)
+                execution = normalized_protocol.get("search_execution", {})
+                require(
+                    normalized_protocol == protocol
+                    and protocol.get("protocol_checksum") == frozen["protocol_checksum"]
+                    and protocol.get("search_execution_checksum")
+                    == frozen["search_execution_checksum"]
+                    and execution.get("cache", {}).get("mode") == cache_mode
+                    and execution.get("runner_build", {}).get("binary_sha256")
+                    == FROZEN_RUNNER_PARITY_IDENTITY["runner_sha256"],
+                    f"{cache_key} Protocol identity mismatch",
+                )
+
+                oracle = relative_document(
+                    point.get("oracle_manifest_path"),
+                    point.get("oracle_manifest_sha256"),
+                    f"{cache_key} oracle Manifest",
+                )
+                _validate_with(
+                    _runtime_validator(repository_root, "build-manifest.schema.json"),
+                    oracle,
+                    f"{cache_key} oracle BuildManifest",
+                )
+                oracle_parameters = oracle.get("parameters", {})
+                argv = oracle_parameters.get("argv")
+                require(type(argv) is list, f"{cache_key} oracle argv is invalid")
+                search_list_index = argv.index("--search_list") if "--search_list" in argv else -1
+                oracle_l = (
+                    int(argv[search_list_index + 1])
+                    if search_list_index >= 0 and search_list_index + 1 < len(argv)
+                    else None
+                )
+                require(
+                    oracle.get("manifest_version") == "1.0.0"
+                    and oracle.get("stage") == "search"
+                    and oracle.get("status") == "SUCCEEDED"
+                    and oracle.get("implementation", {}).get("implementation_id")
+                    == "cpp_main_search_disk_index_oracle_v1"
+                    and oracle.get("source") == {**PINNED_DISKANN, "dirty_worktree": False}
+                    and oracle_parameters.get("oracle_binary", {}).get("sha256")
+                    == FROZEN_RUNNER_PARITY_PACKAGE["oracle_sha256"]
+                    and oracle_parameters.get("protocol_checksum")
+                    == frozen["protocol_checksum"]
+                    and oracle_parameters.get("search_execution_checksum")
+                    == frozen["search_execution_checksum"]
+                    and oracle_l == point["L_search"],
+                    f"{cache_key} oracle identity mismatch",
+                )
+    except (
+        FeatureCertificationError,
+        search_evaluation.SearchEvaluationError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as error:
+        return {
+            "result": "INCONCLUSIVE",
+            "reason": f"runner parity exact PASS package was not admitted: {error}",
+        }
+    return {
+        "result": "PASS",
+        "reason": "runner parity exact-current zero/fixed PASS package admitted",
+    }
+
+
 def decide(
     input_path: str | Path,
     output_path: str | Path,
@@ -2590,43 +2856,17 @@ def decide(
     structural["result"] = structural_result
 
     parity_input = dict(inputs["search_runner_parity"])
-    identity_match = parity_input.get("identity") == FROZEN_RUNNER_PARITY_IDENTITY
-    runner_valid, runner_document = _verify_decision_document_ref(
-        workspace, parity_input.get("runner_build_manifest")
+    parity_admission = _admit_search_runner_parity(
+        workspace,
+        parity_input,
+        repository_root=repository,
     )
-    if runner_valid and runner_document is not None:
-        runner_valid = (
-            runner_document.get("runner_identity") == parity_input.get("identity")
-        )
-    parity_evidence_valid = True
-    for cache in ("zero", "fixed"):
-        valid, document = _verify_decision_document_ref(
-            workspace, parity_input.get("evidence", {}).get(cache)
-        )
-        parity_evidence_valid = parity_evidence_valid and valid
-        if valid and document is not None:
-            parity_evidence_valid = (
-                parity_evidence_valid
-                and document.get("runner_identity") == parity_input.get("identity")
-                and document.get("result") == parity_input.get("result")
-            )
-    parity_result = parity_input.get("result", "INCONCLUSIVE")
-    if (
-        not identity_match
-        or not runner_valid
-        or not parity_evidence_valid
-        or parity_result not in {"PASS", "FAIL", "INCONCLUSIVE"}
-    ):
-        parity_result = "INCONCLUSIVE"
+    parity_result = parity_admission["result"]
     parity = {
         **parity_input,
         "result": parity_result,
         "identity": FROZEN_RUNNER_PARITY_IDENTITY,
-        "reason": (
-            parity_input.get("reason", "runner parity evidence admitted")
-            if parity_result == parity_input.get("result")
-            else "runner parity evidence is missing, stale, or identity-mismatched"
-        ),
+        "reason": parity_admission["reason"],
     }
 
     mandatory = dict(inputs["mandatory_admission"])

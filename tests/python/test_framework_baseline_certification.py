@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from diskann_harness import framework_baseline_certification as fbc
 from diskann_harness import diskann_search_evaluation as search
@@ -1786,11 +1787,40 @@ def test_derive_structural_reuses_frozen_feature002_four_state_helper(
 
 
 FROZEN_RUNNER_IDENTITY = {
-    "project_commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
-    "runner_sha256": "97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856",
+    "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+    "runner_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
     "implementation_id": "cpp_main_pqflash_search_instrumented_v1",
     "diskann_commit": "78256bbab4685e1774e78d331e081a153be26823",
 }
+
+
+def test_exact_current_runner_parity_admission_surface_is_frozen() -> None:
+    assert fbc.FROZEN_RUNNER_PARITY_IDENTITY == FROZEN_RUNNER_IDENTITY
+    assert fbc.FROZEN_RUNNER_PARITY_PACKAGE["fixed"]["protocol_checksum"] == (
+        "86eb2702abfd25461552e8d7db1749b5506012b508fd346d5af36b9e272389f5"
+    )
+    assert callable(fbc._admit_search_runner_parity)
+
+
+def test_final_decision_schema_accepts_only_current_frozen_runner_identity() -> None:
+    schema = json.loads(
+        (
+            REPOSITORY_ROOT
+            / "specs/006-framework-baseline-certification/contracts/"
+            "framework-baseline-certification-decision.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    identity_schema = schema["properties"]["search_runner_parity"]["properties"][
+        "identity"
+    ]
+    validator = Draft202012Validator(identity_schema)
+    assert not list(validator.iter_errors(FROZEN_RUNNER_IDENTITY))
+    old_identity = {
+        **FROZEN_RUNNER_IDENTITY,
+        "project_commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
+        "runner_sha256": "97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856",
+    }
+    assert list(validator.iter_errors(old_identity))
 
 
 def _artifact_ref(
@@ -2431,15 +2461,315 @@ def _write_json_ref(workspace: Path, relative: str, value: dict[str, object]) ->
     return _document_ref(workspace, path)
 
 
+def _parity_build_manifest(
+    *,
+    implementation_id: str,
+    source: dict[str, object],
+    parameters: dict[str, object],
+    stage: str,
+) -> dict[str, object]:
+    return {
+        "manifest_version": "1.0.0",
+        "run_id": f"synthetic-{implementation_id}",
+        "stage": stage,
+        "implementation": {
+            "implementation_id": implementation_id,
+            "implementation_version": "1.0.0",
+        },
+        "source": source,
+        "toolchain": {
+            "os": "Linux",
+            "compiler_path": "/usr/bin/c++",
+            "compiler_version": "11.4.0",
+            "cmake_version": "3.22.1",
+            "generator": "Unix Makefiles",
+            "build_type": "Release",
+            "cmake_definitions": ["CMAKE_BUILD_TYPE=Release"],
+            "compile_commands": [
+                "/usr/bin/c++ -O3 -DNDEBUG -std=c++17 -mavx2 -mfma -fopenmp"
+            ],
+            "link_commands": ["/usr/bin/c++ -fopenmp synthetic.o -o synthetic"],
+        },
+        "dataset": FIXTURE_DATASET_IDENTITY,
+        "parameters": parameters,
+        "resource_budget": {"memory_budget_bytes": 4096, "thread_budget": 6},
+        "input_artifacts": [],
+        "output_artifacts": [],
+        "status": "SUCCEEDED",
+        "started_at": "2026-08-27T00:00:00Z",
+        "ended_at": "2026-08-27T00:00:01Z",
+    }
+
+
+def _write_compact_json(path: Path, document: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(document, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+
+def _synthetic_exact_parity_package(
+    fixture: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> tuple[dict[str, object], dict[str, object]]:
+    workspace = fixture["workspace"]
+    project_source = {
+        "repository": "https://github.com/krystaZeng/diskann_search_benchmark.git",
+        "branch": "feature/framework-baseline-certification",
+        "commit": FROZEN_RUNNER_IDENTITY["project_commit"],
+        "dirty_worktree": False,
+    }
+    upstream_source = {
+        "repository": "https://github.com/microsoft/DiskANN.git",
+        "branch": "cpp_main",
+        "commit": FROZEN_RUNNER_IDENTITY["diskann_commit"],
+        "dirty_worktree": False,
+    }
+    runner_path = workspace / "parity/runner-build.json"
+    _write_compact_json(
+        runner_path,
+        _parity_build_manifest(
+            implementation_id="cpp_main_post_graph_disk_layout_v1",
+            source=project_source,
+            parameters={
+                "runner_binary": {
+                    "path": "/synthetic/runner",
+                    "sha256": FROZEN_RUNNER_IDENTITY["runner_sha256"],
+                },
+                "diskann_source": upstream_source,
+            },
+            stage="build",
+        ),
+    )
+
+
+    package: dict[str, object] = {"oracle_sha256": "9" * 64}
+    evidence_refs: dict[str, object] = {}
+    paths: dict[str, object] = {"runner": runner_path, "evidence": {}}
+    for cache_key, cache_mode in (("zero", "zero"), ("fixed", "fixed_bfs")):
+        declaration = _protocol_declaration(
+            role="reference",
+            cache_mode=cache_mode,
+            runner_sha=FROZEN_RUNNER_IDENTITY["runner_sha256"],
+            query_set=fixture["query_reference"],
+            ground_truth=fixture["ground_truth"],
+        )
+        declaration["protocol_id"] = f"synthetic-parity-{cache_mode}"
+        declaration["search_execution"]["execution_id"] = declaration["protocol_id"]
+        declaration["search_execution"]["L_search"] = [100, 200, 400]
+        declaration["search_execution"]["runner_build"]["build_manifest_path"] = (
+            runner_path.relative_to(workspace).as_posix()
+        )
+        declaration["search_execution"]["runner_build"]["build_manifest_sha256"] = (
+            _sha256(runner_path)
+        )
+        protocol = search.normalize_search_protocol(declaration)
+        protocol_path = workspace / f"parity/{cache_mode}-protocol.json"
+        _write_compact_json(protocol_path, protocol)
+
+        points: list[dict[str, object]] = []
+        point_paths: list[tuple[Path, Path]] = []
+        for l_search in (100, 200, 400):
+            for repetition in (0, 1, 2):
+                point_id = f"{cache_mode}-L{l_search}-r{repetition}"
+                observation_path = workspace / f"parity/observations/{point_id}.json"
+                observation = {
+                    "observation_id": point_id,
+                    "implementation": {
+                        "implementation_id": FROZEN_RUNNER_IDENTITY["implementation_id"]
+                    },
+                    "source_build": {
+                        "diskann_repository": upstream_source["repository"],
+                        "diskann_branch": upstream_source["branch"],
+                        "diskann_commit": upstream_source["commit"],
+                        "binary_sha256": FROZEN_RUNNER_IDENTITY["runner_sha256"],
+                    },
+                    "protocol": {
+                        "path": protocol_path.relative_to(workspace).as_posix(),
+                        "protocol_id": protocol["protocol_id"],
+                        "protocol_checksum": protocol["protocol_checksum"],
+                    },
+                    "search_execution": {
+                        "execution_id": protocol["search_execution"]["execution_id"],
+                        "canonical_checksum": protocol["search_execution_checksum"],
+                    },
+                }
+                _write_compact_json(observation_path, observation)
+
+                oracle_path = workspace / f"parity/oracle/{point_id}.json"
+                oracle = _parity_build_manifest(
+                    implementation_id="cpp_main_search_disk_index_oracle_v1",
+                    source=upstream_source,
+                    parameters={
+                        "argv": ["search_disk_index", "--search_list", str(l_search)],
+                        "oracle_binary": {
+                            "path": "/synthetic/search_disk_index",
+                            "sha256": package["oracle_sha256"],
+                        },
+                        "protocol_checksum": protocol["protocol_checksum"],
+                        "search_execution_checksum": protocol["search_execution_checksum"],
+                    },
+                    stage="search",
+                )
+                _write_compact_json(oracle_path, oracle)
+                points.append(
+                    {
+                        "L_search": l_search,
+                        "repetition_index": repetition,
+                        "result": "PASS",
+                        "ordered_ids_equal": True,
+                        "distances_within_tolerance": True,
+                        "mean_ios_equal": True,
+                        "observation_path": observation_path.relative_to(workspace).as_posix(),
+                        "observation_sha256": _sha256(observation_path),
+                        "oracle_manifest_path": oracle_path.relative_to(workspace).as_posix(),
+                        "oracle_manifest_sha256": _sha256(oracle_path),
+                    }
+                )
+                point_paths.append((observation_path, oracle_path))
+        evidence_path = workspace / f"parity/{cache_mode}.json"
+        evidence = {
+            "result": "PASS",
+            "instrumented_exit_code": 0,
+            "controls": {
+                "cache": {"mode": cache_mode},
+                "search_execution_checksum": protocol["search_execution_checksum"],
+            },
+            "points": points,
+        }
+        _write_compact_json(evidence_path, evidence)
+        package[cache_key] = {
+            "evidence_sha256": _sha256(evidence_path),
+            "protocol_file_sha256": _sha256(protocol_path),
+            "protocol_checksum": protocol["protocol_checksum"],
+            "search_execution_checksum": protocol["search_execution_checksum"],
+        }
+        evidence_refs[cache_key] = _document_ref(workspace, evidence_path)
+        paths["evidence"][cache_key] = evidence_path
+        paths[f"{cache_key}_protocol"] = protocol_path
+        paths[f"{cache_key}_points"] = point_paths
+
+    monkeypatch.setattr(fbc, "FROZEN_RUNNER_PARITY_PACKAGE", package)
+    return (
+        {
+            "result": "PASS",
+            "identity": FROZEN_RUNNER_IDENTITY,
+            "runner_build_manifest": _document_ref(workspace, runner_path),
+            "evidence": evidence_refs,
+            "reason": "synthetic exact PASS package",
+        },
+        paths,
+    )
+
+
+def _admit_synthetic_parity(
+    fixture: dict[str, object], parity_input: dict[str, object]
+) -> dict[str, str]:
+    return fbc._admit_search_runner_parity(
+        fixture["workspace"],
+        parity_input,
+        repository_root=REPOSITORY_ROOT,
+    )
+
+
+def test_exact_synthetic_search_runner_parity_package_is_admitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch)
+    parity_input, _ = _synthetic_exact_parity_package(fixture, monkeypatch)
+    assert _admit_synthetic_parity(fixture, parity_input)["result"] == "PASS"
+
+
+def test_old_search_runner_parity_identity_is_inconclusive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch)
+    parity_input, _ = _synthetic_exact_parity_package(fixture, monkeypatch)
+    parity_input["identity"] = {
+        **FROZEN_RUNNER_IDENTITY,
+        "project_commit": "10f8520d8617fdaf8de3abf8a87842346ae4c96f",
+        "runner_sha256": "97acef83e042949071230691789b493231d8ab09de22d8af86363f9c180ec856",
+    }
+    assert _admit_synthetic_parity(fixture, parity_input)["result"] == "INCONCLUSIVE"
+
+
+@pytest.mark.parametrize("mutation", ["source", "runner_sha", "diskann", "status"])
+def test_runner_provenance_mismatch_is_inconclusive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch)
+    parity_input, paths = _synthetic_exact_parity_package(fixture, monkeypatch)
+    runner_path = paths["runner"]
+    runner = json.loads(runner_path.read_text(encoding="utf-8"))
+    if mutation == "source":
+        runner["source"]["repository"] = "https://example.invalid/not-project.git"
+    elif mutation == "runner_sha":
+        runner["parameters"]["runner_binary"]["sha256"] = "0" * 64
+    elif mutation == "diskann":
+        runner["parameters"]["diskann_source"]["commit"] = "0" * 40
+    else:
+        runner["status"] = "CANCELLED"
+    _write_compact_json(runner_path, runner)
+    parity_input["runner_build_manifest"] = _document_ref(
+        fixture["workspace"], runner_path
+    )
+    assert _admit_synthetic_parity(fixture, parity_input)["result"] == "INCONCLUSIVE"
+
+
+@pytest.mark.parametrize(
+    "mutation", ["evidence_sha", "execution_checksum", "missing", "duplicate", "point_fail"]
+)
+def test_parity_evidence_or_matrix_mismatch_is_inconclusive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch)
+    parity_input, paths = _synthetic_exact_parity_package(fixture, monkeypatch)
+    evidence_path = paths["evidence"]["zero"]
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if mutation == "evidence_sha":
+        fbc.FROZEN_RUNNER_PARITY_PACKAGE["zero"]["evidence_sha256"] = "0" * 64
+    else:
+        if mutation == "execution_checksum":
+            evidence["controls"]["search_execution_checksum"] = "0" * 64
+        elif mutation == "missing":
+            evidence["points"].pop()
+        elif mutation == "duplicate":
+            evidence["points"][-1] = copy.deepcopy(evidence["points"][0])
+        else:
+            evidence["points"][0]["result"] = "FAIL"
+        _write_compact_json(evidence_path, evidence)
+        parity_input["evidence"]["zero"] = _document_ref(
+            fixture["workspace"], evidence_path
+        )
+        fbc.FROZEN_RUNNER_PARITY_PACKAGE["zero"]["evidence_sha256"] = _sha256(
+            evidence_path
+        )
+    assert _admit_synthetic_parity(fixture, parity_input)["result"] == "INCONCLUSIVE"
+
+
+@pytest.mark.parametrize("mutation", ["observation", "protocol", "oracle"])
+def test_parity_linked_document_identity_mismatch_is_inconclusive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch)
+    parity_input, paths = _synthetic_exact_parity_package(fixture, monkeypatch)
+    if mutation == "protocol":
+        path = paths["zero_protocol"]
+    else:
+        observation_path, oracle_path = paths["zero_points"][0]
+        path = observation_path if mutation == "observation" else oracle_path
+    path.write_bytes(path.read_bytes() + b"\n")
+    assert _admit_synthetic_parity(fixture, parity_input)["result"] == "INCONCLUSIVE"
+
+
 def _decision_input(
     fixture: dict[str, object],
     quality_path: Path,
     *,
+    parity_input: dict[str, object],
     structural: str = "PASS",
-    parity: str = "PASS",
     mandatory: str = "PASS",
     quality: str = "PASS",
-    parity_identity: dict[str, str] | None = None,
 ) -> dict[str, object]:
     workspace = fixture["workspace"]
     policy_path = workspace / "policy.json"
@@ -2450,19 +2780,6 @@ def _decision_input(
     structural_report = _write_json_ref(
         workspace, "evidence/structural-report.json", {"gate": {"result": structural}}
     )
-    runner_manifest = _write_json_ref(
-        workspace,
-        "evidence/runner-build.json",
-        {"runner_identity": parity_identity or FROZEN_RUNNER_IDENTITY},
-    )
-    parity_refs = {
-        cache: _write_json_ref(
-            workspace,
-            f"evidence/parity-{cache}.json",
-            {"result": parity, "runner_identity": parity_identity or FROZEN_RUNNER_IDENTITY},
-        )
-        for cache in ("zero", "fixed")
-    }
     admission_ref = _write_json_ref(
         workspace, "evidence/admission.json", {"result": mandatory}
     )
@@ -2508,13 +2825,7 @@ def _decision_input(
             "report": structural_report,
             "result": structural,
         },
-        "search_runner_parity": {
-            "result": parity,
-            "identity": parity_identity or FROZEN_RUNNER_IDENTITY,
-            "runner_build_manifest": runner_manifest,
-            "evidence": parity_refs,
-            "reason": "fixture parity evidence",
-        },
+        "search_runner_parity": parity_input,
         "mandatory_admission": {
             "result": mandatory,
             "checks": [
@@ -2585,14 +2896,24 @@ def test_final_decision_precedence_and_exact_runner_parity_identity(
     fbc.compare_quality(
         policy_path, compare_input, quality_path, repository_root=REPOSITORY_ROOT
     )
+    parity_input, _ = _synthetic_exact_parity_package(fixture, monkeypatch)
+    if parity != "PASS":
+        monkeypatch.setattr(
+            fbc,
+            "_admit_search_runner_parity",
+            lambda *args, **kwargs: {
+                "result": parity,
+                "reason": f"synthetic decision-precedence {parity}",
+            },
+        )
     decision_input = workspace / "decision-input.json"
     decision_input.write_text(
         json.dumps(
             _decision_input(
                 fixture,
                 quality_path,
+                parity_input=parity_input,
                 structural=structural,
-                parity=parity,
                 mandatory=mandatory,
                 quality=quality,
             )
@@ -2620,15 +2941,16 @@ def test_stale_runner_identity_is_inconclusive_not_reusable(
     fbc.compare_quality(
         policy_path, compare_input, quality_path, repository_root=REPOSITORY_ROOT
     )
+    parity_input, _ = _synthetic_exact_parity_package(fixture, monkeypatch)
     stale = {**FROZEN_RUNNER_IDENTITY, "runner_sha256": "0" * 64}
+    parity_input["identity"] = stale
     decision_input = workspace / "decision-input.json"
     decision_input.write_text(
         json.dumps(
             _decision_input(
                 fixture,
                 quality_path,
-                parity="PASS",
-                parity_identity=stale,
+                parity_input=parity_input,
             )
         ),
         encoding="utf-8",
