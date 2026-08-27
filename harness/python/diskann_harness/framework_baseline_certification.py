@@ -146,6 +146,23 @@ def _runtime_validator(
     return Draft202012Validator(schema, registry=Registry().with_resources(resources))
 
 
+def _dataset_artifact_validator(
+    repository_root: Path, format_version: Any
+) -> Draft202012Validator:
+    if format_version == "fake-dataset-json/v1":
+        return _runtime_validator(repository_root, "dataset-artifact.schema.json")
+    if format_version == "diskann-float32-dataset/v1":
+        schema = _read_object(
+            repository_root
+            / "contracts/baseline-v1/schemas/cpp-main-dataset-artifact.schema.json"
+        )
+        Draft202012Validator.check_schema(schema)
+        return Draft202012Validator(schema)
+    raise FeatureCertificationError(
+        f"unsupported Dataset format version: {format_version!r}"
+    )
+
+
 def _validate_with(
     validator: Draft202012Validator, document: dict[str, Any], label: str
 ) -> None:
@@ -890,7 +907,7 @@ def _fresh_validate_dataset(
     metadata_path = resolve_feature_output(workspace / "normal", reference["metadata_path"])
     metadata = _read_object(metadata_path)
     _validate_with(
-        _runtime_validator(repository_root, "dataset-artifact.schema.json"),
+        _dataset_artifact_validator(repository_root, metadata.get("format_version")),
         metadata,
         "DatasetArtifact",
     )
@@ -901,7 +918,12 @@ def _fresh_validate_dataset(
         or metadata["aggregate_checksum"] != reference["aggregate_checksum"]
     ):
         raise FeatureCertificationError("DatasetArtifact identity mismatch")
-    for record in metadata["payloads"]:
+    payloads = metadata["payloads"]
+    if len(payloads) != 1 or payloads[0].get("role") != "vectors":
+        raise FeatureCertificationError(
+            "DatasetArtifact must contain exactly one vectors payload"
+        )
+    for record in payloads:
         payload = resolve_feature_output(metadata_path.parent, record["path"])
         if (
             not payload.is_file()
@@ -909,6 +931,10 @@ def _fresh_validate_dataset(
             or _sha256_file(payload) != record["sha256"]
         ):
             raise FeatureCertificationError("DatasetArtifact payload identity mismatch")
+    if payloads[0]["sha256"] != metadata["dataset"]["dataset_checksum"]:
+        raise FeatureCertificationError(
+            "Dataset checksum and vectors payload checksum mismatch"
+        )
     evidence_path = _verify_document_reference(
         workspace, request["dataset_validation_evidence"]
     )

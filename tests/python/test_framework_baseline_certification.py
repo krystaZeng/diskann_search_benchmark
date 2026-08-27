@@ -48,6 +48,10 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
 def _file_identity(path: Path) -> dict[str, object]:
     return {
         "path": str(path.resolve()),
@@ -358,6 +362,158 @@ def _reference_request_fixture(tmp_path: Path) -> tuple[Path, dict[str, object]]
         },
     }
     return workspace, request
+
+
+def _write_dataset_admission_fixture(
+    workspace: Path,
+    request: dict[str, object],
+    *,
+    format_version: str,
+    dataset_checksum: str | None = None,
+) -> tuple[dict[str, object], Path, Path]:
+    metadata_relative = "datasets/fixture/artifact.json"
+    metadata_path = workspace / "normal" / metadata_relative
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if format_version == "fake-dataset-json/v1":
+        payload_bytes = b'{"vectors":[[0,0],[1,0],[2,0],[0,1],[1,1],[2,1]]}'
+        payload_name = "vectors.json"
+        payload_sha = _sha256_bytes(payload_bytes)
+        dataset = {
+            "dataset_id": "fake-six-node-v1",
+            "dataset_checksum": payload_sha,
+            "global_node_count": 6,
+            "vector_dimension": 2,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        }
+        structural = {
+            "global_node_count": 6,
+            "vector_dimension": 2,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        }
+        capabilities = ["dataset.vector_access/v1"]
+        media_type = "application/vnd.diskann.fake-vectors+json;version=1"
+        aggregate = "4cfb7bdb7ce50e3b9f07abe72b918a2666d35ef07211d675c708c0e1d0ecf12d"
+    else:
+        payload_bytes = struct.pack("<II2f", 1, 2, 1.0, 2.0)
+        payload_name = "vectors.bin"
+        payload_sha = _sha256_bytes(payload_bytes)
+        dataset = {
+            "dataset_id": "native-dataset-fixture-v1",
+            "dataset_checksum": dataset_checksum or payload_sha,
+            "global_node_count": 1,
+            "vector_dimension": 2,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        }
+        structural = {
+            "global_node_count": 1,
+            "vector_dimension": 2,
+            "scalar_type": "float32",
+            "distance_metric": "l2",
+        }
+        capabilities = ["dataset.diskann_float32_bin/v1"]
+        media_type = "application/vnd.diskann.cpp-main.float32-bin;version=1"
+        aggregate = "a" * 64
+
+    payload_path = metadata_path.parent / payload_name
+    payload_path.write_bytes(payload_bytes)
+    metadata: dict[str, object] = {
+        "schema_version": "1.0.0",
+        "canonicalization": "diskann-artifact-c14n-v1",
+        "artifact_type": "dataset",
+        "format_version": format_version,
+        "dataset": dataset,
+        "id_space": "none",
+        "structural": structural,
+        "capabilities": capabilities,
+        "source_artifacts": [],
+        "payloads": [
+            {
+                "role": "vectors",
+                "path": payload_name,
+                "media_type": media_type,
+                "byte_length": len(payload_bytes),
+                "sha256": payload_sha,
+            }
+        ],
+        "aggregate_checksum": aggregate,
+    }
+    metadata_path.write_text(
+        json.dumps(metadata, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    request["dataset_artifact"] = {
+        "metadata_path": metadata_relative,
+        "artifact_type": "dataset",
+        "format_version": format_version,
+        "aggregate_checksum": aggregate,
+    }
+
+    evidence_path = workspace / "manifests/evidence/dataset.json"
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence = {
+        "evidence_version": "1.0.0",
+        "validator_version": "1.0.0",
+        "artifact_candidate": {
+            "artifact_type": "dataset",
+            "format_version": format_version,
+            "metadata_path": metadata_relative,
+            "claimed_aggregate_checksum": aggregate,
+        },
+        "checks": [
+            {
+                "check_id": "dataset_fixture",
+                "passed": True,
+                "message": "small Dataset fixture is valid",
+            }
+        ],
+        "result": "VALID",
+    }
+    evidence_path.write_text(
+        json.dumps(evidence, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    request["dataset_validation_evidence"] = {
+        "path": evidence_path.relative_to(workspace).as_posix(),
+        "byte_length": evidence_path.stat().st_size,
+        "sha256": _sha256(evidence_path),
+    }
+    return metadata, payload_path, evidence_path
+
+
+def _refresh_dataset_evidence_reference(
+    workspace: Path, request: dict[str, object], evidence_path: Path
+) -> None:
+    request["dataset_validation_evidence"] = {
+        "path": evidence_path.relative_to(workspace).as_posix(),
+        "byte_length": evidence_path.stat().st_size,
+        "sha256": _sha256(evidence_path),
+    }
+
+
+def _bind_build_manifest_dataset(
+    workspace: Path, request: dict[str, object], dataset: dict[str, object]
+) -> None:
+    for binary_key in ("project_operation_owner", "native_binary"):
+        binary = request[binary_key]
+        if binary_key == "project_operation_owner":
+            binary = binary["binary"]
+        reference = binary["build_manifest"]
+        path = workspace / reference["path"]
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest["dataset"] = dataset
+        path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        binary["build_manifest"] = {
+            "path": path.relative_to(workspace).as_posix(),
+            "byte_length": path.stat().st_size,
+            "sha256": _sha256(path),
+        }
 
 
 _COMPLETE_NATIVE_STAGE_STDOUT = (
@@ -1039,6 +1195,127 @@ def test_reference_preflight_is_immutable_nonexecuting_and_execute_is_shell_free
     )
     assert projection["native_stage_sequence_observed"] is True
     assert projection["baseline_id"] == request["reference_role"]
+
+
+@pytest.mark.parametrize(
+    "format_version",
+    ["fake-dataset-json/v1", "diskann-float32-dataset/v1"],
+)
+def test_fresh_validate_dataset_selects_the_matching_schema(
+    tmp_path: Path, format_version: str
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    metadata, _, _ = _write_dataset_admission_fixture(
+        workspace, request, format_version=format_version
+    )
+
+    assert fbc._fresh_validate_dataset(request, REPOSITORY_ROOT) == metadata["dataset"]
+
+
+def test_fresh_validate_dataset_rejects_unsupported_format_version(
+    tmp_path: Path,
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    _write_dataset_admission_fixture(
+        workspace, request, format_version="unsupported-dataset/v9"
+    )
+
+    with pytest.raises(
+        FeatureCertificationError, match="unsupported Dataset format version"
+    ):
+        fbc._fresh_validate_dataset(request, REPOSITORY_ROOT)
+
+
+def test_fresh_validate_native_dataset_rejects_payload_sha_mismatch(
+    tmp_path: Path,
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    _, payload_path, _ = _write_dataset_admission_fixture(
+        workspace, request, format_version="diskann-float32-dataset/v1"
+    )
+    changed = bytearray(payload_path.read_bytes())
+    changed[-1] ^= 1
+    payload_path.write_bytes(changed)
+
+    with pytest.raises(FeatureCertificationError, match="payload identity mismatch"):
+        fbc._fresh_validate_dataset(request, REPOSITORY_ROOT)
+
+
+def test_fresh_validate_native_dataset_rejects_cross_field_checksum_mismatch(
+    tmp_path: Path,
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    _write_dataset_admission_fixture(
+        workspace,
+        request,
+        format_version="diskann-float32-dataset/v1",
+        dataset_checksum="f" * 64,
+    )
+
+    with pytest.raises(
+        FeatureCertificationError,
+        match="Dataset checksum and vectors payload checksum mismatch",
+    ):
+        fbc._fresh_validate_dataset(request, REPOSITORY_ROOT)
+
+
+@pytest.mark.parametrize("failure_case", ["invalid", "artifact_ref_mismatch"])
+def test_fresh_validate_native_dataset_rejects_invalid_evidence(
+    tmp_path: Path, failure_case: str
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    _, _, evidence_path = _write_dataset_admission_fixture(
+        workspace, request, format_version="diskann-float32-dataset/v1"
+    )
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    if failure_case == "invalid":
+        evidence["result"] = "INVALID"
+        evidence["failure_category"] = "fixture_invalid"
+        evidence["checks"][0]["passed"] = False
+    else:
+        evidence["artifact_candidate"]["claimed_aggregate_checksum"] = "f" * 64
+    evidence_path.write_text(
+        json.dumps(evidence, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    _refresh_dataset_evidence_reference(workspace, request, evidence_path)
+
+    with pytest.raises(
+        FeatureCertificationError, match="ValidationEvidence identity mismatch"
+    ):
+        fbc._fresh_validate_dataset(request, REPOSITORY_ROOT)
+
+
+def test_reference_preflight_admits_native_dataset_without_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace, request = _reference_request_fixture(tmp_path)
+    metadata, _, _ = _write_dataset_admission_fixture(
+        workspace, request, format_version="diskann-float32-dataset/v1"
+    )
+    _bind_build_manifest_dataset(workspace, request, metadata["dataset"])
+    config = tmp_path / "native-reference-config.json"
+    config.write_text(json.dumps({"request": request}), encoding="utf-8")
+    monkeypatch.setattr(fbc, "_assert_source_identities", lambda *args: None)
+    process_invocations = 0
+
+    def no_process(*args: object, **kwargs: object) -> object:
+        nonlocal process_invocations
+        process_invocations += 1
+        raise AssertionError("reference preflight launched a child process")
+
+    monkeypatch.setattr(fbc.subprocess, "run", no_process)
+    result = fbc.reference_preflight(
+        config,
+        workspace / "requests/native-reference.json",
+        repository_root=REPOSITORY_ROOT,
+    )
+
+    request_path = Path(result["request_path"])
+    assert result["execution_authorized"] is False
+    assert result["sha256"] == _sha256(request_path)
+    assert json.loads(request_path.read_text(encoding="utf-8")) == request
+    assert process_invocations == 0
 
 
 @pytest.mark.parametrize(
