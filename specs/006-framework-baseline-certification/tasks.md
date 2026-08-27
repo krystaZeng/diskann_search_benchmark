@@ -561,7 +561,7 @@ Execution Boundary above; it authorizes none of that boundary's ten formal opera
 
 ## Phase 8: Convergence — Native Reference Execution Output/Lifecycle Closure
 
-- [ ] T023 [US1] Close the Native Reference execution output and terminal lifecycle per US1, FR-010–FR-012, SC-001–SC-002, and Plan D1 (partial, HIGH)
+- [X] T023 [US1] Close the Native Reference execution output and terminal lifecycle per US1, FR-010–FR-012, SC-001–SC-002, and Plan D1 (partial, HIGH)
   - **Depends on**: T022. The clean binaries and target BuildManifests at Project commit
     `b4f13a17c2e7ac8b3fa05c3aaaf17242a70a3ad7` are pre-fix audit evidence only; after this task
     changes source they MUST NOT be used as the next formal execution identity.
