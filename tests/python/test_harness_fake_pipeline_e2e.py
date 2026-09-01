@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import shlex
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from diskann_harness.cli import main
-from diskann_harness.config import ConfigurationError
+from diskann_harness.config import (
+    ConfigurationError,
+    load_yaml_file,
+    normalize_run_request,
+)
 from diskann_harness.runner import (
+    _canonical_json_sha256,
     _schema_validator,
     build_project,
     execute_configuration,
@@ -21,26 +29,128 @@ FAKE_RUNNER = ROOT / "build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_ru
 
 def test_build_execute_validate_and_evaluate_lifecycles(tmp_path: Path) -> None:
     build_dir = tmp_path / "feature-build"
+    config_path = ROOT / "tests/fixtures/fake_pipeline/experiment.yaml"
+    assert not build_dir.exists()
     provenance = build_project(
         ROOT,
         build_dir,
         repository_root=ROOT,
-        config_path=ROOT / "tests/fixtures/fake_pipeline/experiment.yaml",
+        config_path=config_path,
     )
+    assert provenance == build_dir / "build-manifest.json"
     assert provenance.is_file()
+    cache_path = build_dir / "CMakeCache.txt"
+    assert cache_path.is_file()
     build_manifest = json.loads(provenance.read_text(encoding="utf-8"))
+    _schema_validator("build-manifest.schema.json", ROOT).validate(build_manifest)
+    assert build_manifest["stage"] == "build"
     assert build_manifest["status"] == "SUCCEEDED"
-    assert len(build_manifest["source"]["commit"]) == 40
-    assert build_manifest["toolchain"]["compiler_path"]
-    assert len(build_manifest["toolchain"]["compile_commands"]) == 2
-    assert build_manifest["toolchain"]["link_commands"] == []
+
+    git_root = Path(
+        subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    ).resolve()
+    expected_branch = subprocess.run(
+        ["git", "-C", str(git_root), "branch", "--show-current"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip() or "detached-head"
+    expected_commit = subprocess.run(
+        ["git", "-C", str(git_root), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    expected_dirty = bool(
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(git_root),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.rstrip()
+    )
+    assert build_manifest["source"]["repository"] == str(git_root)
+    assert build_manifest["source"]["branch"] == expected_branch
+    assert build_manifest["source"]["branch"] != "not-git"
+    assert build_manifest["source"]["commit"] == expected_commit
+    assert build_manifest["source"]["commit"] != "0" * 40
+    assert build_manifest["source"]["dirty_worktree"] is expected_dirty
+    if expected_dirty:
+        assert len(build_manifest["source"]["dirty_source_checksum"]) == 64
+
+    cache_entries: dict[str, str] = {}
+    for line in cache_path.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line:
+            continue
+        key_type, value = line.split("=", 1)
+        if ":" in key_type:
+            key, _ = key_type.split(":", 1)
+            cache_entries[key] = value
+    toolchain = build_manifest["toolchain"]
+    assert toolchain["compiler_path"] == cache_entries["CMAKE_CXX_COMPILER"]
+    assert toolchain["compiler_path"] != "unavailable"
+    assert toolchain["compiler_version"] != "unavailable"
+    assert toolchain["cmake_version"] == subprocess.run(
+        ["cmake", "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()[0]
+    assert toolchain["generator"] == cache_entries["CMAKE_GENERATOR"]
+    assert toolchain["generator"] != "unknown"
+    assert toolchain["build_type"] == cache_entries["CMAKE_BUILD_TYPE"]
+    assert all("=" in definition for definition in toolchain["cmake_definitions"])
+    configure_command, build_command = map(
+        shlex.split, toolchain["compile_commands"]
+    )
+    assert configure_command == [
+        "cmake",
+        "-S",
+        str(ROOT),
+        "-B",
+        str(build_dir),
+        "-DCMAKE_BUILD_TYPE=Debug",
+    ]
+    assert build_command == [
+        "cmake",
+        "--build",
+        str(build_dir),
+        "--parallel",
+    ]
+    assert toolchain["link_commands"] == []
     assert any(
         item.startswith("PROJECT_COMPILE_OPTIONS=")
-        for item in build_manifest["toolchain"]["cmake_definitions"]
+        and bool(item.partition("=")[2])
+        for item in toolchain["cmake_definitions"]
     )
-    assert set(build_manifest["parameters"]["source_config"]) >= {
-        "yaml_sha256",
-        "normalized_json_sha256",
+
+    immutable = build_manifest["parameters"]["immutable_build_configuration"]
+    assert immutable == {
+        "source_dir": str(ROOT),
+        "build_dir": str(build_dir),
+        "build_type": toolchain["build_type"],
+        "cmake_cache_sha256": hashlib.sha256(cache_path.read_bytes()).hexdigest(),
+    }
+    source_config = build_manifest["parameters"]["source_config"]
+    expected_configuration = normalize_run_request(
+        load_yaml_file(config_path), repository_root=ROOT
+    )
+    assert source_config == {
+        "path": str(config_path.resolve()),
+        "yaml_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+        "normalized_json_sha256": _canonical_json_sha256(expected_configuration),
     }
     clean_build_runner = (
         build_dir / "tests/cpp/fakes/diskann_pipeline_fake_runner"
@@ -54,7 +164,9 @@ def test_build_execute_validate_and_evaluate_lifecycles(tmp_path: Path) -> None:
         repository_root=ROOT,
     )
     assert summary["build_manifest"]["path"] == provenance.as_posix()
-    assert len(summary["build_manifest"]["sha256"]) == 64
+    assert summary["build_manifest"]["sha256"] == hashlib.sha256(
+        provenance.read_bytes()
+    ).hexdigest()
     assert summary["aggregation"] == "retain_all"
     assert len(summary["retained_runs"]) == 2
     assert summary["deterministic_equal"] is True

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from diskann_harness.runner import execute_configuration
 
 ROOT = Path(__file__).resolve().parents[2]
 FAKE_RUNNER = ROOT / "build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner"
+BUILD_MANIFEST = ROOT / "build/feature-001/build-manifest.json"
 
 
 def test_valid_reuse_skips_partition_and_records_lineage(tmp_path: Path) -> None:
@@ -18,6 +20,10 @@ def test_valid_reuse_skips_partition_and_records_lineage(tmp_path: Path) -> None
         FAKE_RUNNER,
         repository_root=ROOT,
     )
+    assert summary["build_manifest"] == {
+        "path": BUILD_MANIFEST.as_posix(),
+        "sha256": hashlib.sha256(BUILD_MANIFEST.read_bytes()).hexdigest(),
+    }
     assert summary["deterministic_equal"] is True
     for run in summary["retained_runs"]:
         assert run["outcome"] == "SUCCEEDED"

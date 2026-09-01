@@ -27,18 +27,28 @@ python3 -m venv .venv
 `pyproject.toml` is authoritative for test dependencies. uv may be used as an alternative frontend,
 but no validation command requires it.
 
-## 3. Configure and Build
+## 3. Run the Harness Build Lifecycle and Verify Its Manifest
+
+For a first reproduction, `build/feature-001` must not already exist. Use the project virtual
+environment and the Harness build lifecycle so the runner and its terminal BuildManifest are
+created by the same configure/build operation:
 
 ```bash
-cmake -S . -B build/feature-001 \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DBUILD_TESTING=ON \
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build/feature-001 --parallel
+test ! -e build/feature-001
+.venv/bin/diskann-harness build \
+  --config tests/fixtures/fake_pipeline/experiment.yaml \
+  --source-dir . \
+  --build-dir build/feature-001 \
+  --build-type Debug
+test -f build/feature-001/CMakeCache.txt
+test -f build/feature-001/build-manifest.json
+test -x build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner
 ```
 
 Expected:
 
+- `build-manifest.json` is schema-valid, terminal `SUCCEEDED` build evidence bound to the actual
+  `CMakeCache.txt`, configure/build commands, source configuration digests, and build directory;
 - the public core compiles as strict C++17;
 - every descriptor exposes `parameter_schema_path`, a stable repository-relative implementation
   parameter JSON Schema path;
@@ -48,49 +58,16 @@ Expected:
   Fake identities;
 - no generated file or Git change appears under `upstream/diskann-cpp-main`.
 
-## 4. Run C++ Tests
+Ordinary `cmake` configure/build commands do not replace `diskann-harness build`, because they do
+not publish the required terminal BuildManifest. If `build/feature-001` already exists, do not
+blindly rerun the Harness build in a directory containing an immutable manifest. Reuse it only when
+the execution gate accepts that directory's `build-manifest.json`, `CMakeCache.txt`, and executable
+runner as one consistent build. Otherwise stop and prepare a separately approved recovery; do not
+overwrite the existing manifest. The build configuration digest is not required to equal the
+canonical or reuse execution configuration digest because they describe different lifecycle
+inputs.
 
-```bash
-ctest --test-dir build/feature-001 --output-on-failure
-```
-
-Expected CTest coverage:
-
-- public headers compile in C++17 and expose no C++20 types;
-- Registry Production/Test admission, duplicate/stage mismatch, and capability preflight failures
-  invoke no stages;
-- Merge descriptor preflight requires both PartitionArtifact and LocalGraphArtifact entries and
-  rejects a missing input, incompatible version, or incompatible per-input ID space;
-- the simple CMake target/source isolation check confirms the production runner links no Fake target,
-  contains no Fake registration source, and keeps the Fake runner independent;
-- JSON/schema codecs and C++/Python canonical checksum golden vectors agree;
-- LocalToGlobal completeness, local/global ranges, counts, degrees, and source checksums validate;
-- exact six-node Fake output, zero-neighbor handling, cancellation, reuse, and quarantine pass;
-- production Registry enumeration contains no Fake identity.
-
-## 5. Run Python Tests
-
-```bash
-.venv/bin/python -m pytest
-```
-
-Expected pytest coverage:
-
-- duplicate-key-rejecting SafeLoader plus JSON-compatible tree validation accepts an ordinary
-  top-level mapping with JSON-compatible values and rejects duplicate keys, top-level sequences,
-  non-string keys, Python object/custom tags, timestamp, binary, set, NaN, Infinity, and other
-  non-JSON values before the normalized JSON is schema-validated;
-- a temporary install prefix contains the production runner but no Fake runner, Fake library, Fake
-  fixture, or Fake-only file;
-- `pyproject.toml` supports Python 3.10+ without requiring uv;
-- subprocess argument handling and exit-code mapping preserve machine failure categories;
-- build/execute/validate/evaluate Harness commands consume and produce separate JSON documents;
-- quarantine cannot be resolved by ordinary validate/evaluate paths;
-- two retained deterministic runs and their results are preserved under `retain_all` rather than
-  selecting one; their Artifact checksums and deterministic evaluation findings projections match
-  while their run/report identities, timestamps, and provenance remain distinct.
-
-## 6. Execute the Canonical Fake Pipeline
+## 4. Execute the Canonical Fake Pipeline
 
 The Fake runner and configuration are test-only:
 
@@ -156,7 +133,7 @@ Normal Artifact metadata is below `normal/<run_id>/`, stage BuildManifests are b
 Reports are below `reports/`. Invalid candidates use only `quarantine/` and never appear below
 `normal/`.
 
-## 7. Validate Reuse
+## 5. Validate Reuse
 
 Run the reuse fixture using the published Partition ArtifactRef from the preceding run:
 
@@ -171,7 +148,44 @@ Expected: Partition invocation count is zero, current validation succeeds, Local
 run, and the consuming BuildManifest records the exact reused input. A dataset/checksum mismatch
 fixture must fail without changing or consuming the cached Artifact.
 
-## 8. Run the Negative Matrix
+## 6. Run Related C++ and Python Validation
+
+```bash
+ctest --test-dir build/feature-001 --output-on-failure
+.venv/bin/python -m pytest
+```
+
+Expected CTest coverage:
+
+- public headers compile in C++17 and expose no C++20 types;
+- Registry Production/Test admission, duplicate/stage mismatch, and capability preflight failures
+  invoke no stages;
+- Merge descriptor preflight requires both PartitionArtifact and LocalGraphArtifact entries and
+  rejects a missing input, incompatible version, or incompatible per-input ID space;
+- the simple CMake target/source isolation check confirms the production runner links no Fake target,
+  contains no Fake registration source, and keeps the Fake runner independent;
+- JSON/schema codecs and C++/Python canonical checksum golden vectors agree;
+- LocalToGlobal completeness, local/global ranges, counts, degrees, and source checksums validate;
+- exact six-node Fake output, zero-neighbor handling, cancellation, reuse, and quarantine pass;
+- production Registry enumeration contains no Fake identity.
+
+Expected pytest coverage:
+
+- duplicate-key-rejecting SafeLoader plus JSON-compatible tree validation accepts an ordinary
+  top-level mapping with JSON-compatible values and rejects duplicate keys, top-level sequences,
+  non-string keys, Python object/custom tags, timestamp, binary, set, NaN, Infinity, and other
+  non-JSON values before the normalized JSON is schema-validated;
+- a temporary install prefix contains the production runner but no Fake runner, Fake library, Fake
+  fixture, or Fake-only file;
+- `pyproject.toml` supports Python 3.10+ without requiring uv;
+- subprocess argument handling and exit-code mapping preserve machine failure categories;
+- build/execute/validate/evaluate Harness commands consume and produce separate JSON documents;
+- quarantine cannot be resolved by ordinary validate/evaluate paths;
+- two retained deterministic runs and their results are preserved under `retain_all` rather than
+  selecting one; their Artifact checksums and deterministic evaluation findings projections match
+  while their run/report identities, timestamps, and provenance remain distinct.
+
+## 7. Run the Negative Matrix
 
 ```bash
 ctest --test-dir build/feature-001 --output-on-failure \
@@ -191,7 +205,7 @@ Expected:
   stage checkpoints, prevent all later stages, publish no normal Artifact, and do not fabricate an
   INVALID_OUTPUT result.
 
-## 9. Verify Upstream Immutability
+## 8. Verify Upstream Immutability
 
 Capture before/after state around the complete suite:
 
@@ -203,7 +217,7 @@ git status --short -- upstream/diskann-cpp-main
 Expected gitlink: `78256bbab4685e1774e78d331e081a153be26823`; expected status output for
 the upstream path: empty. This Feature runs no real DiskANN command and no SIFT experiment.
 
-## 10. Reporting Validation
+## 9. Reporting Validation
 
 Completion reports must separately list:
 

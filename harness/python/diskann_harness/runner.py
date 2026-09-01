@@ -41,6 +41,12 @@ EXIT_MEANINGS = {
     10: "internal_error",
 }
 
+_HARNESS_BUILD_IMPLEMENTATION = {
+    "implementation_id": "diskann_harness_build",
+    "implementation_version": "1.0.0",
+}
+_LOWER_SHA256 = frozenset("0123456789abcdef")
+
 
 def build_runner_command(
     runner: str | Path,
@@ -191,6 +197,165 @@ def _canonical_json_sha256(document: Any) -> str:
     )
 
 
+def _is_lower_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in _LOWER_SHA256 for character in value)
+    )
+
+
+def _require_terminal_build_manifest(
+    runner: str | Path,
+    repository_root: str | Path,
+) -> tuple[Path, dict[str, Any], str]:
+    runner_path = Path(runner).resolve()
+    build_root = next(
+        (
+            parent
+            for parent in runner_path.parents
+            if (parent / "CMakeCache.txt").is_file()
+        ),
+        None,
+    )
+    if build_root is None:
+        raise RunnerError(
+            "terminal BuildManifest rejected: runner build root has no CMakeCache.txt"
+        )
+
+    cache_path = build_root / "CMakeCache.txt"
+    manifest_path = build_root / "build-manifest.json"
+    if not manifest_path.is_file():
+        raise RunnerError(
+            "terminal BuildManifest rejected: build-manifest.json is missing from "
+            "the runner build root"
+        )
+
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+        _schema_validator(
+            "build-manifest.schema.json", Path(repository_root).resolve()
+        ).validate(manifest)
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValidationError,
+        KeyError,
+        TypeError,
+    ) as error:
+        raise RunnerError(
+            f"terminal BuildManifest rejected: schema validation failed: {error}"
+        ) from error
+
+    if manifest["stage"] != "build":
+        raise RunnerError(
+            "terminal BuildManifest rejected: stage is not build"
+        )
+    if manifest["status"] != "SUCCEEDED":
+        raise RunnerError(
+            "terminal BuildManifest rejected: status is not SUCCEEDED"
+        )
+    if manifest["implementation"] != _HARNESS_BUILD_IMPLEMENTATION:
+        raise RunnerError(
+            "terminal BuildManifest rejected: Harness build implementation identity "
+            "does not match"
+        )
+
+    source = manifest["source"]
+    if source["branch"] == "not-git":
+        raise RunnerError(
+            "terminal BuildManifest rejected: source branch uses not-git fallback"
+        )
+    if source["commit"] == "0" * 40:
+        raise RunnerError(
+            "terminal BuildManifest rejected: source commit uses all-zero fallback"
+        )
+
+    toolchain = manifest["toolchain"]
+    if toolchain["compiler_path"] == "unavailable":
+        raise RunnerError(
+            "terminal BuildManifest rejected: compiler path is unavailable"
+        )
+    if toolchain["compiler_version"] == "unavailable":
+        raise RunnerError(
+            "terminal BuildManifest rejected: compiler version is unavailable"
+        )
+    if toolchain["generator"] == "unknown":
+        raise RunnerError(
+            "terminal BuildManifest rejected: CMake generator is unknown"
+        )
+    if sum(bool(command.strip()) for command in toolchain["compile_commands"]) < 2:
+        raise RunnerError(
+            "terminal BuildManifest rejected: configure/build commands are incomplete"
+        )
+    project_option_prefix = "PROJECT_COMPILE_OPTIONS="
+    if not any(
+        definition.startswith(project_option_prefix)
+        and bool(definition[len(project_option_prefix) :].strip())
+        for definition in toolchain["cmake_definitions"]
+    ):
+        raise RunnerError(
+            "terminal BuildManifest rejected: PROJECT_COMPILE_OPTIONS is missing or empty"
+        )
+
+    parameters = manifest["parameters"]
+    immutable = parameters.get("immutable_build_configuration")
+    immutable_fields = {
+        "source_dir",
+        "build_dir",
+        "build_type",
+        "cmake_cache_sha256",
+    }
+    if not isinstance(immutable, dict) or not immutable_fields.issubset(immutable):
+        raise RunnerError(
+            "terminal BuildManifest rejected: immutable build configuration is incomplete"
+        )
+    if immutable["build_dir"] != str(build_root):
+        raise RunnerError(
+            "terminal BuildManifest rejected: immutable build directory does not match "
+            "the runner build root"
+        )
+    if immutable["build_type"] != toolchain["build_type"]:
+        raise RunnerError(
+            "terminal BuildManifest rejected: immutable build type does not match toolchain"
+        )
+    if not _is_lower_sha256(immutable["cmake_cache_sha256"]):
+        raise RunnerError(
+            "terminal BuildManifest rejected: CMakeCache checksum is invalid"
+        )
+    if immutable["cmake_cache_sha256"] != _sha256(cache_path):
+        raise RunnerError(
+            "terminal BuildManifest rejected: CMakeCache checksum does not match"
+        )
+
+    source_config = parameters.get("source_config")
+    source_config_fields = {
+        "path",
+        "yaml_sha256",
+        "normalized_json_sha256",
+    }
+    if not isinstance(source_config, dict) or not source_config_fields.issubset(
+        source_config
+    ):
+        raise RunnerError(
+            "terminal BuildManifest rejected: source configuration digests are incomplete"
+        )
+    if not isinstance(source_config["path"], str) or not source_config["path"].strip():
+        raise RunnerError(
+            "terminal BuildManifest rejected: source configuration path is empty"
+        )
+    if not _is_lower_sha256(source_config["yaml_sha256"]) or not _is_lower_sha256(
+        source_config["normalized_json_sha256"]
+    ):
+        raise RunnerError(
+            "terminal BuildManifest rejected: source configuration digest is invalid"
+        )
+
+    return manifest_path, manifest, _sha256_bytes(manifest_bytes)
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace(
         "+00:00", "Z"
@@ -249,6 +414,11 @@ def execute_configuration(
         "normalized_json_sha256": normalized_digest,
     }
     roots = normalized["workspace"]
+    (
+        build_manifest_path,
+        _build_manifest_document,
+        build_manifest_sha256,
+    ) = _require_terminal_build_manifest(runner, repository)
     create_workspace(roots, repository_root=repository)
     count = normalized["repetition_policy"]["count"]
     if count != 2 or normalized["repetition_policy"]["aggregation"] != "retain_all":
@@ -289,17 +459,6 @@ def execute_configuration(
         and identities[0]["report_id"] != identities[1]["report_id"]
         and identities[0]["generated_at"] != identities[1]["generated_at"]
     )
-    runner_path = Path(runner).resolve()
-    build_manifest_path = next(
-        (
-            parent / "build-manifest.json"
-            for parent in runner_path.parents
-            if (parent / "build-manifest.json").is_file()
-        ),
-        None,
-    )
-    if build_manifest_path is None:
-        raise RunnerError("runner build manifest is missing")
     summary = {
         "summary_version": "1.0.0",
         "source_config": {
@@ -312,7 +471,7 @@ def execute_configuration(
         "distinct_run_provenance": distinct_provenance,
         "build_manifest": {
             "path": build_manifest_path.as_posix(),
-            "sha256": _sha256(build_manifest_path),
+            "sha256": build_manifest_sha256,
         },
     }
     summary_path = resolve_confined_path(
