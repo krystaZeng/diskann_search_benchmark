@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters.schema.json",
+  "title": "XN-Descent normalized effective parameters v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "validation_profile",
+    "omega",
+    "lambda",
+    "alpha",
+    "seed",
+    "iteration_cap",
+    "prng_policy",
+    "sampling_policy",
+    "tie_break_policy",
+    "round_model",
+    "convergence_rule",
+    "entry_point_rule",
+    "distance_implementation",
+    "reproduction_mode"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "xn-descent-parameters/v1"
+    },
+    "validation_profile": {
+      "enum": [
+        "semantic-small",
+        "pipeline-compatible",
+        "paper-style"
+      ]
+    },
+    "omega": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "lambda": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "alpha": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Runtime validation additionally requires a finite value."
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615,
+      "default": 42,
+      "description": "The normalized document always materializes the effective uint64 seed."
+    },
+    "iteration_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "prng_policy": {
+      "const": "mt19937_64-splitmix64-per-node-v1"
+    },
+    "sampling_policy": {
+      "const": "unbiased-rejection-unique-nonself-v1"
+    },
+    "tie_break_policy": {
+      "const": "squared-distance-then-local-id-v1"
+    },
+    "round_model": {
+      "const": "deterministic-synchronous-round-v1"
+    },
+    "convergence_rule": {
+      "const": "normalized-c-r-g-fixed-point-v1"
+    },
+    "entry_point_rule": {
+      "const": "local-centroid-nearest-v1"
+    },
+    "distance_implementation": {
+      "const": "squared-l2/v1"
+    },
+    "reproduction_mode": {
+      "const": "faithful_adaptation"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "validation_profile": {
+            "const": "pipeline-compatible"
+          }
+        },
+        "required": [
+          "validation_profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lambda": {
+            "maximum": 10
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "validation_profile": {
+            "const": "paper-style"
+          }
+        },
+        "required": [
+          "validation_profile"
+        ]
+      },
+      "then": {
+        "properties": {
+          "lambda": {
+            "const": 64
+          }
+        }
+      }
+    }
+  ]
+}

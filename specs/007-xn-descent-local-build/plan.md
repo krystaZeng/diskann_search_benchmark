@@ -36,6 +36,10 @@ planned Feature runner validation for SIFT1M and Linux replay
 macOS-specific implementation; native M0 closure is restricted to an admitted reviewed native
 format environment
 
+**Build execution boundary**: macOS `semantic-small` uses `DISKANN_XN_DESCENT=ON` with
+`DISKANN_CPP_MAIN_BASELINE=OFF`; Linux `pipeline-compatible` uses both options `ON`. This corrects
+the build dependency boundary only and does not modify XN-Descent algorithm semantics.
+
 **Project Type**: modular C++ library plus Feature-local command-line validation runner
 
 **Study Class**: `single_paper_reproduction`, component-level `faithful_adaptation`

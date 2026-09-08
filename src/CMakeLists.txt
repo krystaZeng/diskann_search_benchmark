@@ -68,4 +68,8 @@ if(DISKANN_HNSW_MERGER)
   add_subdirectory(papers/hnsw_merger/vamana)
 endif()
 
+if(DISKANN_XN_DESCENT)
+  add_subdirectory(papers/xn_graph/xn_descent)
+endif()
+
 install(TARGETS diskann_pipeline_core)

@@ -7,27 +7,40 @@ command marked `[PLANNED]` must be created or confirmed by later tasks before ex
 The sequence is intentionally gated. A later gate cannot convert a failed or unrun earlier gate
 into a pass.
 
-## 1. Planned build entry
+## 1. Planned build entries
 
-`[PLANNED]` Add one opt-in CMake switch and out-of-tree build:
+`[PLANNED]` Use the core-only path for macOS `semantic-small` validation:
 
 ```bash
-cmake -S . -B build/xn-descent-debug \
+cmake -S . -B build/xn-descent-core-debug \
   -DCMAKE_BUILD_TYPE=Debug \
-  -DDISKANN_CPP_MAIN_BASELINE=ON \
+  -DBUILD_TESTING=ON \
+  -DDISKANN_CPP_MAIN_BASELINE=OFF \
   -DDISKANN_XN_DESCENT=ON
-cmake --build build/xn-descent-debug --parallel
+cmake --build build/xn-descent-core-debug --parallel
 ```
 
-The later task must verify actual target names before retaining these commands. The build must not
-write into `upstream/diskann-cpp-main/`.
+Use the Baseline-enabled path for Linux `pipeline-compatible` validation:
+
+```bash
+cmake -S . -B build/xn-descent-linux \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON \
+  -DDISKANN_CPP_MAIN_BASELINE=ON \
+  -DDISKANN_XN_DESCENT=ON
+cmake --build build/xn-descent-linux --parallel
+```
+
+The later task must verify actual target names before retaining these commands. Both builds must
+remain out-of-tree and must not write into `upstream/diskann-cpp-main/`. Pipeline preflight,
+P0 → B1 → M0 closure, and Baseline tests use only the Linux Baseline-enabled directory.
 
 ## 2. Parameter and Equation (2) unit gate
 
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-core-debug --output-on-failure \
   -R '^xn_descent_(parameters|equation)_test$'
 ```
 
@@ -45,7 +58,7 @@ Required cases:
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-core-debug --output-on-failure \
   -R '^xn_descent_try_insert_test$'
 ```
 
@@ -63,7 +76,7 @@ Required cases:
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-core-debug --output-on-failure \
   -R '^xn_descent_round_oracle_test$'
 ```
 
@@ -84,7 +97,7 @@ The fixture records every normalized boundary `C/R/G` state. It must prove:
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-core-debug --output-on-failure \
   -R '^xn_descent_determinism_test$'
 ```
 
@@ -104,7 +117,7 @@ The test also verifies each node's random stream is independent of worker assign
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-core-debug --output-on-failure \
   -R '^xn_descent_(termination|resource)_test$'
 ```
 
@@ -124,7 +137,7 @@ Required cases:
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-core-debug --output-on-failure \
   -R '^xn_descent_local_artifact_test$'
 ```
 
@@ -149,7 +162,7 @@ or duplicate edge must never enter normal publication.
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-linux --output-on-failure \
   -R '^xn_descent_pipeline_preflight_test$'
 ```
 
@@ -163,7 +176,7 @@ generic preflight. M0's code and degree limit remain unchanged.
 `[PLANNED]`
 
 ```bash
-ctest --test-dir build/xn-descent-debug --output-on-failure \
+ctest --test-dir build/xn-descent-linux --output-on-failure \
   -R '^xn_descent_small_pipeline_test$'
 ```
 
@@ -178,7 +191,7 @@ and evidence. The report labels the run a component-level faithful adaptation, n
 before enabling this command:
 
 ```bash
-build/xn-descent-debug/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
+build/xn-descent-core-debug/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
   --request /absolute/path/to/reviewed-paper-style-request.json
 ```
 
@@ -200,7 +213,7 @@ Before execution, a human must review:
 
 ```bash
 XN_SIFT1M_REQUEST=/absolute/path/to/reviewed-sift1m-request.json
-build/xn-descent-release/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
+build/xn-descent-linux/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
   --request "$XN_SIFT1M_REQUEST"
 ```
 
@@ -220,6 +233,7 @@ substitute.
 ```bash
 cmake -S . -B build/xn-descent-linux \
   -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON \
   -DDISKANN_CPP_MAIN_BASELINE=ON \
   -DDISKANN_XN_DESCENT=ON
 cmake --build build/xn-descent-linux --parallel

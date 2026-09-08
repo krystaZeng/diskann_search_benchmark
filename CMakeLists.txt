@@ -21,6 +21,10 @@ option(
   "Build the HNSW-Merger Vamana Merge faithful adaptation"
   OFF)
 option(
+  DISKANN_XN_DESCENT
+  "Build the XN-Graph XN-Descent Local Build faithful adaptation"
+  OFF)
+option(
   DISKANN_SEARCH_EVALUATION
   "Build the fixed DiskANN post-GlobalGraph search evaluation Feature"
   OFF)

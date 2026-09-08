@@ -13,3 +13,7 @@ endif()
 if(DISKANN_HNSW_MERGER)
   add_subdirectory(cpp/papers/hnsw_merger)
 endif()
+
+if(DISKANN_XN_DESCENT)
+  add_subdirectory(cpp/papers/xn_graph)
+endif()
