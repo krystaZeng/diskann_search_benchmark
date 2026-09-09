@@ -117,6 +117,18 @@ bool NormalizedRoundState::operator==(
   return c == other.c && r == other.r && g == other.g;
 }
 
+const char* to_string(ConvergenceCondition condition) noexcept {
+  switch (condition) {
+    case ConvergenceCondition::kFullStateFixedPoint:
+      return "full_state_fixed_point";
+    case ConvergenceCondition::kThreeRoundCgStability:
+      return "three_round_c_g_stability";
+    case ConvergenceCondition::kNone:
+      return "none";
+  }
+  return "none";
+}
+
 std::uint64_t splitmix64_node_seed(std::uint64_t seed, LocalNodeId node) {
   auto value = seed + 0x9E3779B97F4A7C15ULL *
                           (static_cast<std::uint64_t>(node) + 1ULL);
@@ -385,6 +397,21 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
   }
   result.convergence = compare_states(snapshot.state, result.state,
                                       snapshot.round_index + 1);
+  const bool c_g_stable = result.convergence.changed_c_nodes == 0 &&
+                          result.convergence.changed_g_nodes == 0;
+  result.convergence.stable_c_g_rounds =
+      c_g_stable
+          ? (snapshot.stable_c_g_rounds >= 3
+                 ? 3
+                 : snapshot.stable_c_g_rounds + 1)
+          : 0;
+  if (result.convergence.fixed_point) {
+    result.convergence.convergence_condition =
+        ConvergenceCondition::kFullStateFixedPoint;
+  } else if (result.convergence.stable_c_g_rounds >= 3) {
+    result.convergence.convergence_condition =
+        ConvergenceCondition::kThreeRoundCgStability;
+  }
   return result;
 }
 
@@ -400,12 +427,14 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
       result.failure_reason = "cancelled";
       return result;
     }
-    RoundSnapshot snapshot{round - 1, result.state};
+    RoundSnapshot snapshot{round - 1, result.state,
+                           result.convergence.stable_c_g_rounds};
     auto next = execute_round(snapshot, vectors, parameters, distance);
     result.state = std::move(next.state);
     result.convergence = next.convergence;
     result.completed_rounds = round;
-    if (result.convergence.fixed_point) {
+    if (result.convergence.convergence_condition !=
+        ConvergenceCondition::kNone) {
       result.termination = TerminationKind::kConverged;
       return result;
     }

@@ -16,7 +16,7 @@ inline constexpr const char* kTieBreakPolicy =
 inline constexpr const char* kRoundModel =
     "deterministic-synchronous-round-v1";
 inline constexpr const char* kConvergenceRule =
-    "normalized-c-r-g-fixed-point-v1";
+    "full-state-fixed-point-or-three-round-c-g-stability-v1";
 inline constexpr const char* kEntryPointRule = "local-centroid-nearest-v1";
 inline constexpr const char* kDistanceImplementation = "squared-l2/v1";
 inline constexpr const char* kReproductionMode = "faithful_adaptation";

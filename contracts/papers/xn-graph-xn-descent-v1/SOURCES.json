@@ -4,7 +4,7 @@
     {
       "source": "specs/007-xn-descent-local-build/contracts/xn-descent-parameters.schema.json",
       "target": "contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters.schema.json",
-      "sha256": "bb70d1d801feed9c3bf7df6600c2111c8ce3f63512bd7c3038e02eab77101ace"
+      "sha256": "47055189e8aed98c60047fc570ed2df0a4040fb6503685e435c1a15171b740ed"
     }
   ]
 }

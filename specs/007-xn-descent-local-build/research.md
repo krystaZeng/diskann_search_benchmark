@@ -22,7 +22,8 @@ The effective B1 parameter document uses `xn-descent-parameters/v1` and records:
 - `validation_profile`: `semantic-small`, `pipeline-compatible`, or `paper-style`;
 - `omega`, `lambda`, `alpha`, `seed`, and `iteration_cap`;
 - fixed policy identities for PRNG/seed derivation, sampling, candidate/tie ordering, synchronous
-  rounds, fixed-point convergence, squared-L2 behavior, and local entry-point selection;
+  rounds, fixed-point-or-three-round-`C/G` convergence, squared-L2 behavior, and local entry-point
+  selection;
 - `reproduction_mode: faithful_adaptation`.
 
 `omega`, `lambda`, and `iteration_cap` are positive integers. `alpha` is finite and at least 1.
@@ -45,7 +46,8 @@ document passed to B1 and retained in its BuildManifest always contains `seed` e
 `lambda = 64` observations are not universal algorithm bounds.
 
 Termination evidence records completed rounds, the configured cap, per-state change counts and
-digests for the final comparison, `converged`, and a stable termination reason.
+digests for the final comparison, `fixed_point`, consecutive stable-`C/G` rounds, the selected
+convergence condition, `converged`, and a stable termination reason.
 
 **Rationale**
 
@@ -199,7 +201,7 @@ within-node `G` effects and all cross-`TryInsert` effects while removing data ra
 The loop body follows Algorithm 1. The snapshot/commit boundary and deterministic reduction are the
 second clarification and FR-007–FR-009's faithful adaptation.
 
-## R5. Fixed-point convergence and bounded termination
+## R5. Full-state fixed point, `R` two-cycle closure, and bounded termination
 
 **Decision**
 
@@ -209,16 +211,26 @@ data and must match the recomputation for their `(owner,id)`. The implementation
 state class, changed-node and changed-edge counts plus a SHA-256 digest over a versioned canonical
 encoding of node boundaries, LocalNodeIds, and IEEE-754 squared-distance bits for `C` and `G`.
 
-The run converges only if `C_(t+1) == C_t`, `R_(t+1) == R_t`, and `G_(t+1) == G_t` for every node
-after the full commit. The final evidence stores both boundary digests, all zero change counts, and
-the completed round number. The replay-compared termination evidence is this canonical algorithm
-evidence; run IDs, timestamps, absolute paths, and other lifecycle metadata are intentionally not
-part of its equality projection. Digest equality is evidence, not the equality algorithm; state
-arrays are compared directly.
+The run converges immediately if `C_(t+1) == C_t`, `R_(t+1) == R_t`, and
+`G_(t+1) == G_t` for every node after the full commit. This reports
+`convergence_condition=full_state_fixed_point` and `fixed_point=true`.
 
-The cap is checked after each complete round. Convergence on the last permitted round succeeds. If
-that round changes any logical state, the stage returns existing `FAILED` status, emits no output
-candidate, and its stage-owned BuildManifest records
+The run also converges after three consecutive complete rounds in which both normalized `C` and
+normalized `G` equal their respective round-start states. Any change to either resets the count.
+This reports `convergence_condition=three_round_c_g_stability`, `fixed_point=false`, and
+`stable_c_g_rounds>=3`. It does not require adjacent `R` equality: under fixed `C`, the recurrence
+`R_(t+1)=reverse(C union R_t)` can form at most a two-cycle, and three stable `C/G` transitions
+exercise both candidate phases before repeating. This is an exact finite-state closure, not a
+change threshold; stable `G` without stable `C` remains insufficient.
+
+The replay-compared termination evidence is this canonical algorithm evidence; run IDs,
+timestamps, absolute paths, and other lifecycle metadata are intentionally not part of its
+equality projection. Digest equality is evidence, not the equality algorithm; state arrays are
+compared directly.
+
+The cap is checked after each complete round. Either convergence condition on the last permitted
+round succeeds. If neither condition holds, the stage returns existing `FAILED` status, emits no
+output candidate, and its stage-owned BuildManifest records
 `termination_reason: iteration_cap_nonconverged`, cap, completed rounds, final digests, and change
 counts. No partially built graph is represented or published as an Artifact. By default no raw
 partial graph diagnostic is retained; any future opt-in trace must remain in non-publication
@@ -226,13 +238,17 @@ temporary/quarantine storage and is outside formal results.
 
 **Rationale**
 
-This realizes the third and fourth clarifications without extending the public `StageStatus`
-contract. Direct comparison avoids treating a digest collision as convergence. Checking after a
-complete round gives an unambiguous meaning to the cap.
+This realizes the superseding 2026-09-09 clarification and the cap policy without extending the
+public `StageStatus` contract. Direct comparison avoids treating a digest collision as
+convergence. The three-round rule prevents a deterministic reverse-neighborhood two-cycle from
+masking stable `C/G`, while retaining the stronger fixed-point label only for adjacent full-state
+equality.
 
 **Alternatives considered**
 
-- Stop when `G` alone is stable: rejected by clarification.
+- Stop when `G` alone is stable: rejected because `C` can still change future candidates.
+- Require adjacent `R` equality forever: rejected because a proved two-phase reverse-neighborhood
+  closure can otherwise prevent termination after `C/G` stabilize.
 - Use a below-threshold change ratio: rejected by clarification.
 - Publish the last `G` with a warning: rejected because a cap-limited run is unsuccessful.
 - Add a public `NON_CONVERGED` enum: rejected as unnecessary contract expansion; the stage-owned
@@ -240,8 +256,9 @@ complete round gives an unambiguous meaning to the cap.
 
 **Relation to sources**
 
-The paper leaves `Converged` undefined. The full-state fixed point and cap policy are accepted
-clarifications embodied in FR-018 and SC-004/SC-006.
+The paper leaves `Converged` undefined. The immediate full-state fixed point, three-round `C/G`
+two-phase closure, and cap policy are faithful adaptations embodied in the superseding
+clarification, FR-018, and SC-004/SC-006.
 
 ## R6. Overflow-safe squared-L2 Equation (2)
 

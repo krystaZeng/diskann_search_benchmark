@@ -90,7 +90,9 @@ The fixture records every normalized boundary `C/R/G` state. It must prove:
 - earlier working-`G[i]` mutations affect later candidates for `i`;
 - candidate-caused removals are not rolled back if capacity later evicts the candidate;
 - `C<=omega`, `G<=lambda`, and `R` is not silently capped;
-- only complete normalized `C/R/G` equality is convergence.
+- complete normalized `C/R/G` equality converges immediately, while the specified `R` two-cycle
+  fixture converges only after three consecutive complete rounds with both `C` and `G` unchanged;
+  stable `G` alone remains insufficient.
 
 ## 5. Thread-count and scheduling determinism gate
 
@@ -124,7 +126,8 @@ ctest --test-dir build/xn-descent-core-debug --output-on-failure \
 Required cases:
 
 - fixed point on the last permitted round succeeds;
-- changed `C` or `R` with stable `G` does not converge;
+- changed `C` with stable `G` does not converge; changed `R` prevents a full-state fixed point but
+  may converge only after the exact three-round stable-`C/G` two-phase closure;
 - cap hit with any changed state returns `FAILED`, reason
   `iteration_cap_nonconverged`, evidence, and no candidate Artifact;
 - checked-size overflow and known budget excess fail before major graph allocation/first iteration;

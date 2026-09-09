@@ -33,6 +33,7 @@ struct NormalizedRoundState {
 struct RoundSnapshot {
   std::uint32_t round_index{0};
   NormalizedRoundState state;
+  std::uint32_t stable_c_g_rounds{0};
 };
 
 struct CProposal {
@@ -54,6 +55,12 @@ struct WorkingGState {
   std::vector<NeighborList> nodes;
 };
 
+enum class ConvergenceCondition {
+  kNone,
+  kFullStateFixedPoint,
+  kThreeRoundCgStability,
+};
+
 struct ConvergenceEvidence {
   std::uint32_t round_index{0};
   std::uint64_t changed_c_nodes{0};
@@ -64,6 +71,8 @@ struct ConvergenceEvidence {
   std::uint64_t changed_g_edges{0};
   bool direct_equality_checked{false};
   bool fixed_point{false};
+  std::uint32_t stable_c_g_rounds{0};
+  ConvergenceCondition convergence_condition{ConvergenceCondition::kNone};
 };
 
 struct RoundResult {
@@ -79,6 +88,8 @@ struct AlgorithmResult {
   ConvergenceEvidence convergence;
   std::string failure_reason;
 };
+
+const char* to_string(ConvergenceCondition condition) noexcept;
 
 std::uint64_t splitmix64_node_seed(std::uint64_t seed, LocalNodeId node);
 std::vector<LocalNodeId> initialize_neighbor_ids(

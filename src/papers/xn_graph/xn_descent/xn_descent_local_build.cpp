@@ -377,7 +377,10 @@ Json execution_parameters(const XnDescentParameters& parameters,
        {"changed_g_edges", result.convergence.changed_g_edges},
        {"direct_equality_checked",
         result.convergence.direct_equality_checked},
-       {"fixed_point", result.convergence.fixed_point}};
+       {"fixed_point", result.convergence.fixed_point},
+       {"stable_c_g_rounds", result.convergence.stable_c_g_rounds},
+       {"convergence_condition",
+        to_string(result.convergence.convergence_condition)}};
   json["diskann_native_layout_source"] =
       {{"repository", "https://github.com/microsoft/DiskANN.git"},
        {"branch", "cpp_main"},

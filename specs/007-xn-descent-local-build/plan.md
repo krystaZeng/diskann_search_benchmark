@@ -10,8 +10,9 @@ Add an independently selectable B1 local-build implementation of XN-Graph Algori
 validated P0 Partition to the paper's set `S`, constructs deterministic `C`, `R`, and `G` state in
 LocalNodeId space, and publishes the existing LocalGraphArtifact/v1 with its complete unchanged
 LocalToGlobal map. The design preserves Equation (2), all cross-`TryInsert` effects, and within-node
-working-`G` visibility, while using deterministic synchronous rounds and full normalized `C/R/G`
-fixed-point convergence as faithful adaptations.
+working-`G` visibility, while using deterministic synchronous rounds, immediate full normalized
+`C/R/G` fixed-point convergence, and proved three-round `C/G` stability across a possible `R`
+two-cycle as faithful adaptations.
 
 The minimal integration is an isolated `src/papers/xn_graph/xn_descent/` module. A Feature-local
 runner preflights `pipeline-compatible` requests before invoking the existing P0 → B1 → M0
@@ -89,14 +90,16 @@ No gate exception is required.
 
 The core owns the XN parameter value object and the deterministic Algorithm-1 state machine. Each
 round snapshots `C` and `R`, builds canonical candidates, mutates only node-owned working `G`, and
-reduces cross-`C` and reverse-`R` proposals at the next boundary. The core exposes normalized
-round/fixed-point evidence and either a converged graph or a failure termination. It does not know
-Artifact paths, M0, Registry, or experiment reporting.
+reduces cross-`C` and reverse-`R` proposals at the next boundary. The core exposes normalized round
+evidence, full-state fixed-point status, consecutive stable-`C/G` count, and the selected
+convergence condition, together with either a converged graph or a failure termination. It does
+not know Artifact paths, M0, Registry, or experiment reporting.
 
 The concrete PRNG, seed derivation, owner-relative `(distance, LocalNodeId)` order, cross-proposal
-reduction, full `C/R/G` fixed point, overflow-safe `alpha^2` comparison, and deterministic local
-medoid are frozen in [research.md](./research.md). Private container and worker-chunk choices remain
-implementation details only when they preserve that observable contract.
+reduction, immediate full `C/R/G` fixed point, three-round `C/G` stability for a possible `R`
+two-cycle, overflow-safe `alpha^2` comparison, and deterministic local medoid are frozen in
+[research.md](./research.md). Private container and worker-chunk choices remain implementation
+details only when they preserve that observable contract.
 
 ### B1 stage binding
 

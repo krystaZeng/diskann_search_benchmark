@@ -72,7 +72,7 @@
       "const": "deterministic-synchronous-round-v1"
     },
     "convergence_rule": {
-      "const": "normalized-c-r-g-fixed-point-v1"
+      "const": "full-state-fixed-point-or-three-round-c-g-stability-v1"
     },
     "entry_point_rule": {
       "const": "local-centroid-nearest-v1"

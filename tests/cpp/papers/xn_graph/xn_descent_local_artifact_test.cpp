@@ -104,6 +104,9 @@ int main() {
   DP_EXPECT_TRUE(
       manifest_parameters.at("convergence").at("direct_equality_checked"));
   DP_EXPECT_TRUE(manifest_parameters.at("convergence").at("fixed_point"));
+  DP_EXPECT_EQ(manifest_parameters.at("convergence")
+                   .at("convergence_condition"),
+               "full_state_fixed_point");
   DP_EXPECT_EQ(
       manifest_parameters.at("diskann_native_layout_source").at("commit"),
       "78256bbab4685e1774e78d331e081a153be26823");
@@ -201,7 +204,7 @@ int main() {
 
   fixture::baseline_fixture::TestContext unsupported(
       workspace, "xn-direct-us1-unsupported-accessor");
-  fixture::MatrixVectorAccessor generic_vectors({{0.0F}});
+  fixture::MatrixVectorAccessor generic_vectors(fixture::line_vectors({0.0F}));
   unsupported.context.vector_accessor = &generic_vectors;
   const auto unsupported_parameters =
       fixture::baseline_fixture::write_parameters(
@@ -213,5 +216,77 @@ int main() {
   DP_EXPECT_EQ(unsupported_result.status, dp::StageStatus::kFailed);
   DP_EXPECT_TRUE(!unsupported_result.output_candidate.has_value());
   DP_EXPECT_TRUE(unsupported_result.build_manifest_path.empty());
+
+  fixture::baseline_fixture::TemporaryDirectory cycle_temporary(
+      "xn-artifact-r-cycle");
+  const auto cycle_workspace =
+      dp::create_workspace(cycle_temporary.path / "workspace");
+  const fixture::baseline_fixture::NativeDatasetFixture cycle_dataset(
+      cycle_workspace, 16, 1);
+  const auto cycle_partition =
+      fixture::baseline_fixture::materialize_partition(
+          cycle_workspace, cycle_dataset, {{0, 1, 2, 15}});
+  native::CppMainVectorAccessor cycle_vectors(cycle_workspace,
+                                               cycle_dataset.reference);
+
+  fixture::baseline_fixture::TestContext cycle_success(
+      cycle_workspace, "xn-direct-us1-r-cycle-success");
+  cycle_success.context.vector_accessor = &cycle_vectors;
+  const auto cycle_success_parameters =
+      fixture::baseline_fixture::write_parameters(
+          cycle_success.context.temporary_storage,
+          fixture::effective_parameters_json("semantic-small", 1, 1, 1.2,
+                                             8, 20));
+  const auto cycle_success_result = xn::make_xn_descent_local_build()->build(
+      cycle_partition, 0, {cycle_success_parameters}, cycle_success.context);
+  DP_EXPECT_EQ(cycle_success_result.status, dp::StageStatus::kSucceeded);
+  DP_EXPECT_TRUE(cycle_success_result.output_candidate.has_value());
+  const auto cycle_success_manifest = dp::parse_build_manifest(
+      fixture::baseline_fixture::read_json(
+          cycle_success_result.build_manifest_path)
+          .dump());
+  const auto cycle_success_evidence =
+      fixture::Json::parse(cycle_success_manifest.parameters_json);
+  DP_EXPECT_EQ(cycle_success_evidence.at("termination"), "converged");
+  DP_EXPECT_EQ(cycle_success_evidence.at("completed_rounds"), 8);
+  DP_EXPECT_TRUE(
+      !cycle_success_evidence.at("convergence").at("fixed_point"));
+  DP_EXPECT_EQ(cycle_success_evidence.at("convergence")
+                   .at("stable_c_g_rounds"),
+               3);
+  DP_EXPECT_EQ(cycle_success_evidence.at("convergence")
+                   .at("convergence_condition"),
+               "three_round_c_g_stability");
+
+  fixture::baseline_fixture::TestContext cycle_capped(
+      cycle_workspace, "xn-direct-us1-r-cycle-cap");
+  cycle_capped.context.vector_accessor = &cycle_vectors;
+  const auto cycle_capped_parameters =
+      fixture::baseline_fixture::write_parameters(
+          cycle_capped.context.temporary_storage,
+          fixture::effective_parameters_json("semantic-small", 1, 1, 1.2,
+                                             7, 20));
+  const auto cycle_capped_result = xn::make_xn_descent_local_build()->build(
+      cycle_partition, 0, {cycle_capped_parameters}, cycle_capped.context);
+  DP_EXPECT_EQ(cycle_capped_result.status, dp::StageStatus::kFailed);
+  DP_EXPECT_TRUE(!cycle_capped_result.output_candidate.has_value());
+  DP_EXPECT_TRUE(!std::filesystem::exists(
+      cycle_capped.context.temporary_storage.stage_root /
+      "candidate/artifact.json"));
+  const auto cycle_capped_manifest = dp::parse_build_manifest(
+      fixture::baseline_fixture::read_json(
+          cycle_capped_result.build_manifest_path)
+          .dump());
+  DP_EXPECT_TRUE(cycle_capped_manifest.output_artifacts.empty());
+  const auto cycle_capped_evidence =
+      fixture::Json::parse(cycle_capped_manifest.parameters_json);
+  DP_EXPECT_EQ(cycle_capped_evidence.at("termination"),
+               "iteration_cap_nonconverged");
+  DP_EXPECT_EQ(cycle_capped_evidence.at("completed_rounds"), 7);
+  DP_EXPECT_TRUE(
+      !cycle_capped_evidence.at("convergence").at("fixed_point"));
+  DP_EXPECT_EQ(cycle_capped_evidence.at("convergence")
+                   .at("convergence_condition"),
+               "none");
   return dp::test::finish();
 }

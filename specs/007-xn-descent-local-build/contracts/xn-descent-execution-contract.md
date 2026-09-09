@@ -91,14 +91,21 @@ For round `t`:
 The distance/tie total order cannot turn equality in Equation (2) into occlusion. The scale-safe
 comparator implements `alpha^2`, never `alpha`, on squared distances.
 
-## 5. Fixed point and termination
+## 5. Convergence and termination
 
 After a full round, canonical `C`, `R`, and `G` are directly compared with their boundary snapshot.
-Convergence requires every list for every node to be equal. Digest equality is retained evidence
-but does not replace direct comparison.
+If every list for every node is equal, convergence is immediate with `fixed_point=true` and
+`convergence_condition=full_state_fixed_point`. Digest equality is retained evidence but does not
+replace direct comparison.
 
-The cap counts complete rounds. A fixed point found on the last permitted round succeeds. If any
-state changes on that round:
+If full-state equality is absent, three consecutive complete rounds with both normalized `C` and
+normalized `G` unchanged also converge, with `fixed_point=false`, `stable_c_g_rounds>=3`, and
+`convergence_condition=three_round_c_g_stability`. Any `C` or `G` change resets the count. This
+exact rule covers both phases of `R_(t+1)=reverse(C union R_t)` once `C` is fixed; it is a faithful
+adaptation because Algorithm 1 does not define `Converged`. Stable `G` alone is insufficient.
+
+The cap counts complete rounds. Either condition found on the last permitted round succeeds. If
+neither condition holds on that round:
 
 - the stage terminates unsuccessfully with existing `FAILED` status;
 - the precise reason is `iteration_cap_nonconverged`;

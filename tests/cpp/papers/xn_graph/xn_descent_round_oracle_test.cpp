@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <set>
+#include <vector>
 
 namespace dp = diskann_pipeline;
 namespace xn = diskann_pipeline::xn_descent;
@@ -153,6 +154,8 @@ int main() {
   DP_EXPECT_EQ(result.termination, xn::TerminationKind::kConverged);
   DP_EXPECT_EQ(result.completed_rounds, std::uint32_t{2});
   DP_EXPECT_TRUE(result.convergence.fixed_point);
+  DP_EXPECT_EQ(result.convergence.convergence_condition,
+               xn::ConvergenceCondition::kFullStateFixedPoint);
   DP_EXPECT_TRUE(result.convergence.direct_equality_checked);
   DP_EXPECT_EQ(result.convergence.changed_c_nodes, std::uint64_t{0});
   DP_EXPECT_EQ(result.convergence.changed_r_nodes, std::uint64_t{0});
@@ -165,5 +168,53 @@ int main() {
   expected_fixed_point.g[0] = {{1, 1.0}};
   expected_fixed_point.g[1] = {{0, 1.0}};
   DP_EXPECT_EQ(result.state, expected_fixed_point);
+
+  const auto cycle_vectors =
+      fixture::line_vectors({0.0F, 7.0F, 14.0F, 4.0F});
+  auto cycle_parameters = parameters;
+  cycle_parameters.omega = 1;
+  cycle_parameters.lambda = 1;
+  cycle_parameters.alpha = 1.2;
+  cycle_parameters.seed = 20;
+  cycle_parameters.iteration_cap = 7;
+  const auto capped_cycle = xn::run_algorithm(
+      cycle_vectors, cycle_parameters, distance, nullptr);
+  DP_EXPECT_EQ(capped_cycle.termination,
+               xn::TerminationKind::kIterationCapNonconverged);
+  DP_EXPECT_EQ(capped_cycle.completed_rounds, std::uint32_t{7});
+  DP_EXPECT_TRUE(!capped_cycle.convergence.fixed_point);
+  DP_EXPECT_EQ(capped_cycle.convergence.convergence_condition,
+               xn::ConvergenceCondition::kNone);
+
+  cycle_parameters.iteration_cap = 8;
+  const auto converged_cycle = xn::run_algorithm(
+      cycle_vectors, cycle_parameters, distance, nullptr);
+  DP_EXPECT_EQ(converged_cycle.termination, xn::TerminationKind::kConverged);
+  DP_EXPECT_EQ(converged_cycle.completed_rounds, std::uint32_t{8});
+  DP_EXPECT_TRUE(!converged_cycle.convergence.fixed_point);
+  DP_EXPECT_EQ(converged_cycle.convergence.stable_c_g_rounds,
+               std::uint32_t{3});
+  DP_EXPECT_EQ(converged_cycle.convergence.convergence_condition,
+               xn::ConvergenceCondition::kThreeRoundCgStability);
+
+  std::vector<xn::NormalizedRoundState> cycle_states;
+  cycle_states.push_back(
+      xn::initialize_state(cycle_vectors, cycle_parameters, distance));
+  std::uint32_t stable_c_g_rounds = 0;
+  for (std::uint32_t round_index = 1; round_index <= 9; ++round_index) {
+    const xn::RoundSnapshot cycle_snapshot{
+        round_index - 1, cycle_states.back(), stable_c_g_rounds};
+    const auto cycle_round = xn::execute_round(
+        cycle_snapshot, cycle_vectors, cycle_parameters, distance);
+    stable_c_g_rounds = cycle_round.convergence.stable_c_g_rounds;
+    cycle_states.push_back(cycle_round.state);
+  }
+  DP_EXPECT_EQ(cycle_states[8], cycle_states[6]);
+  DP_EXPECT_EQ(cycle_states[8].c, cycle_states[7].c);
+  DP_EXPECT_EQ(cycle_states[8].g, cycle_states[7].g);
+  DP_EXPECT_TRUE(cycle_states[8].r != cycle_states[7].r);
+  DP_EXPECT_EQ(cycle_states[9].c, cycle_states[8].c);
+  DP_EXPECT_EQ(cycle_states[9].g, cycle_states[8].g);
+  DP_EXPECT_EQ(cycle_states[9].r, cycle_states[7].r);
   return dp::test::finish();
 }

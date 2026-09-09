@@ -20,7 +20,7 @@ assert that code exists in this Plan phase.
 |---|---|---|---|
 | Section 3.2, graph definitions | `C[i]` keeps up to `omega` nearest intermediate neighbors; `R[i]` is the reverse neighborhood from the preceding iteration; `G[i]` keeps up to `lambda` diversified extended neighbors | `C/G` are owner-distance ordered and bounded; `R` is unique but not capacity-bounded | `xn_descent_algorithm.*`; state/oracle tests |
 | Algorithm 1, initialization | Initialize every `G[i]` and `R[i]` empty and `C[i]` with `omega` random points | Use all available unique non-self points when fewer than `omega`; otherwise use the versioned per-node seeded sampler | `parameters.*`, `xn_descent_algorithm.*`; initialization tests |
-| Algorithm 1, convergence loop | Repeat until `Converged` | Execute full deterministic synchronous rounds; compare complete normalized `C/R/G`; cap is separate | round engine; convergence/cap tests |
+| Algorithm 1, convergence loop | Repeat until `Converged`; the paper does not define the predicate | Execute full deterministic synchronous rounds; converge immediately on complete normalized `C/R/G` equality or after three consecutive stable-`C/G` rounds covering a possible `R` two-cycle; cap is separate | round engine; fixed-point/two-cycle/cap tests |
 | Algorithm 1, `C_hat[i] <- C[i] union R[i]` | Current near and prior reverse neighborhoods form candidates | Candidate membership comes from the round-start snapshot and is traversed by `(d2(i,u),u)` | candidate builder; oracle tests |
 | Algorithm 1, clear `R` | Reverse state is regenerated each iteration | Build `R_(t+1)` from current-round reverse proposals; commit next round | reverse proposal/reducer; round tests |
 | Algorithm 1, `R[u] <- R[u] union {i}` | Every candidate relation creates a reverse relation | Emit the reverse proposal before candidate acceptance/occlusion outcome; do not cap `R` | reverse proposal/reducer; occluded-candidate tests |
@@ -107,7 +107,7 @@ adaptations in `research.md` and the Feature-local contracts.
 | Degree fields | `declared_max_degree=lambda`; observed metadata and native header equal payload actual maximum; observed `<=` declared | B1 serializer/metadata builder |
 | Round visibility | Candidates from boundary `C/R`; cross-`C` and reverse-`R` next-round-visible; earlier node-owned `G[i]` mutations current-round-visible | synchronous round engine |
 | Conflict outcome | Snapshot reads and deterministic target reductions yield a unique result independent of valid threads/scheduling | proposal reducers |
-| Convergence | One complete normalized round leaves all `C/R/G` unchanged | direct state comparator + evidence encoder |
+| Convergence | Adjacent full normalized `C/R/G` equality is the immediate fixed point; otherwise three consecutive complete stable-`C/G` rounds cover both possible `R` phases | direct state comparator, stable-round counter, condition evidence encoder |
 | Cap result | Non-converged cap hit is unsuccessful, records evidence, and publishes no valid Artifact | B1 stage/lifecycle owner |
 | Replay scope | Exact within one declared platform/toolchain/numerical environment; valid thread changes invariant; no macOS/Linux equality promise | parameter/Manifest contract and replay tests |
 | P0 Partition as `S` | Selected Partition membership substitutes for the paper's full collection `S` | B1 binding; deviation record |
@@ -156,7 +156,7 @@ cpp_main-native.
 | Full in-memory set `S` | One selected P0 Partition | faithful adaptation; local component only |
 | Boundary-adaptive Balanced Partition | Current fixed P0 k-means overlap partition | component substitution; no BBP claim |
 | Unspecified concurrency | deterministic synchronous rounds/proposals | faithful adaptation; required for replay |
-| Unspecified convergence/cap | full normalized fixed point plus safety cap failure | faithful adaptation; may require more rounds than informal implementations |
+| Unspecified convergence/cap | immediate full normalized fixed point, or proved three-round stable-`C/G` closure across a possible `R` two-cycle, plus safety-cap failure | faithful adaptation based on deterministic cycle evidence; stable `G` alone remains insufficient |
 | Unspecified entry point | deterministic local medoid | pipeline-contract adaptation |
 | Paper graph serialization | existing LocalGraphArtifact/v1 plus pinned cpp_main native payload | repository/M0 integration adaptation |
 | `lambda=64` all-memory evaluation | isolated B1-only `paper-style` path | algorithm validation only; not current M0-compatible pipeline |

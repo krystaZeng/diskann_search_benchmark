@@ -2,18 +2,19 @@
 
 **Feature**: `007-xn-descent-local-build`
 
-**Validation date**: 2026-09-08
+**Validation date**: 2026-09-09
 
-**Scope**: T003–T017 only. This evidence covers the macOS core-only US1 MVP. It does not cover
-US2 pipeline closure, US3 multi-worker/resource behavior, US4 paper-style execution, Linux,
-SIFT1M, or complete Feature validation.
+**Scope**: This evidence covers the macOS core-only US1 MVP and its 2026-09-09 convergence
+regression. It does not cover US3 multi-worker/resource behavior, US4 paper-style execution,
+external Linux migration, SIFT1M, or complete Feature validation. US2 has separate Docker Linux
+evidence.
 
 ## Source and build identity
 
-- Project HEAD: `5f0429d93388bdcf1e0ac159a5d63f9bde7ff2c3`
+- Project HEAD: `2d6a01ce2eb2e41ab618da75d90eac8bb498f2fa`
 - Project branch: `feature/xn-descent-local-build`
 - Configure-time source state: dirty worktree, recorded compile-definition checksum
-  `0db1241a14259293276debd3743a0baff8ac237a67e84faac9595d9d1d6c5929`
+  `b71f4bc40129a056d42a2bd701055e21ae1b3376974e5720ce6005c9e74c3e59`
 - Pinned native-layout source: `microsoft/DiskANN`, branch `cpp_main`, commit
   `78256bbab4685e1774e78d331e081a153be26823`
 - Upstream worktree during validation: clean; upstream gitlink unchanged
@@ -32,33 +33,39 @@ by that compile definition.
 
 ## Formal commands and results
 
-Fresh configure:
+Offline reconfigure using the existing cached dependency source:
 
 ```bash
-cmake --fresh -S . -B build/xn-descent-core-debug \
+cmake -S . -B build/xn-descent-core-debug \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTING=ON \
   -DDISKANN_XN_DESCENT=ON \
-  -DDISKANN_CPP_MAIN_BASELINE=OFF
+  -DDISKANN_CPP_MAIN_BASELINE=OFF \
+  -DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON="$PWD/build/xn-descent-core-debug/_deps/nlohmann_json-src"
 ```
 
-Result: PASS. Configuration completed in the existing dedicated out-of-tree directory with a
-fresh cache.
+Result: PASS. Configuration refreshed the existing dedicated out-of-tree directory without
+network access and used its pinned nlohmann dependency checkout.
 
 Full core-only build:
 
 ```bash
-cmake --build build/xn-descent-core-debug --parallel
+cmake --build build/xn-descent-core-debug --parallel \
+  --target \
+  xn_descent_parameters_test \
+  xn_descent_equation_try_insert_test \
+  xn_descent_round_oracle_test \
+  xn_descent_local_artifact_test
 ```
 
-Result: PASS. The build reached 100%, including `diskann_xn_descent` and all four US1 test
-executables.
+Result: PASS. The XN library and all four US1 test executables were rebuilt.
 
 Strict US1 test selection and execution:
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug \
   --output-on-failure \
+  --no-tests=error \
   -R '^xn_descent_(parameters|equation|try_insert|round_oracle|local_artifact)_test$'
 ```
 
@@ -66,11 +73,11 @@ Result: PASS, exactly 5/5 tests:
 
 | CTest name | Result | Formal-run time |
 |---|---:|---:|
-| `xn_descent_parameters_test` | PASS | 1.05 s |
-| `xn_descent_equation_test` | PASS | 0.50 s |
-| `xn_descent_try_insert_test` | PASS | 0.01 s |
-| `xn_descent_round_oracle_test` | PASS | 0.47 s |
-| `xn_descent_local_artifact_test` | PASS | 0.63 s |
+| `xn_descent_parameters_test` | PASS | 0.08 s |
+| `xn_descent_equation_test` | PASS | 0.02 s |
+| `xn_descent_try_insert_test` | PASS | 0.02 s |
+| `xn_descent_round_oracle_test` | PASS | 0.05 s |
+| `xn_descent_local_artifact_test` | PASS | 0.66 s |
 
 Discovery was separately checked with the same strict regex and reported `Total Tests: 5`.
 The layout remains four test source files: Equation (2) and TryInsert share
@@ -97,7 +104,13 @@ The layout remains four test source files: Equation (2) and TryInsert share
   C/R change, so the round is correctly non-converged.
 - The exact fixed-point oracle uses vectors `[0, 1]`, `omega=1`, `lambda=1`, and verifies the full
   final normalized C/R/G state, two completed rounds, direct equality, zero changed C/R/G nodes,
-  and convergence.
+  `fixed_point=true`, and `convergence_condition=full_state_fixed_point`.
+- The R-cycle regression uses vectors `[0, 7, 14, 4]`, `omega=1`, `lambda=1`, `alpha=1.2`, and
+  seed 20. Cap 7 remains `iteration_cap_nonconverged`; cap 8 converges after exactly eight rounds
+  with `fixed_point=false`, `stable_c_g_rounds=3`, and
+  `convergence_condition=three_round_c_g_stability`. The complete round-8 state equals round 6;
+  round-8 C/G equal round 7 while R differs, and a manually executed round 9 preserves C/G while
+  returning R to the other phase.
 - Direct Local Build uses a native float32 Dataset with 3 rows and dimension 1, Partition map
   `[2, 1, 0]`, `omega=5`, `lambda=3`, `alpha=1.2`, seed 42, and cap 16. It also checks a small
   Partition with `omega=1000` under a 4096-byte declared preflight budget, a cap-1 non-converged
@@ -115,9 +128,12 @@ The layout remains four test source files: Equation (2) and TryInsert share
 - Initialization has empty G/R and deterministic unique non-self C; undersized Partitions use all
   available non-self nodes. C and G remain bounded; R was observed larger than omega without
   truncation in the round oracle.
-- Fixed point is determined by direct equality of complete normalized C/R/G, not stable G alone or
-  a digest/threshold substitute. A cap hit with changed state returns failure, records completed
-  rounds and fixed-point evidence, and emits no candidate Artifact.
+- A complete normalized C/R/G fixed point still terminates immediately and alone sets
+  `fixed_point=true`. The faithful-adaptation cycle closure terminates only after three consecutive
+  complete rounds with both C and G unchanged; stable G alone is insufficient. The successful
+  cycle case records its distinct condition without claiming a full-state fixed point. Cap 7
+  records `convergence_condition=none`, completed rounds and stability evidence, returns failure,
+  and emits no candidate Artifact.
 - Accepted output uses LocalNodeId adjacency, copies the complete map byte-for-byte, has deterministic
   local medoid 1 for the hand-checkable fixture, contains no self/duplicate/out-of-range edges, sets
   declared degree to lambda, and sets observed metadata/native header to the payload maximum.
@@ -155,11 +171,11 @@ No unresolved US1 test failure remains.
 - The allocation-failure, cancellation, scheduling, and stage-call-count fixtures required by T005
   are present and compile through the US1 test targets, but their future behaviors were not executed
   or claimed here.
-- T018–T042 are unexecuted. In particular, descriptor/capability exactness (T020), P0 → B1 → M0,
-  multi-worker/schedule replay, dynamic allocation/cancellation/R-exhaustion suites, complete runner
-  provenance, paper-style `lambda=64` local-only execution, Linux rebuild, and SIFT1M remain open.
-- No pipeline-compatible or paper-style runner was built or run. Profile parsing/validation only was
-  tested in this phase.
+- T024–T042 are unexecuted. In particular, multi-worker/schedule replay, dynamic
+  allocation/cancellation/R-exhaustion suites, complete runner provenance, paper-style `lambda=64`
+  local-only execution, external Linux migration, and SIFT1M remain open.
+- No paper-style runner was executed. The pipeline-compatible path is covered separately by the
+  T023 Docker Linux evidence and is not claimed by this macOS core-only record.
 - No Linux command, SIFT1M run, larger dataset, commit, amend, or push occurred.
 
 Accordingly, US1 semantic-small is validated for the recorded macOS core-only environment, but the

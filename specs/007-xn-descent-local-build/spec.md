@@ -159,6 +159,20 @@ as applicable; none may be described as paper-prescribed behavior.
   macOS and Linux runs must each be internally replayable, but cross-platform graph equality is not
   guaranteed and any observed difference must be recorded.
 
+### Session 2026-09-09
+
+- Q: How should convergence handle a deterministic reverse-neighborhood `R` two-cycle after `C`
+  and `G` have stabilized? → A: This clarification supersedes only the 2026-09-04 answer that
+  required an adjacent-round full `C/R/G` fixed point as the sole success condition. The full-state
+  fixed point remains the immediate and explicitly reported condition. In addition, three
+  consecutive complete rounds with both normalized `C` and normalized `G` unchanged qualify as a
+  proved two-phase closure: with fixed `C`, `R_(t+1)=reverse(C union R_t)` can have at most a
+  two-cycle, so those three stable `C/G` transitions cover both candidate phases. Any intervening
+  `C` or `G` change resets the count. Stable `G` alone is still insufficient. Algorithm 1 says only
+  `until Converged` and does not uniquely define this rule, so the additional condition is a
+  necessary faithful adaptation based on the observed deterministic `R` two-cycle, not a
+  paper-stated or approximate-threshold rule.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Build an Algorithm-1 Local Graph (Priority: P1)
@@ -241,13 +255,16 @@ changes accordingly.
    behavior, compiler and flags, platform, architecture, and numerical execution conditions,
    **When** B1 is repeated under different valid thread counts or schedules, **Then** its output and
    termination evidence are identical.
-2. **Given** an iteration cap reached before the declared convergence condition, **When** B1 stops,
+2. **Given** an iteration cap reached before either declared convergence condition, **When** B1 stops,
    **Then** the run records an unsuccessful non-converged terminal reason, retains the cap,
-   completed-round count, and final fixed-point check evidence, and publishes no valid or reusable
+   completed-round count, and final convergence-check evidence, and publishes no valid or reusable
    LocalGraphArtifact for any formal downstream action.
 3. **Given** a completed round whose normalized logical `C`, `R`, and `G` states all equal their
    states at the start of that round, **When** termination is evaluated, **Then** B1 reports exact
-   fixed-point convergence; unchanged `G` with a changed `C` or `R` is not convergence.
+   fixed-point convergence immediately. **Given** three consecutive complete rounds whose
+   normalized `C` and `G` states each remain unchanged while `R` alternates, **Then** B1 reports
+   `three_round_c_g_stability` with `fixed_point=false`; unchanged `G` with changed `C` is not
+   convergence.
 4. **Given** a mandatory memory requirement known to exceed the declared budget, **When** admission
    runs, **Then** B1 fails before its major graph allocation and first iteration.
 5. **Given** an allocation or resource failure during execution, **When** B1 terminates, **Then** it
@@ -369,11 +386,15 @@ claim boundaries are distinct.
 - **FR-017**: The Feature MUST distinguish `semantic-small`, `pipeline-compatible`, and
   `paper-style` profiles. Only `pipeline-compatible` may enter current M0 and it MUST enforce
   `lambda <= 10`; a `paper-style` `lambda = 64` run MUST use an isolated validation path.
-- **FR-018**: B1 MUST report convergence only when one complete deterministic round leaves every
-  node's normalized logical `C`, `R`, and `G` state unchanged from the round boundary at which it
-  began. Stability of `G` alone and any non-zero below-threshold change count MUST NOT qualify as
-  convergence. This exact fixed-point condition MUST remain distinct from the iteration safety
-  cap; reaching the cap without this condition MUST record a non-converged termination reason and
+- **FR-018**: B1 MUST report convergence immediately when one complete deterministic round leaves
+  every node's normalized logical `C`, `R`, and `G` state unchanged, with
+  `convergence_condition=full_state_fixed_point` and `fixed_point=true`. It MUST also report
+  convergence when three consecutive complete rounds leave every node's normalized `C` and `G`
+  unchanged, with `convergence_condition=three_round_c_g_stability`, `fixed_point=false`, and
+  `stable_c_g_rounds>=3`; any `C` or `G` change MUST reset that count. Stability of `G` alone and
+  any non-zero approximate threshold MUST NOT qualify. These declared conditions MUST remain
+  distinct from the iteration safety cap; reaching the cap without either condition MUST record a
+  non-converged termination reason and
   MUST NOT be reported as successful or converged. Such a run MUST publish no valid
   LocalGraphArtifact for M0, formal evaluation, comparison, cache reuse, or aggregation. Its
   BuildManifest MUST retain the cap, completed-round count, termination reason, and final
@@ -473,9 +494,10 @@ claim boundaries are distinct.
 - **SC-004**: Repeating a validated semantic-small run with identical declared inputs and execution
   conditions produces identical graph and termination evidence in every required repetition;
   varying only the valid thread count or schedule also produces that identical result. Every run
-  reported as converged has a final completed-round trace showing no change to any normalized
-  logical `C`, `R`, or `G` state, and no run is reported as converged merely because `G` is stable
-  or a change count is below a non-zero threshold. macOS and Linux each meet this criterion within
+  reported as converged has evidence of either an adjacent-round full normalized `C/R/G` fixed
+  point or three consecutive complete rounds with normalized `C/G` unchanged across both possible
+  `R` phases. No run is reported as converged merely because `G` is stable or a change count is
+  below a non-zero threshold. macOS and Linux each meet this criterion within
   their own declared numerical environment; equality between their graphs is not required, and any
   observed difference is recorded.
 - **SC-005**: 100% of P0 → B1 → M0 requests with `lambda > 10` are rejected before any Local Build,

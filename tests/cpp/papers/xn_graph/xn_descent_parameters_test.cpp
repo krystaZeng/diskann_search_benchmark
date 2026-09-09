@@ -26,6 +26,9 @@ int main() {
   const auto valid = xn::parse_parameters(valid_text);
   DP_EXPECT_EQ(valid.validation_profile,
                xn::ValidationProfile::kSemanticSmall);
+  DP_EXPECT_EQ(
+      std::string(xn::kConvergenceRule),
+      "full-state-fixed-point-or-three-round-c-g-stability-v1");
   DP_EXPECT_EQ(valid.seed, std::uint64_t{42});
   DP_EXPECT_EQ(xn::parse_parameters(xn::canonical_parameters_json(valid)).seed,
                std::uint64_t{42});
@@ -88,6 +91,9 @@ int main() {
   expect_invalid(unexpected);
   auto wrong_policy = fixture::Json::parse(valid_text);
   wrong_policy["round_model"] = "asynchronous";
+  expect_invalid(wrong_policy);
+  wrong_policy = fixture::Json::parse(valid_text);
+  wrong_policy["convergence_rule"] = "normalized-c-r-g-fixed-point-v1";
   expect_invalid(wrong_policy);
 
   const auto feature_schema =

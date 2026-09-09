@@ -22,7 +22,7 @@ GlobalNodeId.
 | `sampling_policy` | stable ID | `unbiased-rejection-unique-nonself-v1` |
 | `tie_break_policy` | stable ID | `squared-distance-then-local-id-v1` |
 | `round_model` | stable ID | `deterministic-synchronous-round-v1` |
-| `convergence_rule` | stable ID | `normalized-c-r-g-fixed-point-v1` |
+| `convergence_rule` | stable ID | `full-state-fixed-point-or-three-round-c-g-stability-v1` |
 | `entry_point_rule` | stable ID | `local-centroid-nearest-v1` |
 | `distance_implementation` | stable ID | `squared-l2/v1` backed by the admitted L2 service |
 | `reproduction_mode` | enum | exactly `faithful_adaptation` |
@@ -98,6 +98,7 @@ RoundSnapshot {
   R: immutable array<RState>[n]
   G: immutable normalized array<GState>[n]
   canonical_state_digest: SHA-256
+  stable_c_g_rounds: uint32
 }
 ```
 
@@ -183,7 +184,8 @@ NormalizedRoundState {
 It is constructed only after all current-round owners and proposal reductions complete. It is
 committed atomically as the next snapshot. Canonical encoding includes a version marker, node
 count, node boundaries, IDs, and the IEEE-754 bits of cached `C/G` distances in a declared byte
-order. Digests are replay evidence; direct normalized state equality determines convergence.
+order. Digests are replay evidence; direct normalized state equality determines the full-state
+fixed-point flag, while the consecutive stable-`C/G` count determines the proved two-phase closure.
 
 ## 10. ConvergenceEvidence
 
@@ -195,11 +197,15 @@ order. Digests are replay evidence; direct normalized state equality determines 
 | `changed_c_edges`, `changed_r_edges`, `changed_g_edges` | Exact membership delta counts |
 | `direct_equality_checked` | Always true for a valid fixed-point decision |
 | `fixed_point` | True only when every normalized node state is equal |
+| `stable_c_g_rounds` | Consecutive complete rounds whose normalized `C` and `G` both equal their round-start states; reset by either changing |
+| `convergence_condition` | `full_state_fixed_point`, `three_round_c_g_stability`, or `none` |
 
 `fixed_point=true` requires all state change counts to be zero. Digest equality alone is
-insufficient. A stable `G` with changed `C` or `R` is not convergence. The replay projection covers
-these canonical algorithm fields and excludes run IDs, timestamps, absolute paths, and other
-expected-to-vary lifecycle metadata.
+insufficient. A stable `G` with changed `C` is not convergence. Changed `R` prevents the
+full-state fixed-point label, but after three consecutive stable-`C/G` rounds it may represent the
+other phase of the proved `R` two-cycle and qualify only as `three_round_c_g_stability`. The replay
+projection covers these canonical algorithm fields and excludes run IDs, timestamps, absolute
+paths, and other expected-to-vary lifecycle metadata.
 
 ## 11. TerminationResult
 
@@ -225,7 +231,8 @@ unvalidated
   -> round snapshot
   -> working G + proposals
   -> normalized next state
-       -> converged -> output candidate -> validated -> published
+       -> full-state fixed point -> converged -> output candidate -> validated -> published
+       -> third consecutive stable-C/G round -> converged -> output candidate -> validated -> published
        -> next round (below cap)
        -> iteration_cap_nonconverged -> FAILED, no candidate
        -> resource/numeric/cancelled failure -> no candidate
@@ -268,7 +275,8 @@ EvaluationReports.
 5. Current-round cross-`C` and reverse-`R` changes become visible only in the next round;
    node-owned working-`G` changes are visible later in that node's current candidate sequence.
 6. Every complete state transition is independent of valid worker count and schedule.
-7. Fixed point means complete normalized `C`, `R`, and `G` equality.
+7. Fixed point means complete normalized `C`, `R`, and `G` equality; the distinct three-round
+   stable-`C/G` condition may converge across an `R` two-cycle without setting `fixed_point`.
 8. Failure, including cap-limited non-convergence, produces no valid LocalGraphArtifact.
 9. `pipeline-compatible` cannot begin P0 or B1 when `lambda>10`; `paper-style` cannot invoke M0.
 10. macOS and Linux each require internal exact replay evidence; their graphs need not be equal.
