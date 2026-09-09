@@ -1,4 +1,5 @@
 #include "papers/xn_graph/xn_descent/stage_binding.hpp"
+#include "papers/xn_graph/xn_descent/parameters.hpp"
 
 #include "baseline/cpp_main/source_build_identity.hpp"
 #include "baseline/cpp_main/stage_bindings.hpp"
