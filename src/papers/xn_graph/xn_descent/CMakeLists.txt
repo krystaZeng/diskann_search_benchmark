@@ -1,5 +1,6 @@
 add_library(
   diskann_xn_descent STATIC
+  descriptor.cpp
   parameters.cpp
   xn_descent_algorithm.cpp
   xn_descent_local_build.cpp)
@@ -38,3 +39,29 @@ target_compile_definitions(
     XN_DESCENT_BINARY_DIR="${CMAKE_BINARY_DIR}"
     XN_DESCENT_CPP_MAIN_BASELINE_ENABLED=$<BOOL:${DISKANN_CPP_MAIN_BASELINE}>)
 diskann_pipeline_apply_cxx17(diskann_xn_descent)
+
+if(DISKANN_CPP_MAIN_BASELINE)
+  target_sources(
+    diskann_xn_descent
+    PRIVATE xn_descent_experiment_runner.cpp)
+
+  add_executable(
+    xn_descent_experiment_runner
+    xn_descent_experiment_runner.cpp)
+  target_link_libraries(
+    xn_descent_experiment_runner
+    PRIVATE diskann_pipeline::xn_descent diskann_cpp_main_stages
+            nlohmann_json::nlohmann_json)
+  target_include_directories(
+    xn_descent_experiment_runner
+    PRIVATE "${PROJECT_SOURCE_DIR}/src")
+  target_compile_definitions(
+    xn_descent_experiment_runner
+    PRIVATE XN_DESCENT_EXPERIMENT_RUNNER_MAIN=1)
+  set_target_properties(
+    xn_descent_experiment_runner
+    PROPERTIES
+      RUNTIME_OUTPUT_DIRECTORY
+        "${CMAKE_BINARY_DIR}/src/papers/xn_graph/xn_descent")
+  diskann_pipeline_apply_cxx17(xn_descent_experiment_runner)
+endif()

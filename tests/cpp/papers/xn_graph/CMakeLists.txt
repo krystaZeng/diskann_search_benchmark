@@ -47,3 +47,17 @@ add_test(
   NAME xn_descent_local_artifact_test COMMAND xn_descent_local_artifact_test)
 set_tests_properties(
   xn_descent_local_artifact_test PROPERTIES LABELS "xn-descent;artifact;us1")
+
+if(DISKANN_CPP_MAIN_BASELINE)
+  add_xn_descent_test_target(
+    xn_descent_pipeline_test xn_descent_pipeline_test.cpp)
+  add_test(
+    NAME xn_descent_pipeline_preflight_test
+    COMMAND xn_descent_pipeline_test preflight)
+  add_test(
+    NAME xn_descent_small_pipeline_test
+    COMMAND xn_descent_pipeline_test small_pipeline)
+  set_tests_properties(
+    xn_descent_pipeline_preflight_test xn_descent_small_pipeline_test
+    PROPERTIES LABELS "xn-descent;pipeline;us2")
+endif()

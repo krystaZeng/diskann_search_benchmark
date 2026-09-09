@@ -1,5 +1,7 @@
 #pragma once
 
+#include "diskann_pipeline/implementation.hpp"
+#include "diskann_pipeline/pipeline.hpp"
 #include "diskann_pipeline/stage_interfaces.hpp"
 
 #include <memory>
@@ -27,6 +29,23 @@ struct LocalOnlyExecutionRequest {
   std::string parameters_json;
 };
 
+struct ExperimentStageFactories {
+  PartitionFactory partition;
+  LocalBuildFactory local_build;
+  MergeFactory merge;
+};
+
+struct ExperimentRunnerResult {
+  int exit_code{4};
+  PipelineExecutionResult execution;
+  std::string result_json;
+};
+
+ImplementationDescriptor descriptor();
 std::unique_ptr<LocalGraphBuilder> make_xn_descent_local_build();
+ExperimentRunnerResult execute_pipeline_experiment_request(
+    const std::string& request_json,
+    const ExperimentStageFactories* stage_factories = nullptr);
+int xn_descent_experiment_runner_main(int argc, char** argv);
 
 }  // namespace diskann_pipeline::xn_descent
