@@ -37,8 +37,8 @@ The profile boundaries are:
 | Profile | Intended use | Composition rule |
 |---|---|---|
 | `semantic-small` | unit, oracle, and hand-checkable small-graph validation | B1 core only; no claim about M0 or paper scale |
-| `pipeline-compatible` | current P0 → B1 → M0 closure | `lambda <= 10`, checked before P0 or any B1 invocation |
-| `paper-style` | isolated Algorithm-1 validation with the paper's all-memory maximum degree | `lambda = 64`; M0 is absent and must not be requested |
+| `pipeline-compatible` | P0, one B1 per Partition, reusable M0, and GlobalGraph | positive `lambda` and positive `merge.R` are explicit and independent; every Partition-local output validates before M0 |
+| `paper-style` | Paper-derived parameters such as `lambda=64` | Same complete partitioned pipeline with explicit `merge.R`; no local-only or all-memory lifecycle |
 
 The default seed for authoring a request is decimal `42`, but the normalized effective parameter
 document passed to B1 and retained in its BuildManifest always contains `seed` explicitly. `alpha`,
@@ -53,18 +53,19 @@ convergence condition, `converged`, and a stable termination reason.
 
 This makes every result-affecting policy reviewable without turning examples from the paper into
 hidden defaults. Two validation layers are required because the current parameter-schema reader is
-not a complete JSON Schema implementation. The three profiles preserve the algorithm's general
-`lambda` while enforcing M0's current combination limit early.
+not a complete JSON Schema implementation. The execution design preserves the algorithm's general
+`lambda` while independently exposing the existing merge output bound as `merge.R`.
 
 **Alternatives considered**
 
-- Hard-code `lambda = 10`: rejected because 10 is an M0 composition limit, not Algorithm 1.
+- Hard-code `lambda = 10`: rejected because 10 is the frozen Baseline B0 local degree, not an
+  Algorithm 1 or generic M0 limit.
 - Treat `omega = 32–40` as a legal range: rejected because the paper presents it as practical
   guidance, not a validity condition.
 - Rely only on schema keywords for numeric/profile validation: rejected because the current
   validator does not implement those keywords.
-- Permit `paper-style` to enter M0 and wait for M0 to fail: rejected because all local graphs would
-  already have been built.
+- Add a paper-style local-only path: rejected because the project goal is a complete partitioned
+  graph and the reusable M0 can merge validated XN local graphs with explicit `merge.R`.
 
 **Relation to sources**
 
@@ -429,17 +430,16 @@ out-degree, Artifact `observed_max_degree` is that same value, and
 `declared_max_degree` is exactly `lambda`.
 
 For `pipeline-compatible`, the Feature-local runner parses the complete request and checks the
-exact P0/B1/M0 identities, profile, and `lambda <= 10` before constructing/invoking the generic
-`PipelineExecutor`. Tests instrument P0/B1/M0 factories and require all invocation counts to remain
-zero on rejection. The builder repeats its own parameter checks but M0 is not changed.
+exact P0/B1/M0 identities, positive `lambda`, and independently positive `merge.R` before invoking
+the generic `PipelineExecutor`. It produces and validates one B1 LocalGraph for every Partition,
+then supplies only the complete validated collection to the existing M0. `lambda > 10` is legal.
+Invalid `merge.R`, incomplete Partition coverage, or invalid/partial LocalGraph output prevents M0.
 
-For `paper-style`, the same runner exposes a clearly separate local-only operation over already
-validated Dataset and Partition references. It does not register or invoke M0 and rejects any merge
-selection. The small Feature-local lifecycle owner invokes B1, validates its candidate using the
-existing Validator with confined temporary roots, persists separate validation/Manifest evidence,
-and atomically promotes only a valid result. It does not add a generic `local_only` API, fake merge,
-Adapter, or GlobalGraph. This small lifecycle path is necessary because the current
-`PipelineExecutor` supports full P→B→M and merge-only, but not local-only.
+M0 remains the single reusable wrapper around the pinned `merge_shards` algorithm. Its parameter
+schema and implementation accept explicit positive `merge.R`; generic M0 admission has no
+`declared_max_degree <= 10` rule. Feature 002's frozen Baseline runner still supplies `R=16`, and
+its B0 still uses local degree 10. Those frozen Profile values do not derive or constrain XN
+`lambda`. No XN Merge, M1, fake Merge, local-only lifecycle, or all-memory execution path is added.
 
 The authored Feature-local parameter schema is copied byte-for-byte during implementation to a
 stable runtime path under `contracts/papers/xn-graph-xn-descent-v1/`, with the established
@@ -448,18 +448,22 @@ stable runtime path under `contracts/papers/xn-graph-xn-descent-v1/`, with the e
 **Rationale**
 
 The public interfaces already carry every required input, service, budget, and output field.
-Feature-local preflight closes the only composition gap without generalizing the pipeline. Native
-serialization is unavoidable for current M0 compatibility and can be bounded by an explicit
-format-source contract instead of an Artifact version or ID Adapter.
+Feature-local request validation and parameterized reusable M0 close the composition gap without
+changing the public pipeline. Native serialization is required for M0 compatibility and can be
+bounded by an explicit format-source contract instead of an Artifact version or ID Adapter.
 
 **Alternatives considered**
 
-- Modify generic PipelineExecutor/CompatibilityChecker for `lambda`: rejected because this is one
-  composition-specific numeric relation.
-- Let M0 reject after B1: rejected because it violates the early-rejection requirement.
-- Add public local-only pipeline mode: rejected because a Feature-local lifecycle is sufficient.
-- Use a fake sink Merge: rejected because it would imply a false GlobalGraph termination.
-- Change M0 or LocalGraphArtifact/v1: rejected because both existing contracts can carry B1.
+- Add a generic pipeline relation for `lambda`: rejected because `lambda` belongs to B1, while M0
+  needs its own explicit `merge.R` and validated local inputs.
+- Keep M0 fixed to Baseline parameter values: rejected because those values define the frozen
+  Baseline Profile rather than M0's reusable merge capability.
+- Add a public or Feature-local local-only mode: rejected because XN execution must produce a
+  complete partitioned GlobalGraph through the existing executor and reusable M0.
+- Use a fake or XN-specific Merge: rejected because the pinned `merge_shards` M0 already provides
+  the required merge semantics when parameterized by `merge.R`.
+- Change LocalGraphArtifact/v1: rejected because the existing contract can carry B1 output above
+  degree 10 without a schema version change.
 - Add an ID-space Adapter: rejected because B1 already operates in LocalNodeId.
 
 **Relation to sources**

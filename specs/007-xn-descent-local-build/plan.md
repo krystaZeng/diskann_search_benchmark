@@ -15,10 +15,12 @@ working-`G` visibility, while using deterministic synchronous rounds, immediate 
 two-cycle as faithful adaptations.
 
 The minimal integration is an isolated `src/papers/xn_graph/xn_descent/` module. A Feature-local
-runner preflights `pipeline-compatible` requests before invoking the existing P0 → B1 → M0
-executor, and owns a separate local-only lifecycle for `paper-style lambda=64` because the generic
-executor has no local-only mode. Existing public pipeline interfaces, Artifact schemas, P0, B0,
-M0, production Registry, Harness, Loop Engine, and pinned upstream source remain unchanged.
+runner invokes the existing P0 → B1 × Partition count → reusable M0 → GlobalGraph executor.
+`lambda` controls B1 local degree and explicit `merge.R` independently controls M0 output degree.
+M0 remains the pinned `merge_shards` algorithm; only its existing wrapper/schema are parameterized.
+The frozen Baseline runner continues to use `R=16` and B0 local degree 10. Existing public pipeline
+interfaces, Artifact schemas, P0, B0, production Registry, Harness, Loop Engine, and pinned
+upstream source remain unchanged.
 
 ## Technical Context
 
@@ -60,13 +62,13 @@ run declaration; admitted B1 distance is current squared L2
 **Performance Goals**: semantic fidelity, exact within-environment replay, and budget compliance;
 no construction-time, Recall, hop, latency, or QPS target is claimed by this Feature
 
-**Constraints**: `alpha` finite and `>=1`; positive `omega`, `lambda`, cap, memory, and threads;
-`C<=omega`, `G/out-degree<=lambda`; unbounded logical `R`; `pipeline-compatible lambda<=10`;
-`paper-style lambda=64` local-only; cap without fixed point fails and publishes no Artifact
+**Constraints**: `alpha` finite and `>=1`; positive `omega`, `lambda`, `merge.R`, cap, memory, and
+threads; `C<=omega`, `G/out-degree<=lambda`; unbounded logical `R`; complete validated LocalGraph
+coverage before M0; cap without a declared convergence condition fails and publishes no Artifact
 
-**Scale/Scope**: one selected P0 Partition resident for Algorithm 1; semantic fixtures through
-SIFT1M validation; no BBP, Secondary Index, IMF Search, SSD layout, parameter sweep, or dataset
-larger than SIFT1M
+**Scale/Scope**: one P0 Partition resident at a time for Algorithm 1, with one validated B1 result
+required for every Partition before M0; semantic fixtures through SIFT1M validation; no BBP,
+Secondary Index, IMF Search, SSD layout, parameter sweep, or dataset larger than SIFT1M
 
 ## Constitution Check — Before Phase 0
 
@@ -77,7 +79,7 @@ larger than SIFT1M
 | Implementation coexistence | PASS | B1 has a distinct identity and a Feature-local Registry; B0 remains available and unchanged. |
 | Node identity | PASS | B1 consumes one explicit PartitionId, operates in LocalNodeId, and copies the complete owning map. |
 | Three-layer outputs | PASS | Artifact, BuildManifest/validation evidence, and EvaluationReport retain distinct lifecycles. |
-| Compatibility gate | PASS | Descriptor requirements/provisions and validators are reused; the M0 degree relation is preflighted before stage invocation. |
+| Compatibility gate | PASS | Descriptor requirements/provisions and validators are reused; `lambda` and `merge.R` are independently validated and every B1 output is admitted before M0. |
 | Study/report separation | PASS | Component faithful adaptation, Baseline, and any later cross-paper study remain separately identified. |
 | Fair experiment protocol | PASS | No tuning is in scope; any later comparison must predeclare fixed inputs, resources, repeats, and aggregation. |
 | Validation and approval | PASS | Unit, contract, oracle, small pipeline, SIFT1M, human review, and Linux replay are planned; larger runs remain gated. |
@@ -148,19 +150,19 @@ narrows this use to the exact role/media/layout accepted by current validators a
 ### Execution paths
 
 `pipeline-compatible` uses a Feature-local runner that validates the complete request and exact
-P0/B1/M0 composition before constructing the Registry or invoking `PipelineExecutor`. A request
-with the current M0 and `lambda>10`, a non-pipeline profile, or mismatched identity fails with P0,
-B1, and M0 invocation counts all zero. Accepted requests register existing P0, new B1, and existing
-M0 only, then reuse the generic executor and its normal validation/publication lifecycle.
+P0/B1/M0 composition before constructing the Registry or invoking `PipelineExecutor`. It requires
+independent positive `lambda` and `merge.R`, registers existing P0, new B1, and existing reusable
+M0 only, then reuses the generic executor and its normal validation/publication lifecycle. One B1
+result is produced and validated for every Partition before the complete collection reaches M0.
+Invalid `merge.R`, mismatched identities, or incomplete/invalid local collections fail before M0;
+`lambda>10` is not itself an incompatibility.
 
 `semantic-small` validates the core and stage through unit, oracle, and contract fixtures.
 
-`paper-style` uses a distinct Feature-local local-only runner operation accepting validated Dataset
-and Partition references. It requires `lambda=64`, forbids a Merge selection, invokes only B1, and
-reuses Validator and atomic-publication rules through a small Feature-local lifecycle owner. This
-is the sole intentional runner-specific lifecycle code: current `PipelineExecutor` cannot express
-local-only. No fake Merge, GlobalGraph, generic pipeline mode, or production Registry entry is
-created.
+The Feature has no paper-style local-only or all-memory execution path. A paper-reported value such
+as `lambda=64` is an ordinary explicit B1 parameter in the same partitioned pipeline and must be
+paired with an independently selected positive `merge.R`; it is not evidence of BBP or the full
+XN-Graph system.
 
 ### Failure and evidence
 
@@ -204,6 +206,10 @@ src/papers/xn_graph/xn_descent/
 ├── xn_descent_local_build.cpp
 └── xn_descent_experiment_runner.cpp
 
+src/baseline/cpp_main/m0_merge.cpp                 # parameterize existing M0 wrapper only
+contracts/baseline-v1/schemas/
+└── cpp-main-m0-parameters.schema.json            # explicit positive merge.R
+
 contracts/papers/xn-graph-xn-descent-v1/
 ├── SOURCES.json
 └── schemas/xn-descent-parameters.schema.json       # byte-identical runtime copy
@@ -216,12 +222,13 @@ tests/cpp/papers/xn_graph/
 ├── xn_descent_determinism_test.cpp
 ├── xn_descent_local_artifact_test.cpp
 └── xn_descent_pipeline_test.cpp
+tests/cpp/baseline/test_cpp_main_m0.cpp             # reusable-M0 and frozen-profile regression
 ```
 
 The exact split among private `.hpp/.cpp` files may be consolidated during task generation; the
-directories and responsibilities are the planned change surface. If the runner's isolated
-local-only lifecycle is easier to test as a second private translation unit, it remains inside the
-same paper module and does not become a public API.
+directories and responsibilities are the planned change surface. The runner owns only request
+validation and the complete existing P0/B1/M0 lifecycle; it does not add an XN-specific Merge or a
+second local-only lifecycle.
 
 **Structure decision**: Use the established paper-module, paper-contract-copy, Feature-local
 runner, and `tests/cpp/papers/...` patterns. Do not add an Adapter, Artifact version, generic
@@ -236,8 +243,8 @@ pipeline/harness/loop abstraction, placeholder directory, or upstream file.
 | Implementation coexistence | PASS | B1 is additive, selectable, and Feature-local; B0 and all existing identities are unchanged. |
 | Node identity | PASS | Data model fixes Partition-scoped LocalNodeId, complete copied map, and legal local medoid. |
 | Three-layer outputs | PASS | Data model and execution contract forbid quality/performance data in Artifact or build provenance in EvaluationReport. |
-| Compatibility gate | PASS | Descriptor and parameter contracts are explicit; candidate validation precedes publication/downstream; M0 numeric compatibility is runner-preflighted. |
-| Study/report separation | PASS | All three profiles carry claim boundaries; `paper-style` cannot masquerade as the Baseline-compatible pipeline or full XN system. |
+| Compatibility gate | PASS | Descriptor and parameter contracts are explicit; every B1 candidate validates before M0; positive `lambda` and `merge.R` are independent. |
+| Study/report separation | PASS | Semantic checks and complete partitioned runs carry distinct claim boundaries; neither can masquerade as the full XN system. |
 | Fair experiment protocol | PASS | Quickstart plans fixed replays and records platform differences; no parameter search or selective aggregation. |
 | Validation and approval | PASS | Quickstart includes ordered semantic, contract, closure, SIFT1M, human-review, and Linux gates, with no larger run. |
 

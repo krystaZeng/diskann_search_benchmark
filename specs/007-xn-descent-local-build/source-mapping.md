@@ -128,8 +128,8 @@ adaptations in `research.md` and the Feature-local contracts.
 | Native local graph | `specs/002-cpp-main-upstream-baseline/contracts/native-formats.md` section 6; pinned `in_mem_graph_store.cpp` | Emit exact reviewed header/rows; actual observed maximum in header; zero frozen points |
 | Native validator | `src/baseline/cpp_main/native_formats.cpp`; `src/validation/artifact_validator.cpp` | Reuse length/range/header/degree checks; add producer tests/checks for self/duplicate adjacency |
 | M0 input | `src/baseline/cpp_main/m0_merge.cpp`; source mapping SM025–SM028 | Preserve exact native map/graph media, lineage, local entry mapping; do not add pruning/refinement |
-| M0 degree limit | `m0_merge.cpp` checks declared degree `<=10` only while loading built locals | Feature runner must reject incompatible composition before P0/B1; M0 remains unchanged |
-| Generic executor modes | `include/diskann_pipeline/pipeline.hpp`; `pipeline_executor.cpp` | Full P→B→M and merge-only exist; paper-style needs small Feature-local local-only lifecycle |
+| M0 parameters | `m0_merge.cpp` and pinned `merge_shards` | Use explicit positive `merge.R`; do not impose B0 degree 10 or fixed R 16 on reusable M0 |
+| Generic executor modes | `include/diskann_pipeline/pipeline.hpp`; `pipeline_executor.cpp` | Reuse full P→B→M; no XN-specific Merge or local-only lifecycle |
 | Manifest evidence | `include/diskann_pipeline/provenance.hpp`; stage-owned manifest handling in `pipeline_executor.cpp` | Reuse BuildManifest/status/failure/metrics; precise non-convergence reason does not need public enum |
 | Registry pattern | existing OGP/HNSW paper runners; empty `production_registry.cpp` | Register B1 only in Feature-local runner; do not alter production Registry |
 
@@ -146,20 +146,21 @@ Feature-local encoding contract therefore records:
 5. existing formal Validator evidence plus B1-specific self/duplicate checks.
 
 This is an additive producer binding, not an alteration of the byte layout, public Artifact
-schema, M0, or upstream source. Any encoding deviation must fail closed rather than be labeled
-cpp_main-native.
+schema, pinned `merge_shards` semantics, M0 identity, or upstream source. Parameterizing the
+existing M0 wrapper and parameter schema with explicit `merge.R` is a separate reusable-M0 change.
+Any encoding deviation must fail closed rather than be labeled cpp_main-native.
 
 ## 8. Deviations and substitutions
 
 | Paper/system element | Current Feature choice | Classification and claim effect |
 |---|---|---|
-| Full in-memory set `S` | One selected P0 Partition | faithful adaptation; local component only |
+| Full in-memory set `S` | Each P0 Partition in turn, followed by complete-collection M0 admission | faithful adaptation; partitioned component pipeline only |
 | Boundary-adaptive Balanced Partition | Current fixed P0 k-means overlap partition | component substitution; no BBP claim |
 | Unspecified concurrency | deterministic synchronous rounds/proposals | faithful adaptation; required for replay |
 | Unspecified convergence/cap | immediate full normalized fixed point, or proved three-round stable-`C/G` closure across a possible `R` two-cycle, plus safety-cap failure | faithful adaptation based on deterministic cycle evidence; stable `G` alone remains insufficient |
 | Unspecified entry point | deterministic local medoid | pipeline-contract adaptation |
 | Paper graph serialization | existing LocalGraphArtifact/v1 plus pinned cpp_main native payload | repository/M0 integration adaptation |
-| `lambda=64` all-memory evaluation | isolated B1-only `paper-style` path | algorithm validation only; not current M0-compatible pipeline |
+| `lambda=64` all-memory evaluation setting | Explicit B1 parameter in the partitioned P0/B1/M0 path | parameter provenance only; no all-memory or local-only reproduction claim |
 | Secondary Index, IMF Search, SSD layout/cache | not implemented | no full-system, SSD, hop, QPS, or latency reproduction claim |
 
 ## 9. Planned implementation ownership
@@ -172,8 +173,10 @@ src/papers/xn_graph/xn_descent/
 ├── descriptor.cpp                 # requires/provides and identity
 ├── stage_binding.hpp              # private factory/identity declarations
 └── xn_descent_experiment_runner.cpp
-                                    # early composition gate and isolated local-only lifecycle
+                                    # complete P0/B1/M0 request validation and execution
 ```
 
-The implementation may consolidate private files, but it must not move these responsibilities into
-generic pipeline, M0, production Registry, Harness, Loop Engine, or upstream code.
+The implementation may consolidate private files, but it must not move XN algorithm
+responsibilities into the generic pipeline, M0, production Registry, Harness, Loop Engine, or
+upstream code. M0 changes are limited to its existing parameter schema and wrapper admission of
+explicit positive `merge.R`; its identity and pinned merge algorithm remain unchanged.

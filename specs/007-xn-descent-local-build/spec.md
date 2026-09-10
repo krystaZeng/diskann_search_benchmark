@@ -31,9 +31,12 @@ Disk-based Nearest Neighbor Search on Extended Neighborhood Graph," SIGIR 2025, 
 Section 3.2, Algorithm 1 and its `TryInsert` function, Section 3.3, and the parameter statements in
 Section 4 are the primary paper evidence for this Feature.
 
-**Replacement Scope**: `Local Build` only. The adaptation path is P0 → B1 XN-Descent → M0. P0,
-B0, M0, search evaluation, and the fixed Baseline runner remain unchanged. Mapping Algorithm 1's
-dataset `S` to one P0 Partition and selecting the required local graph entry point are explicit
+**Replacement Scope**: `Local Build` only. The adaptation path is P0 → one B1 XN-Descent
+execution for every Partition → the reusable M0 → GlobalGraph. P0, B0, M0's pinned
+`merge_shards` algorithm, search evaluation, and the fixed Baseline runner remain unchanged. The
+M0 wrapper exposes its existing merge degree as explicit `merge.R`; the frozen Baseline runner
+continues to pass `R=16`, while its B0 continues to build with local degree 10. Mapping Algorithm
+1's dataset `S` to one P0 Partition and selecting the required local graph entry point are explicit
 contract adaptations, not paper-stated XN-Descent behavior.
 
 **Implementation Identities**: Existing P0 remains
@@ -51,9 +54,10 @@ XN-Graph; `C` is an evolving approximate omega-nearest-neighbor graph and `R` ca
 relationships from the previous iteration.
 
 **Composition Classification**: P0 is the fixed DiskANN k-means-based Partition rather than the
-paper's Boundary-adaptive Balanced Partition (BBP). Therefore P0 → B1 → M0 is a controlled
-component replacement and MUST NOT be presented as a reproduction of BBP, the paper's Secondary
-Index, IMF Search, SSD page layout, or its complete end-to-end retrieval system.
+paper's Boundary-adaptive Balanced Partition (BBP). Therefore P0 → B1 × Partition count → M0
+→ GlobalGraph is a controlled component replacement and MUST NOT be presented as a reproduction
+of BBP, the paper's Secondary Index, IMF Search, SSD page layout, or its complete end-to-end
+retrieval system.
 
 **ID-Space Contract**: B1 consumes one validated aggregate `PartitionArtifact/v1`, an explicit
 owning `PartitionId`, and access to the corresponding Dataset vectors. It interprets the selected
@@ -62,15 +66,18 @@ local`. Every output MUST preserve the selected Partition's complete LocalToGlob
 same local node count as that map, contain only valid LocalNodeIds, and include a valid deterministic
 local entry point required by the existing native local-graph representation.
 
-**Artifact Flow**: One validated DatasetArtifact → one validated PartitionArtifact → one B1
-LocalGraphArtifact per selected Partition → existing M0 → existing GlobalGraphArtifact. Artifact,
-BuildManifest, validation evidence, and EvaluationReport remain separate objects and references.
+**Artifact Flow**: One validated DatasetArtifact → one validated aggregate PartitionArtifact →
+exactly one validated B1 LocalGraphArtifact for every PartitionId → reusable existing M0 → one
+existing GlobalGraphArtifact. Artifact, BuildManifest, validation evidence, and EvaluationReport
+remain separate objects and references.
 
 **Validation Gate**: B1 MUST NOT start unless Dataset and Partition inputs validate for type,
 format version, checksum, Dataset identity, Partition ownership, LocalToGlobalIdMap completeness,
 ID space, lineage, and declared capabilities. A B1 output MUST pass the existing
 `LocalGraphArtifact/v1` validator before M0, evaluation, cache reuse, comparison, or aggregation.
-The P0 → B1 → M0 composition MUST reject an M0-incompatible degree before any Local Build starts.
+The P0 → B1 × Partition count → M0 composition MUST require positive explicit `merge.R` and a
+complete validated set of B1 outputs before M0 starts. `lambda` and `merge.R` are independent;
+neither is derived from the other.
 
 **Experiment Protocol**: Validation proceeds through deterministic semantic fixtures, unit and
 contract checks, small-graph property checks, a small real P0 → B1 → M0 closure, and a bounded
@@ -78,8 +85,8 @@ SIFT1M validation. No parameter sweep, automatic tuning, best-run selection, or 
 SIFT1M is in scope. Any formal B0/B1 comparison MUST reuse the exact same validated Dataset and
 Partition Artifact identities and hold query set, ground truth, distance metric, resource budget,
 cache condition, timing boundary, repetition count, and aggregation rule fixed or explicitly record
-the difference. A paper-style all-memory validation is a separate study path and cannot be reported
-as a Baseline-compatible P0 → B1 → M0 result.
+the difference. XN execution in this Feature always follows the partitioned-and-merged path; the
+paper's all-memory configuration remains parameter evidence, not a separate execution path.
 
 ### Paper-Stated Behavior and Adaptation Boundary
 
@@ -114,8 +121,8 @@ specify them:
 - defining convergence, distinguishing it from an iteration safety cap, and reporting the actual
   termination reason;
 - selecting a deterministic local entry point for the existing local graph representation; and
-- providing an isolated validation route for configurations, such as `lambda = 64`, that cannot
-  enter the current M0.
+- binding every successful local build to the complete Partition collection and supplying an
+  explicit, independently validated `merge.R` to the reusable M0.
 
 Clarify fixes the observable policies recorded below. Deferred to Plan are the concrete PRNG and
 seed default/derivation, candidate and distance-tie ordering, implementation of deterministic
@@ -173,6 +180,18 @@ as applicable; none may be described as paper-prescribed behavior.
   necessary faithful adaptation based on the observed deterministic `R` two-cycle, not a
   paper-stated or approximate-threshold rule.
 
+### Session 2026-09-10
+
+- Q: Is the fixed Baseline's B0 local degree 10 a generic input-degree limit of M0? → A: No. This
+  clarification supersedes all Feature 007 statements that required `lambda<=10`, restricted
+  `lambda=64` to a local-only path, or prohibited a paper-parameter example from entering Merge.
+  The pinned `merge_shards` operation remains the single reusable M0 algorithm and takes its output
+  maximum degree from explicit positive `merge.R`. XN `lambda` independently declares each B1
+  LocalGraph's maximum degree; valid B1 outputs may therefore declare or observe degrees above 10.
+  Feature 002's `R=16` and B0 local degree 10 remain frozen values of the Baseline Profile and its
+  runner, not universal M0 capability limits. XN runs in this Feature use only the complete
+  partitioned path P0 → B1 × Partition count → M0 → GlobalGraph.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Build an Algorithm-1 Local Graph (Priority: P1)
@@ -209,22 +228,27 @@ against an independently prepared expected result.
 ### User Story 2 - Compose B1 Safely with Existing P0 and M0 (Priority: P2)
 
 As an experiment operator, I need B1 to satisfy the existing Local Build contract and be selected
-without changing P0, B0, or M0, so I can perform a controlled Local Build replacement.
+without changing P0, B0, or M0's merge algorithm, so I can perform a controlled Local Build
+replacement and obtain one complete GlobalGraph.
 
 **Why this priority**: The repository's value comes from a traceable stage-level comparison, which
 requires compatibility to be established before expensive work starts.
 
 **Independent Test**: Starting from one validated small Dataset and P0 PartitionArtifact, run one
-P0 → B1 → M0 closure with `lambda <= 10`; confirm all handoffs validate and that the fixed P0, B0,
-M0 identities and upstream tree remain unchanged.
+P0 → B1 × Partition count → M0 → GlobalGraph closure with `lambda > 10` and an independently
+specified positive `merge.R`; confirm all local handoffs validate, the complete local collection
+enters the existing M0, and the fixed P0/B0 identities, M0 algorithm identity, frozen Baseline
+runner, and upstream tree remain unchanged.
 
 **Acceptance Scenarios**:
 
-1. **Given** a compatible validated Partition and `lambda <= 10`, **When** B1 is selected, **Then**
-   it emits exactly one validated LocalGraphArtifact for each requested Partition and existing M0
-   can consume the complete collection.
-2. **Given** a requested P0 → B1 → M0 composition with `lambda > 10`, **When** compatibility
-   preflight runs, **Then** the composition is rejected before any Local Build begins.
+1. **Given** a compatible validated Partition collection and any legal `lambda`, including a value
+   above 10, **When** B1 is selected, **Then** it emits exactly one validated LocalGraphArtifact for
+   every Partition and existing M0 consumes the complete collection with explicit positive
+   `merge.R`.
+2. **Given** `lambda` and `merge.R`, **When** compatibility preflight runs, **Then** each parameter
+   is validated independently; neither is derived from the other and a legal `lambda > 10` is not
+   rejected solely because it exceeds the frozen Baseline's B0 local degree.
 3. **Given** B0 and B1 are both available, **When** either implementation is selected, **Then** they
    coexist under distinct identities and the frozen Baseline path continues to select B0.
 4. **Given** any invalid input or B1 output, **When** a downstream action is requested, **Then** the
@@ -272,26 +296,29 @@ changes accordingly.
 
 ---
 
-### User Story 4 - Validate Without Overstating Paper Coverage (Priority: P4)
+### User Story 4 - Validate the Partitioned Merge Without Overstating Paper Coverage (Priority: P4)
 
-As a reviewer, I need pipeline-compatible and paper-style results to remain separately classified,
-so a useful XN-Descent component study is not mistaken for the paper's complete disk-based system.
+As a reviewer, I need the complete partitioned XN build and reusable M0 result to remain correctly
+classified, so a useful XN-Descent component study is not mistaken for the paper's complete
+disk-based system.
 
 **Why this priority**: The current P0/M0 composition intentionally differs from BBP and the paper's
 search stack; truthful classification is required before interpreting any result.
 
-**Independent Test**: Review the manifests and reports for one pipeline-compatible run and one
-isolated paper-style run; verify their profiles, compatible downstream stages, study labels, and
-claim boundaries are distinct.
+**Independent Test**: Run one complete P0 → B1 × Partition count → M0 → GlobalGraph request with
+`lambda > 10` and explicit `merge.R`; verify every LocalGraph validates before M0, the complete
+collection is merged, and the result retains component-level faithful-adaptation claim boundaries.
 
 **Acceptance Scenarios**:
 
 1. **Given** a `semantic-small` profile, **When** it is reported, **Then** only algorithm-semantic and
    small-graph evidence is claimed.
 2. **Given** a `pipeline-compatible` profile, **When** it enters P0 → B1 → M0, **Then** it enforces
-   `lambda <= 10` and is identified as a component adaptation within the fixed Baseline pipeline.
-3. **Given** a `paper-style` profile with `lambda = 64`, **When** it is validated, **Then** it uses an
-   isolated path and cannot be admitted to current M0.
+   independent legal values for `lambda` and `merge.R` and is identified as a component adaptation
+   using the reusable M0 rather than as the frozen Baseline Profile.
+3. **Given** a paper-reported `lambda = 64` example, **When** the XN pipeline validates it, **Then**
+   it follows the same partitioned P0 → B1 × Partition count → M0 → GlobalGraph path and does
+   not use a local-only or full-memory execution lifecycle.
 4. **Given** that BBP, Secondary Index, IMF Search, and SSD layout are absent, **When** results are
    summarized, **Then** no complete-system or paper end-to-end SSD performance claim is made.
 
@@ -317,9 +344,13 @@ claim boundaries are distinct.
   lineage, unknown PartitionId, or incompatible capability.
 - A LocalGraph claims a degree different from its payload, contains a self edge or duplicate, uses
   an out-of-range LocalNodeId, or has an illegal entry point.
-- A `lambda > 10` profile is valid for the algorithm but is mistakenly composed with current M0.
-- A paper-style all-memory run is presented as if it used BBP, existing P0, current M0, or the
-  paper's complete disk-search stack.
+- `lambda` and `merge.R` differ substantially, including `lambda > 10`, and an implementation
+  mistakenly derives one from the other or rejects the composition using the frozen B0 degree.
+- `merge.R` is zero, missing, non-integral, or otherwise invalid.
+- One or more expected Partition-local graphs are absent, duplicated, partial, or invalid when M0
+  admission is attempted.
+- A partitioned P0/B1/M0 run is presented as if it used BBP or the paper's complete disk-search
+  stack.
 
 ## Requirements *(mandatory)*
 
@@ -379,13 +410,17 @@ claim boundaries are distinct.
   `structural.observed_max_degree`.
 - **FR-015**: The XN-Descent algorithm identity MUST support explicit `lambda`; it MUST NOT encode 10
   as an inherent algorithm limit. The paper's typical `omega = 32–40` and all-memory
-  `lambda = 64` setting are named profiles or examples rather than universal legal bounds.
-- **FR-016**: Because current M0 rejects a LocalGraph whose `declared_max_degree` exceeds 10, every
-  P0 → B1 → M0 request MUST reject `lambda > 10` during composition preflight before any Local
-  Build starts. This compatibility policy MUST NOT modify or relax M0.
+  `lambda = 64` setting are parameter guidance or examples, not universal bounds or a separate
+  execution profile.
+- **FR-016**: Every XN pipeline request MUST provide explicit positive `lambda` for B1 and explicit
+  positive `merge.R` for M0. The two parameters MUST be validated independently and MUST NOT be
+  derived from one another. The reusable M0 MUST accept structurally valid LocalGraphArtifact/v1
+  inputs whose declared or observed degree exceeds 10 and MUST continue to call the pinned
+  `merge_shards` algorithm with the requested `merge.R`.
 - **FR-017**: The Feature MUST distinguish `semantic-small`, `pipeline-compatible`, and
-  `paper-style` profiles. Only `pipeline-compatible` may enter current M0 and it MUST enforce
-  `lambda <= 10`; a `paper-style` `lambda = 64` run MUST use an isolated validation path.
+  `paper-style` profiles. `semantic-small` remains limited to core, oracle, and contract
+  validation. Both full-pipeline profiles use one B1 per Partition and the reusable M0.
+  Neither profile adds a local-only or all-memory runner path.
 - **FR-018**: B1 MUST report convergence immediately when one complete deterministic round leaves
   every node's normalized logical `C`, `R`, and `G` state unchanged, with
   `convergence_condition=full_state_fixed_point` and `fixed_point=true`. It MUST also report
@@ -474,8 +509,8 @@ claim boundaries are distinct.
   inputs, policies, resources, environment, termination, output, and failure.
 - **EvaluationReport**: Separate structural, graph-quality, search-quality, performance, and
   comparison findings for one explicitly classified study.
-- **Validation Profile**: One of `semantic-small`, `pipeline-compatible`, or `paper-style`, each with
-  an explicit allowed composition and claim boundary.
+- **Validation Profile**: `semantic-small` for core/oracle/contract checks; `pipeline-compatible`
+  or `paper-style` for the same complete partitioned P0/B1/M0 execution and claim boundary.
 
 ## Success Criteria *(mandatory)*
 
@@ -500,9 +535,10 @@ claim boundaries are distinct.
   below a non-zero threshold. macOS and Linux each meet this criterion within
   their own declared numerical environment; equality between their graphs is not required, and any
   observed difference is recorded.
-- **SC-005**: 100% of P0 → B1 → M0 requests with `lambda > 10` are rejected before any Local Build,
-  while an independently valid `lambda = 64` profile remains expressible only through the isolated
-  paper-style validation path.
+- **SC-005**: 100% of valid P0 → B1 × Partition count → M0 → GlobalGraph requests, including
+  requests with `lambda > 10`, validate `lambda` and positive explicit `merge.R` independently,
+  validate every B1 output before M0, and pass the complete Partition-local graph collection to
+  the reusable M0. Invalid `merge.R` or an invalid/partial collection starts no M0 execution.
 - **SC-006**: 100% of invalid parameter, input, capability, ID-space, checksum, lineage, known
   pre-allocation budget, cancellation, runtime resource-failure, and cap-limited non-convergence
   cases publish no valid Artifact and cannot enter downstream execution or aggregation.
@@ -524,13 +560,15 @@ claim boundaries are distinct.
   returns squared L2; support for additional metrics is outside this Feature unless later approved.
 - LocalGraphArtifact/v1 and the reviewed native local-graph payload can represent B1 output without
   a new Artifact version or ID-space Adapter.
-- Current M0 continues to enforce `declared_max_degree <= 10` and global `R = 16`; this Feature does
-  not change either behavior.
+- The pinned `merge_shards` implementation can serve as reusable M0 with explicit positive
+  `merge.R`. The fixed Baseline Profile and runner continue to use global `R=16` and B0 local
+  degree 10; those values do not constrain XN's `lambda`.
 - The paper does not provide enough information to uniquely determine PRNG, seed derivation,
   candidate tie order, race-free parallel semantics, convergence, iteration cap, or local entry
   point. This Clarify session fixes their required observable semantics where applicable; Plan
   freezes the remaining implementation choices as faithful adaptations before implementation.
-- A paper-style configuration demonstrates Algorithm 1 behavior in isolation; it is not evidence
-  for the paper's BBP-based large-scale construction or IMF/SSD search pipeline.
+- The paper's all-memory parameter examples are provenance for parameter selection only. This
+  Feature produces project results through the partitioned P0/B1/M0 path and does not implement an
+  all-memory or local-only execution route.
 - No performance advantage is assumed. Recall, hops, latency, QPS, construction time, and resource
   findings require separate measured EvaluationReports under a predeclared protocol.

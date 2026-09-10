@@ -29,14 +29,27 @@ GlobalNodeId.
 
 Profile invariants:
 
-- `pipeline-compatible` requires `lambda <= 10` and exact current P0/B1/M0 composition.
-- `paper-style` requires `lambda = 64` and no Merge stage.
+- `pipeline-compatible` uses the complete P0/B1/M0 composition with independent positive
+  `lambda` and `merge.R`.
+- `paper-style` may select paper-derived parameters such as `lambda=64`, but uses the same complete
+  partitioned composition and explicit `merge.R`; it is not a local-only or all-memory path.
 - `semantic-small` is isolated from formal M0 and paper-scale claims.
 - Profile rules never replace the core validity of positive `lambda`.
 
 Thread and memory budgets are not duplicated in this value object. They come from `StageContext`
 and are recorded in the BuildManifest `resource_budget` together with requested/effective worker
 evidence.
+
+### 1.1 MergeParameters
+
+| Field | Type | Validation/invariant |
+|---|---|---|
+| `merge.R` | positive uint32 | Maximum output degree supplied to the reusable M0 and pinned `merge_shards` callable |
+
+`merge.R` is not part of XNParameters and is never derived from `lambda`. A valid local graph may
+declare or observe a degree above 10; M0 validates the complete LocalGraph collection and truncates
+the merged candidate union to `merge.R`. The frozen Baseline runner continues to pass `R=16`, while
+its B0 continues to use local degree 10.
 
 ## 2. PartitionBinding
 
@@ -278,5 +291,6 @@ EvaluationReports.
 7. Fixed point means complete normalized `C`, `R`, and `G` equality; the distinct three-round
    stable-`C/G` condition may converge across an `R` two-cycle without setting `fixed_point`.
 8. Failure, including cap-limited non-convergence, produces no valid LocalGraphArtifact.
-9. `pipeline-compatible` cannot begin P0 or B1 when `lambda>10`; `paper-style` cannot invoke M0.
+9. `lambda` and `merge.R` are independent positive parameters. Both pipeline profiles use one
+   validated B1 output per Partition and the same reusable M0; neither uses a local-only path.
 10. macOS and Linux each require internal exact replay evidence; their graphs need not be equal.

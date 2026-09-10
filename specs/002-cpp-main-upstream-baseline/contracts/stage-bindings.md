@@ -198,7 +198,7 @@ Required sequence:
 2. verify exactly one local graph for every PartitionId and exact Dataset/source/map lineage;
 3. stage maps and local graphs byte-for-byte under stage-temporary filenames accepted by the pinned
    callable;
-4. call pinned merge_shards with complete inputs, Partition count, and Profile R;
+4. call pinned merge_shards with complete inputs, Partition count, and explicit Merge R;
 5. validate merged global graph and medoids using native-formats.md;
 6. publish one GlobalGraphArtifact containing both required payloads.
 
@@ -209,6 +209,11 @@ LocalNodeId-to-GlobalNodeId merge behavior is outside this contract.
 M0 semantics are exactly map reading, local-to-global relabeling, replica candidate union,
 deduplication, native random shuffle, and truncation to R. M0 does not read vector coordinates,
 compute distances, call RobustPrune, perform global refinement, or repair connectivity.
+
+The callable M0 exposes positive R as its merge-output bound; this is a parameter of the same
+pinned merge_shards algorithm, not a new Merge implementation. The frozen Feature 002 Baseline
+Profile and runner still pass R=16, and B0 still derives local degree 10. Those frozen values do
+not define a universal input-degree limit for reusable M0.
 
 ## 7. Validation and publication gates
 

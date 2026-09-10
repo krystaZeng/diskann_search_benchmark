@@ -152,33 +152,30 @@ current native reader does not check those properties.
 
 ## 7. Execution profiles
 
-### 7.1 pipeline-compatible
+### 7.1 Complete partitioned execution
 
 Before constructing the Registry or invoking P0, a Feature-local runner requires:
 
 - exact current P0 identity;
 - exact B1 identity above;
 - exact current M0 identity;
-- profile `pipeline-compatible`;
-- `lambda <= 10`;
-- M0's frozen parameters, including global `R=16`.
+- profile `pipeline-compatible` or `paper-style`;
+- explicit positive B1 `lambda`;
+- explicit positive M0 `merge.R`, independent of `lambda`.
 
-Failure leaves P0/B1/M0 invocation counts at zero. Success uses the existing `PipelineExecutor` and
-normal validator/publication gates. M0 itself is not modified.
+Invalid request fields fail before stage dispatch. Success uses the existing `PipelineExecutor`,
+produces and validates one B1 LocalGraph for every Partition, and passes only the complete valid
+collection to the existing M0. M0 calls pinned `merge_shards` with `merge.R`.
 
-### 7.2 paper-style
+The frozen Feature 002 Baseline Profile remains `R=16` with B0 local degree 10. Parameterizing the
+reusable M0 does not change those runner values or create a new Merge identity or algorithm.
 
-The Feature-local runner's separate local-only operation requires:
+### 7.2 paper-style parameter profile
 
-- already validated Dataset and Partition references plus explicit PartitionId;
-- profile `paper-style` and `lambda=64`;
-- no Merge implementation or downstream selection;
-- an isolated output/result identity that cannot be labeled Baseline-compatible or full-system
-  reproduction.
-
-It invokes B1, validates the candidate under a confined temporary workspace, persists separate
-BuildManifest and ValidationEvidence, and promotes only a valid LocalGraph Artifact. It does not
-create a GlobalGraph or alter the generic executor.
+`paper-style` may identify a paper-derived parameter selection such as `lambda=64`, but it does not
+select a different lifecycle. It must provide explicit `merge.R` and use the same complete P0,
+per-Partition B1, reusable M0, and GlobalGraph path. It cannot be labeled Baseline-compatible or
+full-system reproduction.
 
 ### 7.3 semantic-small
 

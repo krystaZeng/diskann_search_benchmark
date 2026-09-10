@@ -160,7 +160,7 @@ The accepted candidate must prove:
 Negative candidates with corrupted bytes, checksum, map, lineage, degree, entry point, self edge,
 or duplicate edge must never enter normal publication.
 
-## 8. Early M0 compatibility gate
+## 8. Reusable M0 parameter gate
 
 `[PLANNED]`
 
@@ -169,10 +169,10 @@ ctest --test-dir build/xn-descent-linux --output-on-failure \
   -R '^xn_descent_pipeline_preflight_test$'
 ```
 
-Submit exact current P0/B1/M0 requests with `pipeline-compatible lambda=11` and with a
-`paper-style` profile. Both must be rejected before Registry/factory execution; instrumented P0,
-B1, and M0 invocation counts must all remain zero. A valid `lambda<=10` request proceeds to normal
-generic preflight. M0's code and degree limit remain unchanged.
+Submit requests with independent positive `lambda` and `merge.R`, including `lambda>10`. Legal
+requests must not be rejected by the frozen B0 local degree. Invalid `merge.R`, or a missing,
+partial, duplicate, or invalid Partition-local graph collection, must not enter M0. The fixed
+Baseline request remains `R=16` with B0 local degree 10.
 
 ## 9. Small P0 → B1 → M0 closure
 
@@ -188,19 +188,20 @@ small native Dataset. It must show ordered validated P0 → each explicit B1 Par
 local set, M0-admitted native media/map, valid final GlobalNodeIds, and separate stage manifests
 and evidence. The report labels the run a component-level faithful adaptation, not full XN-Graph.
 
-## 10. Isolated `lambda=64` paper-style validation
+## 10. Partitioned `lambda=64` validation
 
-`[PLANNED]` The later task must add and document the exact Feature-runner target and request schema
-before enabling this command:
+`[PLANNED]` The later task must update and document the exact Feature-runner request before enabling
+this command:
 
 ```bash
-build/xn-descent-core-debug/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
-  --request /absolute/path/to/reviewed-paper-style-request.json
+build/xn-descent-linux/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
+  --request /absolute/path/to/reviewed-partitioned-merge-request.json
 ```
 
-The request selects `paper-style`, `lambda=64`, an already validated Dataset/Partition, and no
-Merge. Success may publish only the validated LocalGraphArtifact plus separate Manifest/evidence;
-it must not publish a GlobalGraph, invoke M0, or claim Baseline-compatible/full-system results.
+The request selects a paper-derived `lambda=64`, explicit positive `merge.R`, P0, B1, and the
+existing M0. Success requires one validated LocalGraphArtifact for every Partition before M0 and
+publishes a validated GlobalGraph plus separate Manifest/evidence. It remains a component-level
+faithful adaptation and does not claim BBP or the complete XN-Graph system.
 
 ## 11. SIFT1M validation gate
 
@@ -209,7 +210,7 @@ Before execution, a human must review:
 - semantic and small-pipeline test results;
 - the implementation diff against `source-mapping.md`;
 - the exact SIFT1M Dataset path/checksum and Partition/P0 parameters;
-- `omega`, `lambda`, `alpha`, seed, cap, profile, memory/thread budget;
+- `omega`, `lambda`, `merge.R`, `alpha`, seed, cap, profile, memory/thread budget;
 - compiler/build flags, hardware, OS, and the intended result/aggregation policy.
 
 `[PLANNED]` After that review, run the verified Feature runner with a predeclared request:
