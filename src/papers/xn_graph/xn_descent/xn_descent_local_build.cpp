@@ -16,9 +16,11 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cfloat>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cfenv>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -117,36 +119,6 @@ std::uint64_t checked_multiply(std::uint64_t lhs, std::uint64_t rhs) {
   return lhs * rhs;
 }
 
-std::uint64_t mandatory_memory(NodeCount count, std::uint32_t dimension,
-                               const XnDescentParameters& parameters) {
-  const auto available = count - 1;
-  const auto c_capacity =
-      std::min<std::uint64_t>(parameters.omega, available);
-  const auto g_capacity =
-      std::min<std::uint64_t>(parameters.lambda, available);
-  const auto vector_bytes = checked_multiply(
-      checked_multiply(count, dimension), sizeof(float));
-  const auto c_records = checked_multiply(count, c_capacity);
-  const auto g_records = checked_multiply(count, g_capacity);
-  auto total = vector_bytes;
-  total = checked_add(total, checked_multiply(count, sizeof(GlobalNodeId)));
-  total = checked_add(total,
-                      checked_multiply(checked_multiply(c_records, 2),
-                                       sizeof(NeighborRecord)));
-  total = checked_add(total,
-                      checked_multiply(checked_multiply(g_records, 2),
-                                       sizeof(NeighborRecord)));
-  total = checked_add(total,
-                      checked_multiply(count, sizeof(ReverseList) * 2ULL));
-  total = checked_add(total,
-                      checked_multiply(dimension, sizeof(long double)));
-  const auto native_records = checked_multiply(
-      count, checked_add(sizeof(std::uint32_t),
-                         checked_multiply(g_capacity,
-                                          sizeof(std::uint32_t))));
-  return checked_add(total, checked_add(24, native_records));
-}
-
 Json dataset_json(const DatasetIdentity& dataset) {
   return {{"dataset_id", dataset.dataset_id},
           {"dataset_checksum", dataset.dataset_checksum},
@@ -219,18 +191,53 @@ SourceIdentity project_source() {
 }
 
 ToolchainIdentity actual_toolchain() {
-  return {XN_DESCENT_SYSTEM_NAME,
+  const auto system_identity = std::string(XN_DESCENT_SYSTEM_NAME) + " " +
+                               XN_DESCENT_SYSTEM_VERSION;
+  std::vector<std::string> compile_commands;
+  const auto compile_database =
+      std::filesystem::path(XN_DESCENT_BINARY_DIR) / "compile_commands.json";
+  const auto entries = read_json(compile_database);
+  for (const auto& entry : entries) {
+    const auto file = entry.at("file").get<std::string>();
+    if (file.find("/src/papers/xn_graph/xn_descent/") ==
+        std::string::npos) {
+      continue;
+    }
+    if (entry.contains("command")) {
+      compile_commands.push_back(entry.at("command").get<std::string>());
+    } else {
+      std::ostringstream command;
+      bool first = true;
+      for (const auto& argument : entry.at("arguments")) {
+        if (!first) command << ' ';
+        command << argument.get<std::string>();
+        first = false;
+      }
+      compile_commands.push_back(command.str());
+    }
+  }
+  if (compile_commands.empty()) {
+    throw PipelineError(ErrorCategory::kPayloadMissing,
+                        "XN-Descent compile command evidence is missing");
+  }
+  const auto link_path =
+      std::filesystem::path(XN_DESCENT_BINARY_DIR) /
+      "src/papers/xn_graph/xn_descent/CMakeFiles/"
+      "diskann_xn_descent.dir/link.txt";
+  return {system_identity,
           XN_DESCENT_CXX_COMPILER,
           XN_DESCENT_CXX_COMPILER_VERSION,
           XN_DESCENT_CMAKE_VERSION,
           XN_DESCENT_CMAKE_GENERATOR,
           XN_DESCENT_BUILD_TYPE,
-          {std::string("DISKANN_CPP_MAIN_BASELINE=") +
+          {std::string("CMAKE_BUILD_TYPE=") + XN_DESCENT_BUILD_TYPE,
+           std::string("BUILD_TESTING=") +
+               (XN_DESCENT_BUILD_TESTING_ENABLED ? "ON" : "OFF"),
+           std::string("DISKANN_CPP_MAIN_BASELINE=") +
                (XN_DESCENT_CPP_MAIN_BASELINE_ENABLED ? "ON" : "OFF"),
            "DISKANN_XN_DESCENT=ON"},
-          {std::string("cmake --build ") + XN_DESCENT_BINARY_DIR +
-           " --target diskann_xn_descent"},
-          {"diskann_xn_descent -> diskann_pipeline_core"}};
+          std::move(compile_commands),
+          {read_text(link_path)}};
 }
 
 BuildManifest base_manifest(const std::string& run_id,
@@ -358,12 +365,40 @@ std::vector<std::uint8_t> native_graph_bytes(
 
 Json execution_parameters(const XnDescentParameters& parameters,
                           PartitionId partition_id,
-                          const AlgorithmResult& result) {
+                          const AlgorithmResult& result,
+                          const StageContext& context,
+                          std::optional<LocalNodeId> entry_point =
+                              std::nullopt) {
   auto json = Json::parse(canonical_parameters_json(parameters));
   json["partition_id"] = partition_id;
-  json["effective_worker_count"] = 1;
+  json["requested_thread_budget"] = context.thread_budget;
+  json["effective_worker_count"] = result.effective_worker_count;
+  json["memory_budget_bytes"] = context.memory_budget_bytes;
   json["completed_rounds"] = result.completed_rounds;
-  json["termination"] =
+  const auto termination_status = [&] {
+    switch (result.termination) {
+      case TerminationKind::kConverged:
+        return "converged";
+      case TerminationKind::kInvalidInput:
+        return "invalid_input";
+      case TerminationKind::kCancelled:
+        return "cancelled";
+      case TerminationKind::kResourceExhausted:
+        return "resource_exhausted";
+      case TerminationKind::kNumericFailure:
+        return "numeric_failure";
+      case TerminationKind::kIterationCapNonconverged:
+        return "iteration_cap_nonconverged";
+      case TerminationKind::kInternalFailure:
+        return "internal_failure";
+    }
+    return "internal_failure";
+  }();
+  json["termination_status"] = termination_status;
+  json["termination"] = result.termination == TerminationKind::kConverged
+                            ? "converged"
+                            : result.failure_reason;
+  json["termination_reason"] =
       result.termination == TerminationKind::kConverged
           ? "converged"
           : result.failure_reason;
@@ -380,7 +415,36 @@ Json execution_parameters(const XnDescentParameters& parameters,
        {"fixed_point", result.convergence.fixed_point},
        {"stable_c_g_rounds", result.convergence.stable_c_g_rounds},
        {"convergence_condition",
-        to_string(result.convergence.convergence_condition)}};
+        to_string(result.convergence.convergence_condition)},
+       {"before_state_digest", result.convergence.before_state_digest},
+       {"after_state_digest", result.convergence.after_state_digest}};
+  json["state_digests"] =
+      {{"canonical_encoding", "xn-descent-canonical-state-v1"},
+       {"c", result.final_state_digests.c},
+       {"r", result.final_state_digests.r},
+       {"g", result.final_state_digests.g},
+       {"full", result.final_state_digests.full}};
+  json["resource_evidence"] =
+      {{"preflight_memory_bytes", result.resource.preflight_memory_bytes},
+       {"peak_estimated_memory_bytes",
+        result.resource.peak_estimated_memory_bytes},
+       {"current_r_records", result.resource.current_r_records},
+       {"next_r_records", result.resource.next_r_records},
+       {"peak_current_r_records", result.resource.peak_current_r_records},
+       {"peak_next_r_records", result.resource.peak_next_r_records},
+       {"r_truncated", result.resource.r_truncated}};
+  json["execution_environment"] =
+      {{"platform", XN_DESCENT_SYSTEM_NAME},
+       {"os", std::string(XN_DESCENT_SYSTEM_NAME) + " " +
+                  XN_DESCENT_SYSTEM_VERSION},
+       {"architecture", XN_DESCENT_SYSTEM_PROCESSOR},
+       {"numerical_environment",
+        {{"float_radix", FLT_RADIX},
+         {"float_mantissa_digits", FLT_MANT_DIG},
+         {"double_mantissa_digits", DBL_MANT_DIG},
+         {"long_double_mantissa_digits", LDBL_MANT_DIG},
+         {"rounding_mode", std::fegetround()}}}};
+  if (entry_point) json["entry_point"] = *entry_point;
   json["diskann_native_layout_source"] =
       {{"repository", "https://github.com/microsoft/DiskANN.git"},
        {"branch", "cpp_main"},
@@ -477,19 +541,25 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
           map_path, local_count,
           accessor->dataset_identity().global_node_count);
 
-      const auto required = mandatory_memory(
+      const auto workers =
+          effective_worker_count(context.thread_budget, local_count);
+      const auto required = estimate_preflight_memory_bytes(
           local_count, accessor->dataset_identity().vector_dimension,
-          parameters);
+          parameters, workers);
+      algorithm.effective_worker_count = workers;
+      algorithm.resource.effective_worker_count = workers;
+      algorithm.resource.preflight_memory_bytes = required;
+      algorithm.resource.peak_estimated_memory_bytes = required;
       if (required > context.memory_budget_bytes) {
         algorithm.termination = TerminationKind::kResourceExhausted;
         algorithm.failure_reason = "memory_budget_preflight_exceeded";
+        manifest->parameters_json =
+            execution_parameters(parameters, partition_id, algorithm,
+                                 context)
+                .dump();
         throw PipelineError(
             ErrorCategory::kInternal,
             "XN-Descent mandatory preallocation exceeds memory budget");
-      }
-      if (context.thread_budget == 0) {
-        throw PipelineError(ErrorCategory::kSchemaInvalid,
-                            "XN-Descent thread budget must be positive");
       }
 
       std::vector<std::vector<float>> vectors(local_count);
@@ -502,11 +572,16 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
         }
       }
       context.metrics_sink->event("xn_descent.initialized");
-      algorithm = run_algorithm(vectors, parameters,
-                                *context.distance_function,
-                                context.cancellation_token);
+      AlgorithmExecutionOptions algorithm_options;
+      algorithm_options.thread_budget = context.thread_budget;
+      algorithm_options.memory_budget_bytes = context.memory_budget_bytes;
+      algorithm_options.preflight_memory_bytes = required;
+      algorithm = run_algorithm(vectors, parameters, *context.distance_function,
+                                context.cancellation_token,
+                                algorithm_options);
       manifest->parameters_json =
-          execution_parameters(parameters, partition_id, algorithm).dump();
+          execution_parameters(parameters, partition_id, algorithm, context)
+              .dump();
       if (algorithm.termination == TerminationKind::kCancelled) {
         manifest->status = StageStatus::kCancelled;
         return {StageStatus::kCancelled, std::nullopt,
@@ -521,6 +596,22 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
       }
 
       const auto entry = local_medoid(vectors, *context.distance_function);
+      manifest->parameters_json = execution_parameters(
+                                      parameters, partition_id, algorithm,
+                                      context, entry)
+                                      .dump();
+      if (context.cancellation_token->is_cancelled()) {
+        algorithm.termination = TerminationKind::kCancelled;
+        algorithm.failure_reason = "cancelled";
+        manifest->parameters_json = execution_parameters(
+                                        parameters, partition_id, algorithm,
+                                        context, entry)
+                                        .dump();
+        manifest->status = StageStatus::kCancelled;
+        return {StageStatus::kCancelled, std::nullopt,
+                persist_manifest(context.workspace, partition_id,
+                                 std::move(*manifest))};
+      }
       const auto candidate =
           context.temporary_storage.stage_root / "candidate";
       std::filesystem::create_directories(candidate);
@@ -597,7 +688,9 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
       if (manifest->parameters_json == "{}") {
         try {
           manifest->parameters_json =
-              execution_parameters(parameters, partition_id, algorithm).dump();
+              execution_parameters(parameters, partition_id, algorithm,
+                                   context)
+                  .dump();
         } catch (...) {
           manifest->parameters_json = "{}";
         }
@@ -611,7 +704,15 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
                                std::move(*manifest))};
     } catch (const std::bad_alloc&) {
       if (!manifest) return {StageStatus::kFailed, std::nullopt, {}};
+      algorithm.termination = TerminationKind::kResourceExhausted;
+      algorithm.failure_reason = "allocation_failed";
       manifest->status = StageStatus::kFailed;
+      try {
+        manifest->parameters_json =
+            execution_parameters(parameters, partition_id, algorithm, context)
+                .dump();
+      } catch (...) {
+      }
       manifest->failure =
           FailureInfo{ErrorCategory::kInternal,
                       "XN-Descent allocation failed", std::nullopt};

@@ -11,11 +11,13 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <new>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -71,14 +73,53 @@ class AllocationFailureVectorAccessor final : public VectorAccessor {
 class StepCancellation final : public CancellationToken {
  public:
   explicit StepCancellation(std::uint64_t cancel_after)
-      : cancel_after_(cancel_after) {}
+      : cancel_after_(cancel_after), coordinator_(std::this_thread::get_id()) {}
   bool is_cancelled() const noexcept override {
-    return polls_++ >= cancel_after_;
+    if (std::this_thread::get_id() != coordinator_) {
+      worker_poll_observed_.store(true, std::memory_order_relaxed);
+    }
+    return polls_.fetch_add(1, std::memory_order_relaxed) >= cancel_after_;
+  }
+
+  std::uint64_t poll_count() const noexcept {
+    return polls_.load(std::memory_order_relaxed);
+  }
+  bool worker_poll_observed() const noexcept {
+    return worker_poll_observed_.load(std::memory_order_relaxed);
   }
 
  private:
   std::uint64_t cancel_after_;
-  mutable std::uint64_t polls_{0};
+  std::thread::id coordinator_;
+  mutable std::atomic<std::uint64_t> polls_{0};
+  mutable std::atomic<bool> worker_poll_observed_{false};
+};
+
+class AllocationFailureDistance final : public DistanceFunction {
+ public:
+  explicit AllocationFailureDistance(std::uint64_t fail_on_evaluation)
+      : fail_on_evaluation_(fail_on_evaluation) {}
+
+  double evaluate(const std::vector<float>& lhs,
+                  const std::vector<float>& rhs) const override {
+    const auto evaluation =
+        evaluations_.fetch_add(1, std::memory_order_relaxed);
+    if (evaluation == fail_on_evaluation_) throw std::bad_alloc();
+    double total = 0.0;
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+      const auto difference = lhs[index] - rhs[index];
+      total += difference * difference;
+    }
+    return total;
+  }
+
+  std::uint64_t evaluations() const noexcept {
+    return evaluations_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  std::uint64_t fail_on_evaluation_;
+  mutable std::atomic<std::uint64_t> evaluations_{0};
 };
 
 struct SchedulingFixture {

@@ -94,18 +94,18 @@
 
 ### Tests for User Story 3
 
-- [ ] T024 [US3] Add deterministic replay, termination, and resource suites in `tests/cpp/papers/xn_graph/xn_descent_determinism_test.cpp` covering worker-independent per-node streams, alternate schedules, immediate complete C/R/G fixed-point convergence, three-round stable-C/G convergence across an R two-cycle, success on the last permitted round, cap-nonconverged failure, checked-size overflow, known budget excess before major allocation, uncapped-R exhaustion, allocation failure, cancellation, and effective worker-count limits.
-- [ ] T025 [US3] Register `xn_descent_determinism_test`, `xn_descent_termination_test`, and `xn_descent_resource_test` as explicit grouped invocations of `tests/cpp/papers/xn_graph/xn_descent_determinism_test.cpp` in `tests/cpp/papers/xn_graph/CMakeLists.txt`.
+- [X] T024 [US3] Add deterministic replay, termination, and resource suites in `tests/cpp/papers/xn_graph/xn_descent_determinism_test.cpp` covering worker-independent per-node streams, alternate schedules, immediate complete C/R/G fixed-point convergence, three-round stable-C/G convergence across an R two-cycle, success on the last permitted round, cap-nonconverged failure, checked-size overflow, known budget excess before major allocation, uncapped-R exhaustion, allocation failure, cancellation, and effective worker-count limits.
+- [X] T025 [US3] Register `xn_descent_determinism_test`, `xn_descent_termination_test`, and `xn_descent_resource_test` as explicit grouped invocations of `tests/cpp/papers/xn_graph/xn_descent_determinism_test.cpp` in `tests/cpp/papers/xn_graph/CMakeLists.txt`.
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Add deterministic proposal reduction independent of worker/schedule assignment, normalized C/R/G state digests, completed-round counts, full-state fixed-point evidence, stable-C/G round counts, and convergence-condition evidence in `src/papers/xn_graph/xn_descent/xn_descent_algorithm.cpp` while preserving the synchronous visibility rules from US1.
-- [ ] T027 [P] [US3] Add overflow-checked C/G/current-next-R/proposal/cache/scratch memory estimation, controlled dynamic-allocation failure, cancellation polling, and positive thread-budget enforcement in `src/papers/xn_graph/xn_descent/xn_descent_local_build.cpp`; never truncate R or publish a candidate to satisfy budget.
-- [ ] T028 [US3] Emit complete stage-owned BuildManifest source/input/checksum/toolchain/platform/build-flag/parameter/seed/policy/resource/convergence/termination evidence and isolated failure diagnostics from `src/papers/xn_graph/xn_descent/xn_descent_experiment_runner.cpp`, with no Artifact on `iteration_cap_nonconverged`, resource, allocation, or cancellation failure and no EvaluationReport metrics in Artifact/Manifest.
+- [X] T026 [P] [US3] Add deterministic proposal reduction independent of worker/schedule assignment, normalized C/R/G state digests, completed-round counts, full-state fixed-point evidence, stable-C/G round counts, and convergence-condition evidence in `src/papers/xn_graph/xn_descent/xn_descent_algorithm.cpp` while preserving the synchronous visibility rules from US1.
+- [X] T027 [P] [US3] Add overflow-checked C/G/current-next-R/proposal/cache/scratch memory estimation, controlled dynamic-allocation failure, cancellation polling, and positive thread-budget enforcement in `src/papers/xn_graph/xn_descent/xn_descent_local_build.cpp`; never truncate R or publish a candidate to satisfy budget.
+- [X] T028 [US3] Emit complete stage-owned BuildManifest source/input/checksum/toolchain/platform/build-flag/parameter/seed/policy/resource/convergence/termination evidence and isolated failure diagnostics from `src/papers/xn_graph/xn_descent/xn_descent_experiment_runner.cpp`, with no Artifact on `iteration_cap_nonconverged`, resource, allocation, or cancellation failure and no EvaluationReport metrics in Artifact/Manifest.
 
 ### Validation for User Story 3
 
-- [ ] T029 [US3] Run `xn_descent_determinism_test`, `xn_descent_termination_test`, and `xn_descent_resource_test` with their planned schedule/thread variants and record exact hashes, evidence, failures, and commands in `specs/007-xn-descent-local-build/validation/us3-replay-and-failure.md` without requiring macOS/Linux cross-platform equality.
+- [X] T029 [US3] Run `xn_descent_determinism_test`, `xn_descent_termination_test`, and `xn_descent_resource_test` with their planned schedule/thread variants and record exact hashes, evidence, failures, and commands in `specs/007-xn-descent-local-build/validation/us3-replay-and-failure.md` without requiring macOS/Linux cross-platform equality.
 
 **Checkpoint**: US3 proves within-platform replay and truthful terminal states; cross-platform byte equality remains explicitly outside the guarantee.
 

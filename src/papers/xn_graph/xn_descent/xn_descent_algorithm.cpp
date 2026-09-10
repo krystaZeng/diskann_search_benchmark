@@ -1,14 +1,21 @@
 #include "papers/xn_graph/xn_descent/xn_descent_algorithm.hpp"
 
+#include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/errors.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <exception>
 #include <limits>
+#include <mutex>
 #include <random>
 #include <set>
+#include <thread>
 #include <unordered_set>
+#include <utility>
 
 namespace diskann_pipeline::xn_descent {
 namespace {
@@ -43,6 +50,163 @@ bool neighbor_less(const NeighborRecord& lhs, const NeighborRecord& rhs) {
     return lhs.squared_distance_to_owner < rhs.squared_distance_to_owner;
   }
   return lhs.id < rhs.id;
+}
+
+std::uint64_t checked_add(std::uint64_t lhs, std::uint64_t rhs) {
+  if (rhs > std::numeric_limits<std::uint64_t>::max() - lhs) {
+    throw PipelineError(ErrorCategory::kInternal,
+                        "XN-Descent checked_size_overflow");
+  }
+  return lhs + rhs;
+}
+
+std::uint64_t checked_multiply(std::uint64_t lhs, std::uint64_t rhs) {
+  if (lhs != 0 && rhs > std::numeric_limits<std::uint64_t>::max() / lhs) {
+    throw PipelineError(ErrorCategory::kInternal,
+                        "XN-Descent checked_size_overflow");
+  }
+  return lhs * rhs;
+}
+
+void append_u32(std::string& bytes, std::uint32_t value) {
+  for (unsigned shift = 0; shift < 32; shift += 8) {
+    bytes.push_back(static_cast<char>((value >> shift) & 0xffU));
+  }
+}
+
+void append_u64(std::string& bytes, std::uint64_t value) {
+  for (unsigned shift = 0; shift < 64; shift += 8) {
+    bytes.push_back(static_cast<char>((value >> shift) & 0xffU));
+  }
+}
+
+std::string encode_neighbors(const char* marker,
+                             const std::vector<NeighborList>& values) {
+  std::string bytes(marker);
+  append_u64(bytes, values.size());
+  for (const auto& row : values) {
+    append_u64(bytes, row.size());
+    for (const auto& value : row) {
+      append_u32(bytes, value.id);
+      std::uint64_t bits = 0;
+      static_assert(sizeof(bits) == sizeof(value.squared_distance_to_owner));
+      std::memcpy(&bits, &value.squared_distance_to_owner, sizeof(bits));
+      append_u64(bytes, bits);
+    }
+  }
+  return bytes;
+}
+
+std::string encode_reverse(const std::vector<ReverseList>& values) {
+  std::string bytes("xn-descent-r-state-v1");
+  append_u64(bytes, values.size());
+  for (const auto& row : values) {
+    append_u64(bytes, row.size());
+    for (const auto value : row) append_u32(bytes, value);
+  }
+  return bytes;
+}
+
+std::vector<LocalNodeId> candidate_ids_for(
+    LocalNodeId owner, const NormalizedRoundState& state, NodeCount count) {
+  std::vector<LocalNodeId> result;
+  result.reserve(state.c[owner].size() + state.r[owner].size());
+  for (const auto& value : state.c[owner]) result.push_back(value.id);
+  result.insert(result.end(), state.r[owner].begin(), state.r[owner].end());
+  std::sort(result.begin(), result.end());
+  result.erase(std::unique(result.begin(), result.end()), result.end());
+  for (const auto candidate : result) {
+    require_node(candidate, count, "candidate");
+    if (candidate == owner) {
+      throw PipelineError(ErrorCategory::kIdRangeInvalid,
+                          "XN-Descent candidate cannot be self");
+    }
+  }
+  return result;
+}
+
+std::vector<LocalNodeId> normalized_owner_order(
+    NodeCount count, const std::vector<LocalNodeId>& requested) {
+  std::vector<LocalNodeId> result = requested;
+  if (result.empty()) {
+    result.resize(static_cast<std::size_t>(count));
+    for (LocalNodeId owner = 0; owner < count; ++owner) result[owner] = owner;
+    return result;
+  }
+  if (result.size() != count) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent owner schedule must be a permutation");
+  }
+  auto sorted = result;
+  std::sort(sorted.begin(), sorted.end());
+  for (LocalNodeId owner = 0; owner < count; ++owner) {
+    if (sorted[owner] != owner) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "XN-Descent owner schedule must be a permutation");
+    }
+  }
+  return result;
+}
+
+class ResourceBudgetFailure final : public std::runtime_error {
+ public:
+  ResourceBudgetFailure(const std::string& reason,
+                        std::uint64_t estimated_memory,
+                        std::uint64_t current_r_records,
+                        std::uint64_t next_r_records)
+      : std::runtime_error(reason),
+        estimated_memory(estimated_memory),
+        current_r_records(current_r_records),
+        next_r_records(next_r_records) {}
+
+  std::uint64_t estimated_memory;
+  std::uint64_t current_r_records;
+  std::uint64_t next_r_records;
+};
+
+std::uint64_t round_memory_bytes(std::uint64_t preflight,
+                                 std::uint64_t current_r_records,
+                                 std::uint64_t next_r_records) {
+  auto total = preflight;
+  total = checked_add(
+      total, checked_multiply(checked_multiply(current_r_records, 2),
+                              sizeof(LocalNodeId)));
+  total = checked_add(
+      total, checked_multiply(next_r_records, sizeof(RProposal)));
+  total = checked_add(
+      total, checked_multiply(next_r_records, sizeof(LocalNodeId)));
+  total = checked_add(
+      total,
+      checked_multiply(std::max(current_r_records, next_r_records), 16));
+  return total;
+}
+
+void reduce_cross_try_insert(
+    LocalNodeId owner, LocalNodeId candidate, std::uint32_t capacity,
+    const std::vector<std::vector<float>>& vectors,
+    const DistanceFunction& distance, NeighborList& target) {
+  const NeighborRecord proposal{
+      candidate, squared_distance(owner, candidate, vectors, distance)};
+  const auto duplicate = std::find_if(
+      target.begin(), target.end(),
+      [&](const auto& current) { return current.id == candidate; });
+  if (duplicate != target.end()) {
+    if (proposal.squared_distance_to_owner <
+        duplicate->squared_distance_to_owner) {
+      *duplicate = proposal;
+    }
+    std::sort(target.begin(), target.end(), neighbor_less);
+    return;
+  }
+  if (target.size() < capacity) {
+    target.push_back(proposal);
+    std::sort(target.begin(), target.end(), neighbor_less);
+    return;
+  }
+  if (neighbor_less(proposal, target.back())) {
+    target.back() = proposal;
+    std::sort(target.begin(), target.end(), neighbor_less);
+  }
 }
 
 std::uint64_t membership_delta(const NeighborList& lhs,
@@ -89,6 +253,8 @@ ConvergenceEvidence compare_states(const NormalizedRoundState& before,
     evidence.changed_g_edges += membership_delta(before.g[node], after.g[node]);
   }
   evidence.fixed_point = before == after;
+  evidence.before_state_digest = state_digests(before).full;
+  evidence.after_state_digest = state_digests(after).full;
   return evidence;
 }
 
@@ -115,6 +281,103 @@ bool NeighborRecord::operator==(const NeighborRecord& other) const noexcept {
 bool NormalizedRoundState::operator==(
     const NormalizedRoundState& other) const noexcept {
   return c == other.c && r == other.r && g == other.g;
+}
+
+bool StateDigests::operator==(const StateDigests& other) const noexcept {
+  return c == other.c && r == other.r && g == other.g && full == other.full;
+}
+
+StateDigests state_digests(const NormalizedRoundState& state) {
+  const auto c_bytes = encode_neighbors("xn-descent-c-state-v1", state.c);
+  const auto r_bytes = encode_reverse(state.r);
+  const auto g_bytes = encode_neighbors("xn-descent-g-state-v1", state.g);
+  StateDigests result;
+  result.c = sha256_bytes(c_bytes);
+  result.r = sha256_bytes(r_bytes);
+  result.g = sha256_bytes(g_bytes);
+  std::string full("xn-descent-full-state-v1");
+  append_u64(full, c_bytes.size());
+  full.append(c_bytes);
+  append_u64(full, r_bytes.size());
+  full.append(r_bytes);
+  append_u64(full, g_bytes.size());
+  full.append(g_bytes);
+  result.full = sha256_bytes(full);
+  return result;
+}
+
+std::uint32_t effective_worker_count(std::uint32_t thread_budget,
+                                     NodeCount local_node_count) {
+  if (thread_budget == 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent thread budget must be positive");
+  }
+  if (!is_valid_count(local_node_count)) {
+    throw PipelineError(ErrorCategory::kNodeCountMismatch,
+                        "XN-Descent local node count is invalid");
+  }
+  return static_cast<std::uint32_t>(
+      std::min<std::uint64_t>(thread_budget, local_node_count));
+}
+
+std::uint64_t estimate_preflight_memory_bytes(
+    NodeCount local_node_count, std::uint32_t dimension,
+    const XnDescentParameters& parameters, std::uint32_t worker_count) {
+  if (!is_valid_count(local_node_count) || dimension == 0) {
+    throw PipelineError(ErrorCategory::kNodeCountMismatch,
+                        "XN-Descent preflight dimensions are invalid");
+  }
+  const auto workers = effective_worker_count(worker_count, local_node_count);
+  const auto available = local_node_count - 1;
+  const auto omega =
+      std::min<std::uint64_t>(parameters.omega, available);
+  const auto lambda =
+      std::min<std::uint64_t>(parameters.lambda, available);
+  const auto nodes = static_cast<std::uint64_t>(local_node_count);
+  const auto vector_records = checked_multiply(nodes, dimension);
+  const auto c_records = checked_multiply(nodes, omega);
+  const auto g_records = checked_multiply(nodes, lambda);
+
+  std::uint64_t total = 0;
+  const auto add_records = [&](std::uint64_t count, std::uint64_t size) {
+    total = checked_add(total, checked_multiply(count, size));
+  };
+  add_records(vector_records, sizeof(float));
+  add_records(nodes, sizeof(std::vector<float>));
+  add_records(nodes, sizeof(GlobalNodeId));
+  add_records(checked_multiply(c_records, 2), sizeof(NeighborRecord));
+  add_records(checked_multiply(g_records, 2), sizeof(NeighborRecord));
+  add_records(c_records, sizeof(NeighborRecord));
+  add_records(c_records, sizeof(CProposal));
+  add_records(checked_multiply(nodes, 5), sizeof(NeighborList));
+  add_records(checked_multiply(checked_add(nodes, 1), 2),
+              sizeof(std::uint64_t));
+  add_records(checked_multiply(nodes, 2), sizeof(ReverseList));
+  add_records(nodes, sizeof(std::mutex));
+
+  const auto candidate_scratch = checked_multiply(
+      available, checked_add(sizeof(LocalNodeId), sizeof(NeighborRecord)));
+  auto worker_scratch = checked_add(
+      candidate_scratch,
+      checked_multiply(lambda, sizeof(NeighborRecord)));
+  worker_scratch = checked_add(
+      worker_scratch,
+      checked_multiply(dimension, sizeof(long double)));
+  add_records(workers, worker_scratch);
+  add_records(workers, sizeof(std::thread));
+
+  auto native_payload = checked_add(
+      24, checked_multiply(
+              nodes,
+              checked_add(sizeof(std::uint32_t),
+                          checked_multiply(lambda, sizeof(std::uint32_t)))));
+  native_payload = checked_add(
+      native_payload, checked_multiply(nodes, sizeof(GlobalNodeId)));
+  total = checked_add(total, native_payload);
+  const auto bounded_digest_records = checked_add(c_records, g_records);
+  add_records(bounded_digest_records, 16);
+  add_records(nodes, 128);
+  return total;
 }
 
 const char* to_string(ConvergenceCondition condition) noexcept {
@@ -310,7 +573,8 @@ NormalizedRoundState initialize_state(
 RoundResult execute_round(const RoundSnapshot& snapshot,
                           const std::vector<std::vector<float>>& vectors,
                           const XnDescentParameters& parameters,
-                          const DistanceFunction& distance) {
+                          const DistanceFunction& distance,
+                          const AlgorithmExecutionOptions& options) {
   const auto count = vectors.size();
   if (count == 0 || snapshot.state.c.size() != count ||
       snapshot.state.r.size() != count || snapshot.state.g.size() != count) {
@@ -318,71 +582,144 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
                         "XN-Descent round snapshot shape is invalid");
   }
 
+  const auto workers =
+      effective_worker_count(options.thread_budget, vectors.size());
+  const auto owner_order = normalized_owner_order(count, options.owner_order);
+  std::uint64_t current_r_records = 0;
+  for (const auto& values : snapshot.state.r) {
+    current_r_records = checked_add(current_r_records, values.size());
+  }
+
+  std::vector<std::uint64_t> reverse_counts(count, 0);
+  std::uint64_t next_r_records = 0;
+  for (LocalNodeId owner = 0; owner < count; ++owner) {
+    const auto candidates = candidate_ids_for(owner, snapshot.state, count);
+    next_r_records = checked_add(next_r_records, candidates.size());
+    for (const auto candidate : candidates) {
+      reverse_counts[candidate] = checked_add(reverse_counts[candidate], 1);
+    }
+  }
+  const auto estimated_memory = round_memory_bytes(
+      options.preflight_memory_bytes, current_r_records, next_r_records);
+  if (estimated_memory > options.memory_budget_bytes) {
+    throw ResourceBudgetFailure("reverse_state_memory_budget_exceeded",
+                                estimated_memory, current_r_records,
+                                next_r_records);
+  }
+
   RoundResult result;
   result.state = snapshot.state;
-  WorkingGState working{snapshot.state.g};
+  result.resource.effective_worker_count = workers;
+  result.resource.preflight_memory_bytes = options.preflight_memory_bytes;
+  result.resource.peak_estimated_memory_bytes = estimated_memory;
+  result.resource.current_r_records = current_r_records;
+  result.resource.next_r_records = next_r_records;
+  result.resource.peak_current_r_records = current_r_records;
+  result.resource.peak_next_r_records = next_r_records;
+  result.proposals.reverse_r.reserve(static_cast<std::size_t>(next_r_records));
   for (LocalNodeId owner = 0; owner < count; ++owner) {
-    std::vector<LocalNodeId> candidate_ids;
-    for (const auto& value : snapshot.state.c[owner]) {
-      candidate_ids.push_back(value.id);
-    }
-    candidate_ids.insert(candidate_ids.end(), snapshot.state.r[owner].begin(),
-                         snapshot.state.r[owner].end());
-    std::sort(candidate_ids.begin(), candidate_ids.end());
-    candidate_ids.erase(std::unique(candidate_ids.begin(), candidate_ids.end()),
-                        candidate_ids.end());
-    NeighborList candidates;
-    for (const auto candidate : candidate_ids) {
-      require_node(candidate, count, "candidate");
-      if (candidate == owner) {
-        throw PipelineError(ErrorCategory::kIdRangeInvalid,
-                            "XN-Descent candidate cannot be self");
-      }
-      candidates.push_back(
-          {candidate, squared_distance(owner, candidate, vectors, distance)});
-    }
-    std::sort(candidates.begin(), candidates.end(), neighbor_less);
-
-    for (const auto& candidate_record : candidates) {
-      const auto candidate = candidate_record.id;
+    for (const auto candidate : candidate_ids_for(owner, snapshot.state, count)) {
       result.proposals.reverse_r.push_back({candidate, owner});
-      bool not_occluded = true;
-      for (const auto& current : working.nodes[owner]) {
-        if (current.id == candidate) continue;
-        result.proposals.cross_c.push_back({current.id, candidate});
-        result.proposals.cross_c.push_back({candidate, current.id});
-        if (equation_two_occludes(owner, candidate, current.id,
-                                  parameters.alpha, vectors, distance)) {
-          not_occluded = false;
+    }
+  }
+
+  WorkingGState working{snapshot.state.g};
+  std::vector<NeighborList> reduced_cross(count);
+  std::vector<std::mutex> cross_mutex(count);
+  std::atomic<std::uint64_t> cross_submitted{0};
+  std::atomic<std::size_t> next_owner{0};
+  std::atomic<bool> stop{false};
+  std::exception_ptr first_exception;
+  std::mutex exception_mutex;
+
+  const auto submit_cross = [&](LocalNodeId target, LocalNodeId proposed) {
+    cross_submitted.fetch_add(1, std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lock(cross_mutex[target]);
+    reduce_cross_try_insert(target, proposed, parameters.omega, vectors,
+                            distance, reduced_cross[target]);
+  };
+  const auto worker_body = [&] {
+    try {
+      for (;;) {
+        if (stop.load(std::memory_order_relaxed)) return;
+        const auto schedule_index =
+            next_owner.fetch_add(1, std::memory_order_relaxed);
+        if (schedule_index >= owner_order.size()) return;
+        const auto owner = owner_order[schedule_index];
+        const auto owner_candidates =
+            candidate_ids_for(owner, snapshot.state, count);
+        NeighborList candidates;
+        candidates.reserve(owner_candidates.size());
+        for (const auto candidate : owner_candidates) {
+          candidates.push_back(
+              {candidate,
+               squared_distance(owner, candidate, vectors, distance)});
+        }
+        std::sort(candidates.begin(), candidates.end(), neighbor_less);
+
+        for (const auto& candidate_record : candidates) {
+          const auto candidate = candidate_record.id;
+          bool not_occluded = true;
+          for (const auto& current : working.nodes[owner]) {
+            if (current.id == candidate) continue;
+            submit_cross(current.id, candidate);
+            submit_cross(candidate, current.id);
+            if (equation_two_occludes(owner, candidate, current.id,
+                                      parameters.alpha, vectors, distance)) {
+              not_occluded = false;
+            }
+          }
+          if (!not_occluded) continue;
+          auto& graph = working.nodes[owner];
+          graph.erase(
+              std::remove_if(graph.begin(), graph.end(), [&](const auto& current) {
+                if (current.id == candidate) return false;
+                return equation_two_occludes(owner, current.id, candidate,
+                                              parameters.alpha, vectors,
+                                              distance);
+              }),
+              graph.end());
+          try_insert(owner, candidate, parameters.lambda, vectors, distance,
+                     graph);
         }
       }
-      if (!not_occluded) continue;
-      auto& graph = working.nodes[owner];
-      graph.erase(std::remove_if(graph.begin(), graph.end(),
-                                 [&](const auto& current) {
-                                   if (current.id == candidate) return false;
-                                   return equation_two_occludes(
-                                       owner, current.id, candidate,
-                                       parameters.alpha, vectors, distance);
-                                 }),
-                  graph.end());
-      try_insert(owner, candidate, parameters.lambda, vectors, distance, graph);
+    } catch (...) {
+      {
+        std::lock_guard<std::mutex> lock(exception_mutex);
+        if (!first_exception) first_exception = std::current_exception();
+      }
+      stop.store(true, std::memory_order_relaxed);
+    }
+  };
+
+  std::vector<std::thread> threads;
+  threads.reserve(workers);
+  try {
+    for (std::uint32_t worker = 0; worker < workers; ++worker) {
+      threads.emplace_back(worker_body);
+    }
+  } catch (...) {
+    stop.store(true, std::memory_order_relaxed);
+    for (auto& thread : threads) thread.join();
+    throw;
+  }
+  for (auto& thread : threads) thread.join();
+  if (first_exception) std::rethrow_exception(first_exception);
+
+  result.proposals.cross_c_submitted =
+      cross_submitted.load(std::memory_order_relaxed);
+  for (LocalNodeId target = 0; target < count; ++target) {
+    for (const auto& proposal : reduced_cross[target]) {
+      result.proposals.cross_c.push_back({target, proposal.id});
+      try_insert(target, proposal.id, parameters.omega, vectors, distance,
+                 result.state.c[target]);
     }
   }
-
-  std::sort(result.proposals.cross_c.begin(), result.proposals.cross_c.end(),
-            [](const auto& lhs, const auto& rhs) {
-              if (lhs.target_owner != rhs.target_owner) {
-                return lhs.target_owner < rhs.target_owner;
-              }
-              return lhs.proposed_neighbor < rhs.proposed_neighbor;
-            });
-  for (const auto& proposal : result.proposals.cross_c) {
-    try_insert(proposal.target_owner, proposal.proposed_neighbor,
-               parameters.omega, vectors, distance,
-               result.state.c[proposal.target_owner]);
-  }
   for (auto& values : result.state.r) values.clear();
+  for (LocalNodeId target = 0; target < count; ++target) {
+    result.state.r[target].reserve(
+        static_cast<std::size_t>(reverse_counts[target]));
+  }
   for (const auto& proposal : result.proposals.reverse_r) {
     result.state.r[proposal.target_owner].push_back(
         proposal.proposed_reverse_neighbor);
@@ -418,30 +755,102 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
 AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
                               const XnDescentParameters& parameters,
                               const DistanceFunction& distance,
-                              CancellationToken* cancellation) {
+                              CancellationToken* cancellation,
+                              const AlgorithmExecutionOptions& options) {
   AlgorithmResult result;
-  result.state = initialize_state(vectors, parameters, distance);
-  for (std::uint32_t round = 1; round <= parameters.iteration_cap; ++round) {
-    if (cancellation != nullptr && cancellation->is_cancelled()) {
-      result.termination = TerminationKind::kCancelled;
-      result.failure_reason = "cancelled";
+  try {
+    result.effective_worker_count =
+        effective_worker_count(options.thread_budget, vectors.size());
+    result.resource.effective_worker_count = result.effective_worker_count;
+    result.resource.preflight_memory_bytes = options.preflight_memory_bytes;
+    result.resource.peak_estimated_memory_bytes =
+        options.preflight_memory_bytes;
+    if (options.preflight_memory_bytes > options.memory_budget_bytes) {
+      result.termination = TerminationKind::kResourceExhausted;
+      result.failure_reason = "memory_budget_preflight_exceeded";
       return result;
     }
-    RoundSnapshot snapshot{round - 1, result.state,
-                           result.convergence.stable_c_g_rounds};
-    auto next = execute_round(snapshot, vectors, parameters, distance);
-    result.state = std::move(next.state);
-    result.convergence = next.convergence;
-    result.completed_rounds = round;
-    if (result.convergence.convergence_condition !=
-        ConvergenceCondition::kNone) {
-      result.termination = TerminationKind::kConverged;
-      return result;
+
+    result.state = initialize_state(vectors, parameters, distance);
+    result.final_state_digests = state_digests(result.state);
+    for (std::uint32_t round = 1; round <= parameters.iteration_cap; ++round) {
+      if (cancellation != nullptr && cancellation->is_cancelled()) {
+        result.termination = TerminationKind::kCancelled;
+        result.failure_reason = "cancelled";
+        return result;
+      }
+      RoundSnapshot snapshot{round - 1, result.state,
+                             result.convergence.stable_c_g_rounds};
+      auto next = execute_round(snapshot, vectors, parameters, distance,
+                                options);
+      result.state = std::move(next.state);
+      result.convergence = next.convergence;
+      result.completed_rounds = round;
+      result.resource.peak_estimated_memory_bytes = std::max(
+          result.resource.peak_estimated_memory_bytes,
+          next.resource.peak_estimated_memory_bytes);
+      result.resource.current_r_records =
+          next.resource.current_r_records;
+      result.resource.next_r_records = next.resource.next_r_records;
+      result.resource.peak_current_r_records = std::max(
+          result.resource.peak_current_r_records,
+          next.resource.peak_current_r_records);
+      result.resource.peak_next_r_records = std::max(
+          result.resource.peak_next_r_records,
+          next.resource.peak_next_r_records);
+      result.final_state_digests = state_digests(result.state);
+      if (cancellation != nullptr && cancellation->is_cancelled()) {
+        result.termination = TerminationKind::kCancelled;
+        result.failure_reason = "cancelled";
+        return result;
+      }
+      if (result.convergence.convergence_condition !=
+          ConvergenceCondition::kNone) {
+        result.termination = TerminationKind::kConverged;
+        return result;
+      }
     }
+    result.termination = TerminationKind::kIterationCapNonconverged;
+    result.failure_reason = "iteration_cap_nonconverged";
+    return result;
+  } catch (const ResourceBudgetFailure& error) {
+    result.termination = TerminationKind::kResourceExhausted;
+    result.failure_reason = error.what();
+    result.resource.peak_estimated_memory_bytes = error.estimated_memory;
+    result.resource.current_r_records = error.current_r_records;
+    result.resource.next_r_records = error.next_r_records;
+    result.resource.peak_current_r_records = error.current_r_records;
+    result.resource.peak_next_r_records = error.next_r_records;
+    if (!result.state.c.empty()) {
+      result.final_state_digests = state_digests(result.state);
+    }
+    return result;
+  } catch (const std::bad_alloc&) {
+    result.termination = TerminationKind::kResourceExhausted;
+    result.failure_reason = "allocation_failed";
+    if (!result.state.c.empty()) result.final_state_digests = state_digests(result.state);
+    return result;
+  } catch (const PipelineError& error) {
+    if (std::string(error.what()).find("checked_size_overflow") ==
+        std::string::npos) {
+      throw;
+    }
+    result.termination = TerminationKind::kResourceExhausted;
+    result.failure_reason = "checked_size_overflow";
+    if (!result.state.c.empty()) result.final_state_digests = state_digests(result.state);
+    return result;
+  } catch (...) {
+    result.termination = TerminationKind::kInternalFailure;
+    result.failure_reason = "worker_exception";
+    if (!result.state.c.empty()) result.final_state_digests = state_digests(result.state);
+    try {
+      throw;
+    } catch (const std::exception& error) {
+      result.failure_reason = error.what();
+    } catch (...) {
+    }
+    return result;
   }
-  result.termination = TerminationKind::kIterationCapNonconverged;
-  result.failure_reason = "iteration_cap_nonconverged";
-  return result;
 }
 
 }  // namespace diskann_pipeline::xn_descent

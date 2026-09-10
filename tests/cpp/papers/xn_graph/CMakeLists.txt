@@ -48,6 +48,22 @@ add_test(
 set_tests_properties(
   xn_descent_local_artifact_test PROPERTIES LABELS "xn-descent;artifact;us1")
 
+add_xn_descent_test_target(
+  xn_descent_determinism_test xn_descent_determinism_test.cpp)
+add_test(
+  NAME xn_descent_determinism_test
+  COMMAND xn_descent_determinism_test determinism)
+add_test(
+  NAME xn_descent_termination_test
+  COMMAND xn_descent_determinism_test termination)
+add_test(
+  NAME xn_descent_resource_test
+  COMMAND xn_descent_determinism_test resource)
+set_tests_properties(
+  xn_descent_determinism_test xn_descent_termination_test
+  xn_descent_resource_test
+  PROPERTIES LABELS "xn-descent;determinism;resource;us3")
+
 if(DISKANN_CPP_MAIN_BASELINE)
   add_xn_descent_test_target(
     xn_descent_pipeline_test xn_descent_pipeline_test.cpp)
