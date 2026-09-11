@@ -31,8 +31,9 @@ Profile invariants:
 
 - `pipeline-compatible` uses the complete P0/B1/M0 composition with independent positive
   `lambda` and `merge.R`.
-- `paper-style` may select paper-derived parameters such as `lambda=64`, but uses the same complete
-  partitioned composition and explicit `merge.R`; it is not a local-only or all-memory path.
+- `paper-style` may select paper-derived parameters such as `lambda=64`, but 64 is not required;
+  it uses the same complete partitioned composition and explicit `merge.R` and is not a local-only
+  or all-memory path.
 - `semantic-small` is isolated from formal M0 and paper-scale claims.
 - Profile rules never replace the core validity of positive `lambda`.
 
@@ -44,12 +45,53 @@ evidence.
 
 | Field | Type | Validation/invariant |
 |---|---|---|
-| `merge.R` | positive uint32 | Maximum output degree supplied to the reusable M0 and pinned `merge_shards` callable |
+| `merge.R` | integer in `1..UINT32_MAX` | Maximum output degree supplied to the reusable M0 and pinned `merge_shards` callable |
 
 `merge.R` is not part of XNParameters and is never derived from `lambda`. A valid local graph may
 declare or observe a degree above 10; M0 validates the complete LocalGraph collection and truncates
 the merged candidate union to `merge.R`. The frozen Baseline runner continues to pass `R=16`, while
 its B0 continues to use local degree 10.
+
+### 1.2 ParameterContractRevision
+
+| Field | Value/invariant |
+|---|---|
+| revision | `1.1.0` |
+| M0 descriptor schema | `contracts/baseline-v1/schemas/cpp-main-m0-parameters-v1.1.0.schema.json` |
+| B1 design schema | `specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json` |
+| B1 runtime schema | `contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json` |
+| M0 `$id` | `https://diskann-repro.local/contracts/baseline-v1/cpp-main-m0-parameters-v1.1.0.schema.json` |
+| B1 shared `$id` | `https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json` |
+| B1 document format | remains `schema_version: xn-descent-parameters/v1` |
+| implementation identity/version | existing M0 and B1 values remain unchanged |
+| provenance | revised XN schemas are byte-identical; `SOURCES.json` records exact paths and SHA-256 |
+
+Each contract `$id` is new relative to its historical contract. The byte-identical Feature/runtime
+XN copies share the B1 `$id`. The descriptor's exact path, not the JSON Schema dialect URI in
+`$schema`, selects the contract revision. Existing schema paths
+remain immutable historical baselines and historical evidence does not inherit revision-1.1.0
+coverage.
+
+### 1.3 CompositionPreflight
+
+Before Registry/factory construction, expensive allocation, workspace/runtime-service creation, or
+stage execution, the XN runner resolves:
+
+```text
+CompositionPreflight {
+  profile: pipeline-compatible | paper-style
+  lambda: positive uint32 validated by XN parameter parsing
+  merge_R: uint32 parsed directly from signed-or-unsigned JSON integer
+  implementation_ids: exact P0/B1/M0 tuple
+  factory_calls: {partition: 0, local_build: 0, merge: 0}
+  stage_invocations: {partition: 0, local_build: 0, merge: 0}
+}
+```
+
+Missing, boolean, string, fractional, negative, zero, or greater-than-`UINT32_MAX` `merge.R`
+fails with a merge-parameter-specific reason while both call-count structures remain all zero.
+The shared `ParameterValidator` supplies only its current structural/type/constant checks; it is
+not the numeric-range owner. M0 repeats the range check at its runtime boundary.
 
 ## 2. PartitionBinding
 
@@ -294,3 +336,7 @@ EvaluationReports.
 9. `lambda` and `merge.R` are independent positive parameters. Both pipeline profiles use one
    validated B1 output per Partition and the same reusable M0; neither uses a local-only path.
 10. macOS and Linux each require internal exact replay evidence; their graphs need not be equal.
+11. Revision-1.1.0 parameter schemas are selected by exact descriptor paths and versioned `$id`;
+    the two XN copies are byte-identical and old schema/evidence identities remain preserved.
+12. Invalid `merge.R` causes zero factory and stage calls. The fixed Baseline runner independently
+    accepts only integer merge `R=16` with `use_filters=false` before creating execution state.

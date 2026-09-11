@@ -11,28 +11,28 @@ Search*
 `78256bbab4685e1774e78d331e081a153be26823`
 
 This mapping separates paper-stated semantics, repository-required faithful adaptations, and
-engineering safety policies. Planned paths name expected implementation ownership; they do not
-assert that code exists in this Plan phase.
+engineering safety policies. Paths and function names below describe the implementation and tests
+validated through T034; later Linux-host and SIFT1M gates remain explicitly unexecuted.
 
 ## 1. Paper Algorithm 1 mapping
 
-| Paper location | Paper-stated semantic | Frozen design interpretation | Planned implementation/test ownership |
+| Paper location | Paper-stated semantic | Frozen design interpretation | Implemented function/test ownership |
 |---|---|---|---|
-| Section 3.2, graph definitions | `C[i]` keeps up to `omega` nearest intermediate neighbors; `R[i]` is the reverse neighborhood from the preceding iteration; `G[i]` keeps up to `lambda` diversified extended neighbors | `C/G` are owner-distance ordered and bounded; `R` is unique but not capacity-bounded | `xn_descent_algorithm.*`; state/oracle tests |
-| Algorithm 1, initialization | Initialize every `G[i]` and `R[i]` empty and `C[i]` with `omega` random points | Use all available unique non-self points when fewer than `omega`; otherwise use the versioned per-node seeded sampler | `parameters.*`, `xn_descent_algorithm.*`; initialization tests |
-| Algorithm 1, convergence loop | Repeat until `Converged`; the paper does not define the predicate | Execute full deterministic synchronous rounds; converge immediately on complete normalized `C/R/G` equality or after three consecutive stable-`C/G` rounds covering a possible `R` two-cycle; cap is separate | round engine; fixed-point/two-cycle/cap tests |
-| Algorithm 1, `C_hat[i] <- C[i] union R[i]` | Current near and prior reverse neighborhoods form candidates | Candidate membership comes from the round-start snapshot and is traversed by `(d2(i,u),u)` | candidate builder; oracle tests |
-| Algorithm 1, clear `R` | Reverse state is regenerated each iteration | Build `R_(t+1)` from current-round reverse proposals; commit next round | reverse proposal/reducer; round tests |
-| Algorithm 1, `R[u] <- R[u] union {i}` | Every candidate relation creates a reverse relation | Emit the reverse proposal before candidate acceptance/occlusion outcome; do not cap `R` | reverse proposal/reducer; occluded-candidate tests |
-| Algorithm 1, `flag[u] <- true` | Per-candidate acceptance starts true | `flag` is local logical state for the current `(i,u)` check, not a global or cross-thread shared flag | node-owned working loop; race/determinism tests |
-| Algorithm 1, iterate `v in G[i]`, `v != u` | Compare the candidate with every relevant current graph neighbor | Iterate canonical working `G[i]`; do not terminate the loop after finding an occluder | working-G loop; multi-occluder oracle |
-| Algorithm 1, `TryInsert(u,C[v],omega)` | Cross-update `u` into the neighborhood centered on `v` | Target center is `v`; compare/store `d2(v,u)` | C proposal `(target=v,neighbor=u)`; center-specific tests |
-| Algorithm 1, `TryInsert(v,C[u],omega)` | Cross-update `v` into the neighborhood centered on `u` | Target center is `u`; compare/store `d2(u,v)` | C proposal `(target=u,neighbor=v)`; center-specific tests |
-| Algorithm 1, occlusion test | An occluding `v` clears the candidate flag | Accumulate `flag=false` but continue all later `v` visits so every required cross-`TryInsert` has equivalent effect | working-G loop; occluded-cross-update oracle |
-| Algorithm 1, if flag then remove occluded `v` | A surviving candidate removes current graph members it occludes | Remove from the current node-owned working `G[i]` before candidate insertion | working-G mutation; removal tests |
-| Algorithm 1, `TryInsert(u,G[i],lambda)` | Insert accepted candidate and retain bounded closest members | Apply set insertion/top-`lambda`; if `u` is then evicted, prior removals remain | TryInsert helper; capacity/rollback tests |
-| Algorithm 1, loop order | `G[i]` is changed during the candidate loop | Earlier changes to working `G[i]` are visible to later candidates for the same `i` in the same round | per-node sequential candidate loop; ordered oracle |
-| Algorithm 1, return `G` | Final extended-neighborhood graph is `G` | Serialize normalized `G` as LocalNodeId adjacency after convergence only | B1 stage/native writer; Artifact tests |
+| Section 3.2, graph definitions | `C[i]` keeps up to `omega` nearest intermediate neighbors; `R[i]` is the reverse neighborhood from the preceding iteration; `G[i]` keeps up to `lambda` diversified extended neighbors | `C/G` are owner-distance ordered and bounded; `R` is unique but not capacity-bounded | `NormalizedRoundState`, `normalize_neighbors`, and `normalize_reverse` in `xn_descent_algorithm.*`; round/resource tests |
+| Algorithm 1, initialization | Initialize every `G[i]` and `R[i]` empty and `C[i]` with `omega` random points | Use all available unique non-self points when fewer than `omega`; otherwise use the versioned per-node seeded sampler | `initialize_neighbor_ids` and `initialize_state`; parameter and round-oracle tests |
+| Algorithm 1, convergence loop | Repeat until `Converged`; the paper does not define the predicate | Execute full deterministic synchronous rounds; converge immediately on complete normalized `C/R/G` equality or after three consecutive stable-`C/G` rounds covering a possible `R` two-cycle; cap is separate | `execute_round` and `run_algorithm`; `xn_descent_round_oracle_test` plus termination/resource CTests |
+| Algorithm 1, `C_hat[i] <- C[i] union R[i]` | Current near and prior reverse neighborhoods form candidates | Candidate membership comes from the round-start snapshot and is traversed by `(d2(i,u),u)` | `candidate_ids_for` and the owner candidate loop in `execute_round`; round oracle |
+| Algorithm 1, clear `R` | Reverse state is regenerated each iteration | Build `R_(t+1)` from current-round reverse proposals; commit next round | exact reverse counting/proposals and deterministic reduction in `execute_round`; round/resource tests |
+| Algorithm 1, `R[u] <- R[u] union {i}` | Every candidate relation creates a reverse relation | Emit the reverse proposal before candidate acceptance/occlusion outcome; do not cap `R` | `RoundProposals::reverse_r` population before worker processing; occluded-candidate and uncapped-R tests |
+| Algorithm 1, `flag[u] <- true` | Per-candidate acceptance starts true | `flag` is local logical state for the current `(i,u)` check, not a global or cross-thread shared flag | local `not_occluded` variable inside the node-owned `execute_round` candidate loop; determinism/oracle tests |
+| Algorithm 1, iterate `v in G[i]`, `v != u` | Compare the candidate with every relevant current graph neighbor | Iterate canonical working `G[i]`; do not terminate the loop after finding an occluder | `WorkingGState` scan in `execute_round`; multi-occluder oracle |
+| Algorithm 1, `TryInsert(u,C[v],omega)` | Cross-update `u` into the neighborhood centered on `v` | Target center is `v`; compare/store `d2(v,u)` | `submit_cross(current.id,candidate)` and `reduce_cross_try_insert`; center-specific test |
+| Algorithm 1, `TryInsert(v,C[u],omega)` | Cross-update `v` into the neighborhood centered on `u` | Target center is `u`; compare/store `d2(u,v)` | `submit_cross(candidate,current.id)` and `reduce_cross_try_insert`; center-specific test |
+| Algorithm 1, occlusion test | An occluding `v` clears the candidate flag | Accumulate `flag=false` but continue all later `v` visits so every required cross-`TryInsert` has equivalent effect | local `not_occluded` update without a loop break; occluded-cross-update oracle |
+| Algorithm 1, if flag then remove occluded `v` | A surviving candidate removes current graph members it occludes | Remove from the current node-owned working `G[i]` before candidate insertion | role-reversed `equation_two_occludes` erase in `execute_round`; removal oracle |
+| Algorithm 1, `TryInsert(u,G[i],lambda)` | Insert accepted candidate and retain bounded closest members | Apply set insertion/top-`lambda`; if `u` is then evicted, prior removals remain | `try_insert(owner,candidate,lambda,...)` after the erase; capacity/rollback tests |
+| Algorithm 1, loop order | `G[i]` is changed during the candidate loop | Earlier changes to working `G[i]` are visible to later candidates for the same `i` in the same round | owner-local `WorkingGState` in `execute_round`; ordered single-round oracle |
+| Algorithm 1, return `G` | Final extended-neighborhood graph is `G` | Serialize normalized `G` as LocalNodeId adjacency after convergence only | `native_graph_bytes` and `XnDescentLocalBuild::build`; Artifact/validator tests |
 
 ## 2. Equation (2)
 
@@ -52,7 +52,7 @@ alpha^2 * d2(v,u) < d2(i,u)
 ```
 
 Both comparisons remain strict. Equality in either one is non-occluding. Sorting and LocalNodeId
-tie-breaking are independent of this predicate. The planned scale-safe comparator evaluates the
+tie-breaking are independent of this predicate. The implemented scale-safe comparator evaluates the
 `alpha^2` product relation without overflowing an intermediate `double`; it never uses
 `alpha * d2(v,u)`.
 
@@ -66,7 +66,8 @@ alpha^2 * d2(u,v) < d2(i,v)
 
 Reusing the candidate-rejection labels without this role reversal would remove the wrong nodes.
 
-Planned ownership: private Equation (2) helper in `xn_descent_algorithm.*`, with equality,
+Implemented ownership: `scaled_alpha_squared_strict_less` and `equation_two_occludes` in
+`xn_descent_algorithm.*`, with equality,
 wrong-`alpha`, non-finite, zero-distance, overflow-range, and ordinary cases in
 `xn_descent_equation_try_insert_test.cpp`.
 
@@ -122,13 +123,17 @@ adaptations in `research.md` and the Feature-local contracts.
 | LocalGraph metadata | `include/diskann_pipeline/artifacts.hpp`; `contracts/v1/schemas/local-graph-artifact.schema.json` | Reuse v1 and LocalNodeId; do not add XN fields or Artifact v2 |
 | Descriptor | `include/diskann_pipeline/implementation.hpp` | Declare exact Dataset/Partition requirements, services, LocalGraph output, ID spaces, and capability |
 | Candidate admission | `src/pipeline/pipeline_executor.cpp`; `src/validation/artifact_validator.cpp` | Existing Validator and producer/consumer handoff run before publication/downstream |
-| Parameter validator gap | `src/validation/parameter_validator.cpp` | Runtime B1/runner must enforce numeric, enum, finite, and conditional semantics, not rely on schema keywords alone |
+| Parameter validator gap | `src/validation/parameter_validator.cpp` implements recursive `type`, `const`, `required`, `additionalProperties`, and `properties`, but not numeric bounds, `enum`, or conditionals | Keep the public validator unchanged; B1 parsing owns XN semantic/profile checks and the XN runner explicitly parses `merge.R` in `1..UINT32_MAX` before Registry/factory/workspace/stage activity |
+| XN profile validation | `src/papers/xn_graph/xn_descent/parameters.cpp::parse_parameters` | Accept both full-pipeline profiles with any positive uint32 `lambda`; retain strict fields, alpha/seed/policy checks, Algorithm 1, and convergence semantics |
+| XN runner preflight | `src/papers/xn_graph/xn_descent/xn_descent_experiment_runner.cpp::preflight` and `require_merge_degree` | Admit both full-pipeline profiles; parse signed/unsigned integer `merge.R` without `double`, reject missing/bool/string/fraction/negative/zero/overflow with a merge-specific reason before any factory or stage call |
 | P0 membership/maps | `specs/002-cpp-main-upstream-baseline/source-mapping.md` SM013–SM018; `p0_partition.cpp` | Select exact PartitionId and copy its complete map; P0 centroid is not an entry point |
 | B0 entry concept | pinned `in_mem_data_store.cpp` centroid/medoid selection and `index.cpp` link/save path | B1 local medoid is conceptually aligned but explicitly a separate deterministic adaptation |
 | Native local graph | `specs/002-cpp-main-upstream-baseline/contracts/native-formats.md` section 6; pinned `in_mem_graph_store.cpp` | Emit exact reviewed header/rows; actual observed maximum in header; zero frozen points |
 | Native validator | `src/baseline/cpp_main/native_formats.cpp`; `src/validation/artifact_validator.cpp` | Reuse length/range/header/degree checks; add producer tests/checks for self/duplicate adjacency |
 | M0 input | `src/baseline/cpp_main/m0_merge.cpp`; source mapping SM025–SM028 | Preserve exact native map/graph media, lineage, local entry mapping; do not add pruning/refinement |
-| M0 parameters | `m0_merge.cpp` and pinned `merge_shards` | Use explicit positive `merge.R`; do not impose B0 degree 10 or fixed R 16 on reusable M0 |
+| M0 parameters | `m0_merge.cpp`, M0 descriptor, and pinned `merge_shards` | Descriptor selects `cpp-main-m0-parameters-v1.1.0.schema.json`; use explicit positive `merge.R`; do not impose B0 degree 10 or fixed R 16 on reusable M0; keep runtime range defense |
+| Frozen Baseline request | `src/baseline/cpp_main/cpp_main_baseline_runner.cpp::require_request`; `contracts/baseline-v1/schemas/cpp-main-run-request.schema.json`; `tests/python/test_cpp_main_baseline_config.py` | Directly enforces integer merge `R=16` and `use_filters=false` before workspace/services; Python normalization remains supporting rather than sole evidence |
+| Direct Baseline runner test | `tests/cpp/baseline/test_cpp_main_pipeline.cpp`; `tests/cpp/baseline/CMakeLists.txt` | Uses the actual `cpp_main_baseline_runner` executable path and proves an otherwise valid merge-`R=7` Baseline request fails at the executable boundary |
 | Generic executor modes | `include/diskann_pipeline/pipeline.hpp`; `pipeline_executor.cpp` | Reuse full P→B→M; no XN-specific Merge or local-only lifecycle |
 | Manifest evidence | `include/diskann_pipeline/provenance.hpp`; stage-owned manifest handling in `pipeline_executor.cpp` | Reuse BuildManifest/status/failure/metrics; precise non-convergence reason does not need public enum |
 | Registry pattern | existing OGP/HNSW paper runners; empty `production_registry.cpp` | Register B1 only in Feature-local runner; do not alter production Registry |
@@ -147,7 +152,8 @@ Feature-local encoding contract therefore records:
 
 This is an additive producer binding, not an alteration of the byte layout, public Artifact
 schema, pinned `merge_shards` semantics, M0 identity, or upstream source. Parameterizing the
-existing M0 wrapper and parameter schema with explicit `merge.R` is a separate reusable-M0 change.
+existing M0 wrapper with explicit `merge.R` and selecting its versioned parameter-contract
+revision is a separate reusable-M0 change.
 Any encoding deviation must fail closed rather than be labeled cpp_main-native.
 
 ## 8. Deviations and substitutions
@@ -160,10 +166,10 @@ Any encoding deviation must fail closed rather than be labeled cpp_main-native.
 | Unspecified convergence/cap | immediate full normalized fixed point, or proved three-round stable-`C/G` closure across a possible `R` two-cycle, plus safety-cap failure | faithful adaptation based on deterministic cycle evidence; stable `G` alone remains insufficient |
 | Unspecified entry point | deterministic local medoid | pipeline-contract adaptation |
 | Paper graph serialization | existing LocalGraphArtifact/v1 plus pinned cpp_main native payload | repository/M0 integration adaptation |
-| `lambda=64` all-memory evaluation setting | Explicit B1 parameter in the partitioned P0/B1/M0 path | parameter provenance only; no all-memory or local-only reproduction claim |
+| `lambda=64` all-memory evaluation setting | Optional explicit B1 parameter example in the partitioned P0/B1/M0 path, not a paper-style constant | parameter provenance only; no all-memory or local-only reproduction claim |
 | Secondary Index, IMF Search, SSD layout/cache | not implemented | no full-system, SSD, hop, QPS, or latency reproduction claim |
 
-## 9. Planned implementation ownership
+## 9. Actual implementation ownership
 
 ```text
 src/papers/xn_graph/xn_descent/
@@ -176,7 +182,40 @@ src/papers/xn_graph/xn_descent/
                                     # complete P0/B1/M0 request validation and execution
 ```
 
-The implementation may consolidate private files, but it must not move XN algorithm
+The implementation remains private to these files and must not move XN algorithm
 responsibilities into the generic pipeline, M0, production Registry, Harness, Loop Engine, or
-upstream code. M0 changes are limited to its existing parameter schema and wrapper admission of
-explicit positive `merge.R`; its identity and pinned merge algorithm remain unchanged.
+upstream code. Reusable-M0 algorithm changes are limited to the wrapper admission of explicit
+positive `merge.R` completed by T031. T033 adds only the reviewed parameter-contract revision and
+descriptor path, plus the independent frozen-Baseline runner guard; M0 identity and the pinned
+merge algorithm remain unchanged.
+
+Parameter-contract revision `1.1.0` adds, without replacing the historical paths:
+
+- `contracts/baseline-v1/schemas/cpp-main-m0-parameters-v1.1.0.schema.json`;
+- `specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`;
+- `contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json`.
+
+The M0 and B1 descriptors point to their revised runtime paths while retaining identity/version.
+The M0 `$id` is
+`https://diskann-repro.local/contracts/baseline-v1/cpp-main-m0-parameters-v1.1.0.schema.json`; both
+byte-identical XN copies share
+`https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`.
+Each is new relative to its historical contract. `SOURCES.json` carries the computed XN SHA-256. The old schemas
+and historical validation evidence remain distinguishable and are not retroactively upgraded.
+
+## 10. Actual test and CTest mapping
+
+| Test source | Registered CTest names | Validated responsibility |
+|---|---|---|
+| `tests/cpp/papers/xn_graph/xn_descent_parameters_test.cpp` | `xn_descent_parameters_test` | strict parameters, profiles, descriptor schema revision and schema-copy provenance |
+| `tests/cpp/papers/xn_graph/xn_descent_equation_try_insert_test.cpp` | `xn_descent_equation_test`; `xn_descent_try_insert_test` | strict squared-L2 Equation (2), scale-safe `alpha^2`, target-centered bounded insertion |
+| `tests/cpp/papers/xn_graph/xn_descent_round_oracle_test.cpp` | `xn_descent_round_oracle_test` | complete single-round and convergence oracles, cross-update visibility and both convergence conditions |
+| `tests/cpp/papers/xn_graph/xn_descent_local_artifact_test.cpp` | `xn_descent_local_artifact_test` | deterministic entry point, native payload, LocalGraph fields, Validator and stage Manifest/failure behavior |
+| `tests/cpp/papers/xn_graph/xn_descent_determinism_test.cpp` | `xn_descent_determinism_test`; `xn_descent_termination_test`; `xn_descent_resource_test` | thread/schedule replay, fixed point and R-cycle termination, memory/allocation/cancellation behavior |
+| `tests/cpp/papers/xn_graph/xn_descent_pipeline_test.cpp` | `xn_descent_pipeline_preflight_test`; `xn_descent_small_pipeline_test` | request preflight, parameter-contract paths, complete multi-Partition P0/B1/M0 execution and downstream gates |
+
+The first eight XN CTests are available in the Baseline-OFF core build. The two pipeline CTests and
+`xn_descent_experiment_runner` are intentionally created only with
+`DISKANN_CPP_MAIN_BASELINE=ON`. T034 recorded macOS core 33/33 and Docker Linux/amd64 25/25
+regressions; those results do not substitute for T037's user-executed external Linux evidence or
+the still-gated SIFT1M run.

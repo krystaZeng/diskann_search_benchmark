@@ -46,6 +46,18 @@ contract adaptations, not paper-stated XN-Descent behavior.
 stable identity, provisionally `xn_graph_xn_descent_local_build_v1`, and MUST be reported in
 `faithful_adaptation` mode.
 
+**Parameter Contract Revision**: The relaxed M0 and XN parameter contracts are revision `1.1.0`,
+identified by their exact versioned schema paths and these `$id` values:
+`https://diskann-repro.local/contracts/baseline-v1/cpp-main-m0-parameters-v1.1.0.schema.json` and
+`https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`.
+Each is distinct from its historical contract; the byte-identical Feature/runtime XN copies share
+the latter `$id`. The existing M0 and
+B1 implementation identities and implementation versions remain unchanged. The normalized XN
+document still carries `schema_version: xn-descent-parameters/v1`, and the M0 parameter object
+still contains only `R` and `use_filters`; no request-version field or conversion lifecycle is
+added. The old schema paths and historical validation evidence remain preserved as the design
+baseline and MUST NOT be represented as having validated revision `1.1.0`.
+
 **Algorithm Basis**: For each local node `i`, Algorithm 1 maintains candidate neighborhood `C[i]`,
 reverse neighborhood `R[i]`, and extended neighborhood `G[i]`. Candidates from `C[i] ∪ R[i]`
 are checked against `G[i]` using the paper's Equation (2). Every candidate/neighbor encounter also
@@ -191,6 +203,19 @@ as applicable; none may be described as paper-prescribed behavior.
   Feature 002's `R=16` and B0 local degree 10 remain frozen values of the Baseline Profile and its
   runner, not universal M0 capability limits. XN runs in this Feature use only the complete
   partitioned path P0 → B1 × Partition count → M0 → GlobalGraph.
+- Q: How is the relaxed parameter boundary versioned and where are its runtime range checks owned?
+  → A: Parameter-contract revision `1.1.0` uses new versioned M0, Feature-local XN, and runtime XN
+  schema paths. M0 and XN each receive a new `$id` distinct from their historical contract, while
+  the two byte-identical XN revision schemas share the same XN `$id` and are tracked by
+  `SOURCES.json`; the existing M0 and B1 descriptors point to the new
+  exact paths without changing their implementation identity/version. Generic
+  `ParameterValidator` remains a structural/type/constant gate and is not credited with enforcing
+  numeric minima or maxima. XN `parameters.cpp` removes the old profile-specific `lambda<=10` and
+  `lambda=64` rules, while retaining all core parameter checks. The Feature-local XN runner must
+  validate integer `merge.R` in `1..UINT32_MAX` before Registry or factory construction, expensive
+  allocation, or P0/B1/M0 execution; the M0 runtime retains the same defense-in-depth check. The
+  fixed Baseline runner separately rejects any Baseline request whose merge parameters are not
+  exactly integer `R=16` and `use_filters=false` before workspace or runtime-service creation.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -247,12 +272,16 @@ runner, and upstream tree remain unchanged.
    every Partition and existing M0 consumes the complete collection with explicit positive
    `merge.R`.
 2. **Given** `lambda` and `merge.R`, **When** compatibility preflight runs, **Then** each parameter
-   is validated independently; neither is derived from the other and a legal `lambda > 10` is not
-   rejected solely because it exceeds the frozen Baseline's B0 local degree.
+   is validated independently; neither is derived from the other, a legal `lambda > 10` is not
+   rejected solely because it exceeds the frozen Baseline's B0 local degree, and an invalid
+   `merge.R` is rejected with a merge-parameter-specific reason before any factory or stage call.
 3. **Given** B0 and B1 are both available, **When** either implementation is selected, **Then** they
    coexist under distinct identities and the frozen Baseline path continues to select B0.
 4. **Given** any invalid input or B1 output, **When** a downstream action is requested, **Then** the
    validator gate prevents M0, evaluation, reuse, comparison, and aggregation from starting.
+5. **Given** either `pipeline-compatible` or `paper-style`, **When** its parameters are otherwise
+   legal, **Then** it uses the same complete partitioned lifecycle; `paper-style` may use 64 or any
+   other legal explicit `lambda` and does not imply a separate runner.
 
 ---
 
@@ -316,9 +345,10 @@ collection is merged, and the result retains component-level faithful-adaptation
 2. **Given** a `pipeline-compatible` profile, **When** it enters P0 → B1 → M0, **Then** it enforces
    independent legal values for `lambda` and `merge.R` and is identified as a component adaptation
    using the reusable M0 rather than as the frozen Baseline Profile.
-3. **Given** a paper-reported `lambda = 64` example, **When** the XN pipeline validates it, **Then**
-   it follows the same partitioned P0 → B1 × Partition count → M0 → GlobalGraph path and does
-   not use a local-only or full-memory execution lifecycle.
+3. **Given** a `paper-style` parameter selection, including the paper-reported `lambda = 64`
+   example, **When** the XN pipeline validates it, **Then** `lambda` is not forced to 64 and the
+   request follows the same partitioned P0 → B1 × Partition count → M0 → GlobalGraph path without
+   a local-only or full-memory execution lifecycle.
 4. **Given** that BBP, Secondary Index, IMF Search, and SSD layout are absent, **When** results are
    summarized, **Then** no complete-system or paper end-to-end SSD performance claim is made.
 
@@ -346,7 +376,7 @@ collection is merged, and the result retains component-level faithful-adaptation
   an out-of-range LocalNodeId, or has an illegal entry point.
 - `lambda` and `merge.R` differ substantially, including `lambda > 10`, and an implementation
   mistakenly derives one from the other or rejects the composition using the frozen B0 degree.
-- `merge.R` is zero, missing, non-integral, or otherwise invalid.
+- `merge.R` is missing, boolean, string, fractional, negative, zero, or greater than `UINT32_MAX`.
 - One or more expected Partition-local graphs are absent, duplicated, partial, or invalid when M0
   admission is attempted.
 - A partitioned P0/B1/M0 run is presented as if it used BBP or the paper's complete disk-search
@@ -413,14 +443,18 @@ collection is merged, and the result retains component-level faithful-adaptation
   `lambda = 64` setting are parameter guidance or examples, not universal bounds or a separate
   execution profile.
 - **FR-016**: Every XN pipeline request MUST provide explicit positive `lambda` for B1 and explicit
-  positive `merge.R` for M0. The two parameters MUST be validated independently and MUST NOT be
-  derived from one another. The reusable M0 MUST accept structurally valid LocalGraphArtifact/v1
-  inputs whose declared or observed degree exceeds 10 and MUST continue to call the pinned
+  `merge.R` for M0. The two parameters MUST be validated independently and MUST NOT be derived
+  from one another. `merge.R` MUST be an integer in `1..UINT32_MAX`; missing, boolean, string,
+  fractional, negative, zero, and oversized values MUST fail with a `merge.R`-specific reason
+  before Registry/factory construction, expensive allocation, or any P0/B1/M0 invocation. The
+  reusable M0 MUST retain the same runtime check, accept structurally valid LocalGraphArtifact/v1
+  inputs whose declared or observed degree exceeds 10, and continue to call the pinned
   `merge_shards` algorithm with the requested `merge.R`.
 - **FR-017**: The Feature MUST distinguish `semantic-small`, `pipeline-compatible`, and
   `paper-style` profiles. `semantic-small` remains limited to core, oracle, and contract
   validation. Both full-pipeline profiles use one B1 per Partition and the reusable M0.
-  Neither profile adds a local-only or all-memory runner path.
+  Neither profile adds a local-only or all-memory runner path. Both full-pipeline profiles admit
+  every otherwise legal positive `lambda`; `paper-style` does not require `lambda=64`.
 - **FR-018**: B1 MUST report convergence immediately when one complete deterministic round leaves
   every node's normalized logical `C`, `R`, and `G` state unchanged, with
   `convergence_condition=full_state_fixed_point` and `fixed_point=true`. It MUST also report
@@ -459,7 +493,11 @@ collection is merged, and the result retains component-level faithful-adaptation
   LocalGraphArtifact.
 - **FR-024**: B1 MUST declare `requires`, `provides`, accepted Artifact versions, input/output ID
   spaces, capabilities, required runtime services, and its parameter contract before registration
-  or execution.
+  or execution. Parameter-contract revision `1.1.0` MUST be identified by the descriptor's exact
+  versioned schema path and a distinct versioned `$id`, while retaining the existing implementation
+  identities/versions and XN document `schema_version`. The Feature-local and runtime XN revision
+  schemas MUST be byte-identical and their actual SHA-256/source/target mapping MUST be recorded in
+  `SOURCES.json`; old schemas and historical validation evidence MUST remain distinguishable.
 - **FR-025**: Every input MUST pass its corresponding validator before B1 starts, and every B1
   output MUST pass the existing `LocalGraphArtifact/v1` validator before downstream execution,
   evaluation, comparison, cache reuse, or aggregation.
@@ -538,7 +576,10 @@ collection is merged, and the result retains component-level faithful-adaptation
 - **SC-005**: 100% of valid P0 → B1 × Partition count → M0 → GlobalGraph requests, including
   requests with `lambda > 10`, validate `lambda` and positive explicit `merge.R` independently,
   validate every B1 output before M0, and pass the complete Partition-local graph collection to
-  the reusable M0. Invalid `merge.R` or an invalid/partial collection starts no M0 execution.
+  the reusable M0. Invalid `merge.R` starts no Registry factory or P0/B1/M0 execution and reports
+  the merge parameter as the failure source; an invalid/partial collection starts no M0 execution.
+  The fixed Baseline runner independently rejects merge parameters other than integer `R=16` and
+  `use_filters=false` before workspace or runtime-service construction.
 - **SC-006**: 100% of invalid parameter, input, capability, ID-space, checksum, lineage, known
   pre-allocation budget, cancellation, runtime resource-failure, and cap-limited non-convergence
   cases publish no valid Artifact and cannot enter downstream execution or aggregation.
@@ -563,6 +604,9 @@ collection is merged, and the result retains component-level faithful-adaptation
 - The pinned `merge_shards` implementation can serve as reusable M0 with explicit positive
   `merge.R`. The fixed Baseline Profile and runner continue to use global `R=16` and B0 local
   degree 10; those values do not constrain XN's `lambda`.
+- The relaxed parameter-contract revision is `1.1.0`, identified by versioned descriptor schema
+  paths and `$id` values rather than by changing the XN document's `schema_version` or adding a
+  request conversion flow. Existing implementation identities and versions remain unchanged.
 - The paper does not provide enough information to uniquely determine PRNG, seed derivation,
   candidate tie order, race-free parallel semantics, convergence, iteration cap, or local entry
   point. This Clarify session fixes their required observable semantics where applicable; Plan

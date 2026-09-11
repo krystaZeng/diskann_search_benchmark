@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -117,6 +118,34 @@ void require_request(const Json& request) {
       implementations.at("merge") != native::kM0ImplementationId) {
     throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
                             "cpp_main implementation selection drifted");
+  }
+
+  if (!request.contains("stage_parameters") ||
+      !request.at("stage_parameters").is_object() ||
+      !request.at("stage_parameters").contains("merge") ||
+      !request.at("stage_parameters").at("merge").is_object() ||
+      !request.at("stage_parameters").at("merge").contains("R")) {
+    throw dp::PipelineError(
+        dp::ErrorCategory::kSchemaInvalid,
+        "cpp_main frozen Baseline merge.R must be integer 16");
+  }
+  const auto& merge = request.at("stage_parameters").at("merge");
+  const auto& degree = merge.at("R");
+  const bool frozen_degree =
+      (degree.is_number_unsigned() && degree.get<std::uint64_t>() == 16) ||
+      (degree.is_number_integer() && !degree.is_number_unsigned() &&
+       degree.get<std::int64_t>() == 16);
+  if (!frozen_degree) {
+    throw dp::PipelineError(
+        dp::ErrorCategory::kSchemaInvalid,
+        "cpp_main frozen Baseline merge.R must be integer 16");
+  }
+  if (!merge.contains("use_filters") ||
+      !merge.at("use_filters").is_boolean() ||
+      merge.at("use_filters").get<bool>()) {
+    throw dp::PipelineError(
+        dp::ErrorCategory::kSchemaInvalid,
+        "cpp_main frozen Baseline merge.use_filters must be false");
   }
 }
 

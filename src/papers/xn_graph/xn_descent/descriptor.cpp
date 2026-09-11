@@ -19,7 +19,7 @@ ImplementationDescriptor descriptor() {
            IdSpace::kLocal,
            {"graph.local_adjacency/v1"}},
           "contracts/papers/xn-graph-xn-descent-v1/schemas/"
-          "xn-descent-parameters.schema.json",
+          "xn-descent-parameters-v1.1.0.schema.json",
           false};
 }
 

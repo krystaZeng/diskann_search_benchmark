@@ -39,9 +39,20 @@ provides:
   output_id_space: local
   capabilities:
     - graph.local_adjacency/v1
-parameter_schema_path: contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters.schema.json
+parameter_schema_path: contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json
 test_only: false
 ```
+
+The descriptor keeps its existing implementation identity and version. Its exact schema path and
+the shared Feature/runtime XN `$id`
+`https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`
+select parameter-contract revision `1.1.0`; this value is distinct from the historical XN `$id`,
+and the JSON Schema dialect URI does not select a contract revision. The normalized parameter document remains
+`schema_version: xn-descent-parameters/v1`. The Feature source at
+`specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json` and the
+runtime schema above are byte-identical and their real SHA-256 mapping is recorded in
+`contracts/papers/xn-graph-xn-descent-v1/SOURCES.json`. Existing schema paths and historical
+evidence remain preserved as the pre-relaxation baseline.
 
 The stage accepts an aggregate PartitionArtifact plus one explicit PartitionId. It resolves vectors
 by applying the selected LocalToGlobal map before calling `VectorAccessor`. It does not require a
@@ -161,7 +172,15 @@ Before constructing the Registry or invoking P0, a Feature-local runner requires
 - exact current M0 identity;
 - profile `pipeline-compatible` or `paper-style`;
 - explicit positive B1 `lambda`;
-- explicit positive M0 `merge.R`, independent of `lambda`.
+- explicit M0 `merge.R` as an integer in `1..UINT32_MAX`, independent of `lambda`.
+
+The Feature-local runner checks `merge.R` before Registry/factory construction, expensive
+allocation, workspace/runtime-service creation, or stage dispatch. Missing, boolean, string,
+fractional, negative, zero, and greater-than-`UINT32_MAX` values fail with a
+`merge.R`-specific reason; factory and P0/B1/M0 invocation counts remain zero. Signed and unsigned
+JSON integers are range-checked before uint32 conversion and no `double` comparison is used. The
+public `ParameterValidator` remains structural/type/constant-only, and M0 repeats the range check
+at runtime.
 
 Invalid request fields fail before stage dispatch. Success uses the existing `PipelineExecutor`,
 produces and validates one B1 LocalGraph for every Partition, and passes only the complete valid
@@ -170,10 +189,18 @@ collection to the existing M0. M0 calls pinned `merge_shards` with `merge.R`.
 The frozen Feature 002 Baseline Profile remains `R=16` with B0 local degree 10. Parameterizing the
 reusable M0 does not change those runner values or create a new Merge identity or algorithm.
 
+Because the reusable M0 revision accepts positive values other than 16, the fixed Baseline runner
+must independently require integer merge R=16 and use_filters=false at its request boundary before
+workspace, runtime-service, Registry, or stage creation. The direct executable-entry regression is
+owned by tests/cpp/baseline/test_cpp_main_pipeline.cpp, with only the actual
+cpp_main_baseline_runner target path supplied by tests/cpp/baseline/CMakeLists.txt. The existing
+Python profile-normalization test remains applicable but does not replace the direct runner test.
+
 ### 7.2 paper-style parameter profile
 
-`paper-style` may identify a paper-derived parameter selection such as `lambda=64`, but it does not
-select a different lifecycle. It must provide explicit `merge.R` and use the same complete P0,
+`paper-style` may identify a paper-derived parameter selection such as `lambda=64`, but 64 is not
+required and it does not select a different lifecycle. It must provide explicit `merge.R` and use
+the same complete P0,
 per-Partition B1, reusable M0, and GlobalGraph path. It cannot be labeled Baseline-compatible or
 full-system reproduction.
 

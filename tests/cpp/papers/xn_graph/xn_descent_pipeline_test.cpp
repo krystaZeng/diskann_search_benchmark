@@ -16,7 +16,9 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -62,34 +64,21 @@ Json local_parameters(const std::string& profile, std::uint32_t lambda) {
 
 Json request(const std::filesystem::path& workspace,
              const dp::ArtifactRef& dataset, const std::string& run_id,
-             const std::string& profile, std::uint32_t lambda) {
-  return {{"request_version", "1.0.0"},
-          {"operation", "execute"},
-          {"request_id", run_id},
-          {"study_class", "single_paper_reproduction"},
-          {"reproduction_mode", "faithful_adaptation"},
-          {"replacement_scope", "local_build_only"},
-          {"profile", profile},
-          {"workspace",
-           {{"root", std::filesystem::absolute(workspace).string()},
-            {"memory_budget_bytes", 1024ULL * 1024ULL * 1024ULL},
-            {"thread_budget", 2}}},
-          {"dataset", Json::parse(dp::serialize_artifact_ref(dataset))},
-          {"implementations",
-           {{"partition", native::kP0ImplementationId},
-            {"local_build", xn::kImplementationId},
-            {"merge", native::kM0ImplementationId}}},
-          {"stage_parameters",
-           {{"partition",
-             {{"R", 16},
-              {"build_DRAM_budget_gib", 0.6},
-              {"replication_factor", 2},
-              {"sample_probability", 1.0}}},
-            {"local_build", local_parameters(profile, lambda)},
-            {"merge", {{"R", 16}, {"use_filters", false}}}}},
-          {"source_config",
-           {{"yaml_sha256", std::string(64, 'a')},
-            {"normalized_json_sha256", std::string(64, 'b')}}}};
+             const std::string& profile, std::uint32_t lambda,
+             Json merge_r = 16) {
+  const auto fixture_path =
+      std::filesystem::path(XN_DESCENT_TEST_PROJECT_ROOT) /
+      "tests/fixtures/xn_descent/pipeline-compatible-request.json";
+  auto document = Json::parse(read_text(fixture_path));
+  document["request_id"] = run_id;
+  document["profile"] = profile;
+  document["workspace"]["root"] =
+      std::filesystem::absolute(workspace).string();
+  document["dataset"] = Json::parse(dp::serialize_artifact_ref(dataset));
+  document["stage_parameters"]["local_build"] =
+      local_parameters(profile, lambda);
+  document["stage_parameters"]["merge"]["R"] = std::move(merge_r);
+  return document;
 }
 
 xn::ExperimentStageFactories counting_factories(FactoryCounts& counts) {
@@ -161,7 +150,11 @@ void test_descriptor_and_composition() {
   DP_EXPECT_EQ(
       descriptor.parameter_schema_path.generic_string(),
       std::string("contracts/papers/xn-graph-xn-descent-v1/schemas/"
-                  "xn-descent-parameters.schema.json"));
+                  "xn-descent-parameters-v1.1.0.schema.json"));
+  DP_EXPECT_EQ(
+      native::m0_descriptor().parameter_schema_path.generic_string(),
+      std::string("contracts/baseline-v1/schemas/"
+                  "cpp-main-m0-parameters-v1.1.0.schema.json"));
   DP_EXPECT_TRUE(!descriptor.test_only);
 
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
@@ -196,31 +189,53 @@ void test_preflight_rejections() {
       "dataset/artifact.json", dp::ArtifactType::kDataset,
       "diskann-float32-dataset/v1", std::string(64, 'c')};
 
-  const auto lambda_workspace = temporary.path / "lambda-workspace";
-  FactoryCounts lambda_counts;
-  const auto lambda_factories = counting_factories(lambda_counts);
-  const auto lambda_result = xn::execute_pipeline_experiment_request(
-      request(lambda_workspace, placeholder, "xn-lambda-preflight",
-              "pipeline-compatible", 11)
-          .dump(),
-      &lambda_factories);
-  DP_EXPECT_EQ(lambda_result.execution.status, dp::StageStatus::kFailed);
-  DP_EXPECT_TRUE(lambda_result.execution.failure.has_value());
-  DP_EXPECT_TRUE(!std::filesystem::exists(lambda_workspace));
-  expect_zero_invocations(lambda_result, lambda_counts);
+  const auto expect_merge_rejected =
+      [&](const std::string& label, const std::optional<Json>& merge_r) {
+        const auto workspace = temporary.path / (label + "-workspace");
+        FactoryCounts counts;
+        const auto factories = counting_factories(counts);
+        auto document = request(workspace, placeholder, label,
+                                "pipeline-compatible", 12, 7);
+        if (merge_r) {
+          document["stage_parameters"]["merge"]["R"] = *merge_r;
+        } else {
+          document["stage_parameters"]["merge"].erase("R");
+        }
+        const auto result = xn::execute_pipeline_experiment_request(
+            document.dump(), &factories);
+        DP_EXPECT_EQ(result.execution.status, dp::StageStatus::kFailed);
+        DP_EXPECT_TRUE(result.execution.failure.has_value());
+        if (result.execution.failure) {
+          DP_EXPECT_TRUE(result.execution.failure->reason.find("merge.R") !=
+                         std::string::npos);
+        }
+        DP_EXPECT_TRUE(!std::filesystem::exists(workspace));
+        expect_zero_invocations(result, counts);
+      };
+  expect_merge_rejected("xn-merge-missing", std::nullopt);
+  expect_merge_rejected("xn-merge-bool", Json(true));
+  expect_merge_rejected("xn-merge-string", Json("7"));
+  expect_merge_rejected("xn-merge-fraction", Json(7.5));
+  expect_merge_rejected("xn-merge-negative", Json(-1));
+  expect_merge_rejected("xn-merge-zero", Json(0));
+  expect_merge_rejected(
+      "xn-merge-overflow",
+      Json(static_cast<std::uint64_t>(
+               std::numeric_limits<std::uint32_t>::max()) +
+           1ULL));
 
-  const auto paper_workspace = temporary.path / "paper-workspace";
-  FactoryCounts paper_counts;
-  const auto paper_factories = counting_factories(paper_counts);
-  const auto paper_result = xn::execute_pipeline_experiment_request(
-      request(paper_workspace, placeholder, "xn-paper-merge-preflight",
-              "paper-style", 64)
+  const auto semantic_workspace = temporary.path / "semantic-workspace";
+  FactoryCounts semantic_counts;
+  const auto semantic_factories = counting_factories(semantic_counts);
+  const auto semantic_result = xn::execute_pipeline_experiment_request(
+      request(semantic_workspace, placeholder, "xn-semantic-preflight",
+              "semantic-small", 4, 7)
           .dump(),
-      &paper_factories);
-  DP_EXPECT_EQ(paper_result.execution.status, dp::StageStatus::kFailed);
-  DP_EXPECT_TRUE(paper_result.execution.failure.has_value());
-  DP_EXPECT_TRUE(!std::filesystem::exists(paper_workspace));
-  expect_zero_invocations(paper_result, paper_counts);
+      &semantic_factories);
+  DP_EXPECT_EQ(semantic_result.execution.status, dp::StageStatus::kFailed);
+  DP_EXPECT_TRUE(semantic_result.execution.failure.has_value());
+  DP_EXPECT_TRUE(!std::filesystem::exists(semantic_workspace));
+  expect_zero_invocations(semantic_result, semantic_counts);
 }
 
 class MissingOutputLocal final : public dp::LocalGraphBuilder {
@@ -230,6 +245,27 @@ class MissingOutputLocal final : public dp::LocalGraphBuilder {
                         dp::StageContext&) override {
     return {dp::StageStatus::kSucceeded, std::nullopt, {}};
   }
+};
+
+class MissingAfterFirstLocal final : public dp::LocalGraphBuilder {
+ public:
+  explicit MissingAfterFirstLocal(std::shared_ptr<std::size_t> calls)
+      : calls_(std::move(calls)) {}
+
+  dp::StageResult build(const dp::ArtifactRef& partition,
+                        dp::PartitionId partition_id,
+                        const dp::LocalBuildConfig& config,
+                        dp::StageContext& context) override {
+    ++*calls_;
+    if (*calls_ == 2) {
+      return {dp::StageStatus::kSucceeded, std::nullopt, {}};
+    }
+    return xn::make_xn_descent_local_build()->build(
+        partition, partition_id, config, context);
+  }
+
+ private:
+  std::shared_ptr<std::size_t> calls_;
 };
 
 class CorruptingLocal final : public dp::LocalGraphBuilder {
@@ -271,32 +307,33 @@ class CorruptingLocal final : public dp::LocalGraphBuilder {
 
 struct SmallRun {
   std::unique_ptr<fixture::TemporaryDirectory> temporary;
+  dp::WorkspaceRef workspace;
+  dp::ArtifactRef dataset;
   xn::ExperimentRunnerResult result;
+  FactoryCounts factories;
 };
 
-SmallRun execute_small(
-    const std::string& label, dp::LocalBuildFactory local_factory = {}) {
+SmallRun execute_small(const std::string& label, const std::string& profile,
+                       std::uint32_t lambda, std::uint32_t merge_r,
+                       dp::LocalBuildFactory local_factory = {}) {
   auto temporary = std::make_unique<fixture::TemporaryDirectory>(label);
-  const auto workspace =
-      dp::create_workspace(temporary->path / "workspace");
+  const auto workspace = dp::create_workspace(temporary->path / "workspace");
   fixture::NativeDatasetFixture dataset(workspace, 96, 4);
   const auto document = request(workspace.root, dataset.reference, label,
-                                "pipeline-compatible", 4);
-  if (!local_factory) {
-    return {std::move(temporary),
-            xn::execute_pipeline_experiment_request(document.dump())};
-  }
-  xn::ExperimentStageFactories factories{native::make_p0_partition,
-                                         std::move(local_factory),
-                                         native::make_m0_merge};
-  return {std::move(temporary),
-          xn::execute_pipeline_experiment_request(document.dump(),
-                                                  &factories)};
+                                profile, lambda, merge_r);
+  SmallRun result{std::move(temporary), workspace, dataset.reference, {}, {}};
+  result.factories = {};
+  auto factories = counting_factories(result.factories);
+  if (local_factory) factories.local_build = std::move(local_factory);
+  result.result = xn::execute_pipeline_experiment_request(document.dump(),
+                                                          &factories);
+  return result;
 }
 
-void test_small_pipeline_and_validation_gate() {
-  const auto success_run = execute_small("xn-small-success");
-  const auto& success = success_run.result;
+void verify_successful_partitioned_merge(const SmallRun& run,
+                                         std::uint32_t lambda,
+                                         std::uint32_t merge_r) {
+  const auto& success = run.result;
   if (success.execution.failure) {
     std::cerr << "XN small pipeline failure: "
               << success.execution.failure->reason << '\n';
@@ -306,6 +343,19 @@ void test_small_pipeline_and_validation_gate() {
   DP_EXPECT_TRUE(success.execution.invocations.local_build >= std::size_t{2});
   DP_EXPECT_EQ(success.execution.invocations.local_build,
                success.execution.local_artifacts.size());
+  DP_EXPECT_EQ(success.execution.local_partition_ids.size(),
+               success.execution.local_artifacts.size());
+  DP_EXPECT_TRUE(std::is_sorted(success.execution.local_partition_ids.begin(),
+                                success.execution.local_partition_ids.end()));
+  DP_EXPECT_TRUE(std::adjacent_find(
+                     success.execution.local_partition_ids.begin(),
+                     success.execution.local_partition_ids.end()) ==
+                 success.execution.local_partition_ids.end());
+  DP_EXPECT_EQ(success.execution.invocations.partition,
+               run.factories.partition);
+  DP_EXPECT_EQ(success.execution.invocations.local_build,
+               run.factories.local_build);
+  DP_EXPECT_EQ(success.execution.invocations.merge, run.factories.merge);
   DP_EXPECT_EQ(success.execution.invocations.merge, std::size_t{1});
   DP_EXPECT_TRUE(success.execution.partition_artifact.has_value());
   DP_EXPECT_TRUE(success.execution.artifact.has_value());
@@ -322,24 +372,63 @@ void test_small_pipeline_and_validation_gate() {
   }
   DP_EXPECT_EQ(valid_local_evidence,
                success.execution.local_artifacts.size());
+  const auto validator = dp::Validator(run.workspace);
+  for (const auto& local : success.execution.local_artifacts) {
+    DP_EXPECT_TRUE(validator.validate_with_lineage(local).valid());
+    const auto metadata_path = dp::resolve_normal_artifact_metadata(
+        run.workspace, local.metadata_path);
+    const auto metadata = Json::parse(read_text(metadata_path));
+    DP_EXPECT_EQ(metadata.at("structural").at("declared_max_degree"),
+                 lambda);
+    DP_EXPECT_TRUE(metadata.at("structural")
+                       .at("observed_max_degree")
+                       .get<std::uint32_t>() <= lambda);
+  }
+  if (success.execution.artifact) {
+    DP_EXPECT_TRUE(
+        validator.validate_with_lineage(*success.execution.artifact).valid());
+    const auto metadata_path = dp::resolve_normal_artifact_metadata(
+        run.workspace, success.execution.artifact->metadata_path);
+    const auto metadata = Json::parse(read_text(metadata_path));
+    DP_EXPECT_EQ(metadata.at("structural").at("declared_max_degree"),
+                 merge_r);
+    DP_EXPECT_TRUE(metadata.at("structural")
+                       .at("observed_max_degree")
+                       .get<std::uint32_t>() <= merge_r);
+  }
   const auto result_document = Json::parse(success.result_json);
   DP_EXPECT_EQ(result_document.at("claim_scope"),
                "component-level_faithful_adaptation");
   DP_EXPECT_EQ(result_document.at("replacement_scope"), "local_build_only");
   DP_EXPECT_EQ(result_document.at("full_xn_graph_system_reproduction"), false);
+}
 
+void test_small_pipeline_and_validation_gate() {
+  const auto pipeline_run = execute_small(
+      "xn-small-pipeline-lambda12-r7", "pipeline-compatible", 12, 7);
+  verify_successful_partitioned_merge(pipeline_run, 12, 7);
+
+  const auto paper_run =
+      execute_small("xn-small-paper-lambda64-r9", "paper-style", 64, 9);
+  verify_successful_partitioned_merge(paper_run, 64, 9);
+
+  const auto partial_calls = std::make_shared<std::size_t>(0);
   const auto partial_run = execute_small(
-      "xn-small-partial",
-      [] { return std::make_unique<MissingOutputLocal>(); });
+      "xn-small-partial", "pipeline-compatible", 12, 7,
+      [partial_calls] {
+        return std::make_unique<MissingAfterFirstLocal>(partial_calls);
+      });
   const auto& partial = partial_run.result;
   DP_EXPECT_EQ(partial.execution.status, dp::StageStatus::kInvalidOutput);
   DP_EXPECT_EQ(partial.execution.invocations.partition, std::size_t{1});
-  DP_EXPECT_EQ(partial.execution.invocations.local_build, std::size_t{1});
+  DP_EXPECT_EQ(partial.execution.invocations.local_build, std::size_t{2});
+  DP_EXPECT_EQ(partial.execution.local_artifacts.size(), std::size_t{1});
+  DP_EXPECT_EQ(*partial_calls, std::size_t{2});
   DP_EXPECT_EQ(partial.execution.invocations.merge, std::size_t{0});
   DP_EXPECT_TRUE(!partial.execution.artifact.has_value());
 
   const auto invalid_run = execute_small(
-      "xn-small-invalid",
+      "xn-small-invalid", "pipeline-compatible", 12, 7,
       [] { return std::make_unique<CorruptingLocal>(); });
   const auto& invalid = invalid_run.result;
   DP_EXPECT_EQ(invalid.execution.status, dp::StageStatus::kInvalidOutput);

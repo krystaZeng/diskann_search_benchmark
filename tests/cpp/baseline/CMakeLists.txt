@@ -73,4 +73,8 @@ add_cpp_main_baseline_test(
 target_link_libraries(
   cpp_main_pipeline
   PRIVATE diskann_cpp_main_stages nlohmann_json::nlohmann_json)
+add_dependencies(cpp_main_pipeline cpp_main_baseline_runner)
+target_compile_definitions(
+  cpp_main_pipeline
+  PRIVATE CPP_MAIN_BASELINE_RUNNER="$<TARGET_FILE:cpp_main_baseline_runner>")
 set_tests_properties(cpp_main_pipeline PROPERTIES LABELS "cpp-main-baseline;phase3")

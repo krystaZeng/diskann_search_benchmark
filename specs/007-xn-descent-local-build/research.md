@@ -40,6 +40,29 @@ The profile boundaries are:
 | `pipeline-compatible` | P0, one B1 per Partition, reusable M0, and GlobalGraph | positive `lambda` and positive `merge.R` are explicit and independent; every Partition-local output validates before M0 |
 | `paper-style` | Paper-derived parameters such as `lambda=64` | Same complete partitioned pipeline with explicit `merge.R`; no local-only or all-memory lifecycle |
 
+The relaxed parameter contract is revision `1.1.0`, independently identified by exact versioned
+schema paths and contract `$id` values rather than by changing the normalized document format:
+
+- M0 runtime schema:
+  `contracts/baseline-v1/schemas/cpp-main-m0-parameters-v1.1.0.schema.json`;
+- XN design source:
+  `specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`;
+- XN runtime copy:
+  `contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json`.
+
+The M0 `$id` is
+`https://diskann-repro.local/contracts/baseline-v1/cpp-main-m0-parameters-v1.1.0.schema.json`.
+Both XN copies use
+`https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`;
+that shared `$id` is required by their byte identity. Both values are distinct from the respective
+historical contract `$id`. The XN copies' real SHA-256/source/target relation is recorded in
+`SOURCES.json`. Existing schema paths remain preserved as the pre-relaxation design baseline. The
+M0 revision retains exactly `R` and `use_filters`; the XN revision retains
+`schema_version: xn-descent-parameters/v1` and all existing fields/policies but removes the
+`pipeline-compatible` `lambda` maximum 10 and `paper-style` `lambda` constant 64. The existing
+M0 and B1 descriptor identities and implementation versions do not change; their exact
+`parameter_schema_path` selects revision `1.1.0`. No request version or conversion path is added.
+
 The default seed for authoring a request is decimal `42`, but the normalized effective parameter
 document passed to B1 and retained in its BuildManifest always contains `seed` explicitly. `alpha`,
 `omega`, `lambda`, and `iteration_cap` remain explicit; the paper's `omega = 32–40` and
@@ -66,6 +89,11 @@ not a complete JSON Schema implementation. The execution design preserves the al
   validator does not implement those keywords.
 - Add a paper-style local-only path: rejected because the project goal is a complete partitioned
   graph and the reusable M0 can merge validated XN local graphs with explicit `merge.R`.
+- Change the implementation ID/version or add descriptor-version routing: rejected because this is
+  a compatible parameter-contract revision selected by the exact descriptor schema path and
+  recorded project source identity, not a new algorithm or Artifact format.
+- Overwrite the old schema paths and relabel old evidence: rejected because the constitution
+  requires the revised contract and historical baseline to remain distinguishable.
 
 **Relation to sources**
 
@@ -435,15 +463,41 @@ the generic `PipelineExecutor`. It produces and validates one B1 LocalGraph for 
 then supplies only the complete validated collection to the existing M0. `lambda > 10` is legal.
 Invalid `merge.R`, incomplete Partition coverage, or invalid/partial LocalGraph output prevents M0.
 
+Both `pipeline-compatible` and `paper-style` use that same complete runner lifecycle. The latter
+may select `lambda=64` as paper-derived input, but 64 is not a profile constraint. Consequently,
+`parameters.cpp` removes only its two old profile-degree restrictions while retaining positive
+uint32, alpha, seed, policy, strict-field, and other core checks used by both direct Local Build and
+canonical parameter normalization.
+
+The shared `ParameterValidator` recursively checks object shape, required/additional properties,
+primitive `type`, and `const`; it does not execute JSON Schema `minimum`, `maximum`, `enum`, or
+conditional branches. Therefore the XN runner performs a Feature-local, pre-dispatch `merge.R`
+parse before Registry/factory construction, expensive allocation, workspace/runtime-service
+creation, or P0/B1/M0 invocation. It accepts only a signed-or-unsigned JSON integer in
+`1..UINT32_MAX`, never converts through `double`, and reports a `merge.R`-specific reason for
+missing, boolean, string, fractional, negative, zero, or oversized values. M0's T031 runtime range
+check remains defense in depth. No public validator, dependency, or validation abstraction changes.
+
 M0 remains the single reusable wrapper around the pinned `merge_shards` algorithm. Its parameter
 schema and implementation accept explicit positive `merge.R`; generic M0 admission has no
 `declared_max_degree <= 10` rule. Feature 002's frozen Baseline runner still supplies `R=16`, and
 its B0 still uses local degree 10. Those frozen Profile values do not derive or constrain XN
 `lambda`. No XN Merge, M1, fake Merge, local-only lifecycle, or all-memory execution path is added.
 
-The authored Feature-local parameter schema is copied byte-for-byte during implementation to a
-stable runtime path under `contracts/papers/xn-graph-xn-descent-v1/`, with the established
-`SOURCES.json` provenance pattern. No existing public schema is redefined.
+After the generic M0 descriptor points to revision `1.1.0`, the Baseline runner owns an independent
+early guard in `src/baseline/cpp_main/cpp_main_baseline_runner.cpp`: a
+`baseline_validation` request must contain integer merge `R=16` and `use_filters=false` before
+workspace, vector accessor, Registry, or stage execution. The actual executable-entry regression
+belongs in `tests/cpp/baseline/test_cpp_main_pipeline.cpp`; the existing `cpp_main_pipeline` target
+receives `$<TARGET_FILE:cpp_main_baseline_runner>` through the minimal dependency/path wiring in
+`tests/cpp/baseline/CMakeLists.txt` and invokes it with an otherwise valid `R=7` request. The
+existing Python configuration test continues to verify profile normalization, but its mocked
+runner invocation is not evidence that the C++ runner rejects drift.
+
+The new revision-1.1.0 Feature-local parameter schema is copied byte-for-byte during T033 to its
+versioned runtime path under `contracts/papers/xn-graph-xn-descent-v1/`, with the established
+`SOURCES.json` provenance pattern. Existing schema files remain intact; no public Artifact or
+BuildManifest schema is redefined.
 
 **Rationale**
 
@@ -460,6 +514,11 @@ bounded by an explicit format-source contract instead of an Artifact version or 
   Baseline Profile rather than M0's reusable merge capability.
 - Add a public or Feature-local local-only mode: rejected because XN execution must produce a
   complete partitioned GlobalGraph through the existing executor and reusable M0.
+- Rely on the revised M0 schema to freeze Baseline `R=16`: rejected because reusable M0 accepts
+  other positive values, so Baseline profile admission must remain independently explicit.
+- Extend `ParameterValidator` with numeric-range support: rejected for this Feature because the
+  narrow runner preflight plus M0 defense-in-depth check covers the required boundary without a
+  public validation change.
 - Use a fake or XN-specific Merge: rejected because the pinned `merge_shards` M0 already provides
   the required merge semantics when parameterized by `merge.R`.
 - Change LocalGraphArtifact/v1: rejected because the existing contract can carry B1 output above

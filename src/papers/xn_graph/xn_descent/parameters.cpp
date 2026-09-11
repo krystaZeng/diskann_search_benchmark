@@ -127,14 +127,6 @@ XnDescentParameters parse_parameters(const std::string& json_text) {
     }
   }
 
-  if (result.validation_profile == ValidationProfile::kPipelineCompatible &&
-      result.lambda > 10) {
-    invalid("pipeline-compatible requires lambda <= 10");
-  }
-  if (result.validation_profile == ValidationProfile::kPaperStyle &&
-      result.lambda != 64) {
-    invalid("paper-style requires lambda = 64");
-  }
   return result;
 }
 

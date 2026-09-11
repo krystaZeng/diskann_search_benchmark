@@ -146,13 +146,16 @@ provides:
   capabilities:
     - graph.global_adjacency/v1
     - graph.medoids/v1
-parameter_schema_path: contracts/baseline-v1/schemas/cpp-main-m0-parameters.schema.json
+parameter_schema_path: contracts/baseline-v1/schemas/cpp-main-m0-parameters-v1.1.0.schema.json
 test_only: false
 ~~~
 
 ContractRequirement matches both input artifact kinds before factory creation. It does not add
 cardinality fields; complete PartitionId coverage is an M0 semantic input check after every input
 Artifact has independently passed contract validation and before merge_shards is called.
+The prior `cpp-main-m0-parameters.schema.json` remains the frozen historical parameter contract.
+The reusable M0 descriptor selects revision 1.1.0; the fixed Baseline runner independently
+enforces `R=16` and `use_filters=false` before workspace or stage creation.
 
 ## 4. P0 callable boundary
 

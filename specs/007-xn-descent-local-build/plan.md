@@ -24,7 +24,8 @@ upstream source remain unchanged.
 
 ## Technical Context
 
-**Language/Version**: C++17; JSON Schema 2020-12 for the Feature-local parameter contract
+**Language/Version**: C++17; JSON Schema 2020-12; relaxed parameter-contract revision `1.1.0`
+is identified by exact versioned schema paths and `$id` values
 
 **Primary Dependencies**: existing `diskann_pipeline_core`, nlohmann/json, OpenSSL SHA-256,
 C++ standard library (`std::thread`); existing pinned cpp_main stages only for pipeline closure
@@ -137,10 +138,26 @@ The B1 descriptor requires:
 
 It provides LocalGraph `local-graph-artifact/v1`, ID space `local`, and
 `graph.local_adjacency/v1`. It does not require P0 centroids or ascending-map capability for the
-algorithm. The Feature-local parameter schema is the normative design source; implementation later
-copies it byte-for-byte to a stable `contracts/papers/xn-graph-xn-descent-v1/` path and records the
-same source-provenance pattern as existing paper modules. No public Artifact, Manifest, ID, or
-capability schema changes.
+algorithm. Parameter-contract revision `1.1.0` is introduced at these planned paths:
+
+- `contracts/baseline-v1/schemas/cpp-main-m0-parameters-v1.1.0.schema.json`;
+- `specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`;
+- `contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json`.
+
+M0 uses
+`https://diskann-repro.local/contracts/baseline-v1/cpp-main-m0-parameters-v1.1.0.schema.json`, and
+both byte-identical XN copies use
+`https://diskann-methods.local/specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json`.
+Each contract `$id` is distinct from its historical counterpart; the Feature/runtime XN copies
+share one `$id` so they remain byte-identical. `SOURCES.json` records their exact source, target,
+and computed SHA-256. The
+existing M0 and B1 descriptors change only their `parameter_schema_path` to the corresponding new
+runtime file; their implementation IDs and versions remain unchanged. The normalized XN document
+continues to use `schema_version: xn-descent-parameters/v1`, and the M0 object remains exactly
+`R` plus `use_filters`. Existing schema paths stay as the frozen design baseline, including the
+pre-relaxation M0 schema; historical validation evidence is not relabeled as revision `1.1.0`.
+No public Artifact, Manifest, ID, capability schema, request-version field, or conversion flow is
+added.
 
 Because current M0 admits the reviewed cpp_main native local graph and map encodings, B1 uses that
 byte layout. The B1 implementation remains a separate algorithm identity; its manifest separately
@@ -149,20 +166,40 @@ narrows this use to the exact role/media/layout accepted by current validators a
 
 ### Execution paths
 
-`pipeline-compatible` uses a Feature-local runner that validates the complete request and exact
-P0/B1/M0 composition before constructing the Registry or invoking `PipelineExecutor`. It requires
-independent positive `lambda` and `merge.R`, registers existing P0, new B1, and existing reusable
-M0 only, then reuses the generic executor and its normal validation/publication lifecycle. One B1
-result is produced and validated for every Partition before the complete collection reaches M0.
-Invalid `merge.R`, mismatched identities, or incomplete/invalid local collections fail before M0;
+`pipeline-compatible` and `paper-style` use the same Feature-local runner and complete P0/B1/M0
+composition. Before constructing the Registry, selecting a factory, allocating expensive runtime
+state, or invoking `PipelineExecutor`, the runner checks the exact P0/B1/M0 identities and parses
+`merge.R` as a signed-or-unsigned JSON integer in `1..UINT32_MAX`; missing, boolean, string,
+fractional, negative, zero, or oversized values fail with a `merge.R`-specific reason. This
+Feature-local check is required because the existing `ParameterValidator` validates structure,
+primitive types, and constants but not JSON Schema `minimum`/`maximum`. M0 retains its runtime
+range check as defense in depth; no common validator change is planned.
+
+The runner registers existing P0, new B1, and existing reusable M0 only, then reuses the generic
+executor and its normal validation/publication lifecycle. `parameters.cpp` retains all core XN
+checks but removes the old profile-specific `pipeline-compatible lambda<=10` and
+`paper-style lambda=64` restrictions. One B1 result is produced and validated for every Partition
+before the complete collection reaches M0. Invalid `merge.R`, mismatched identities, or
+incomplete/invalid local collections fail before the applicable downstream boundary;
 `lambda>10` is not itself an incompatibility.
 
 `semantic-small` validates the core and stage through unit, oracle, and contract fixtures.
 
 The Feature has no paper-style local-only or all-memory execution path. A paper-reported value such
-as `lambda=64` is an ordinary explicit B1 parameter in the same partitioned pipeline and must be
-paired with an independently selected positive `merge.R`; it is not evidence of BBP or the full
-XN-Graph system.
+as `lambda=64` is one ordinary explicit B1 parameter—not a required paper-style value—in the same
+partitioned pipeline and must be paired with an independently selected positive `merge.R`; it is
+not evidence of BBP or the full XN-Graph system.
+
+The fixed Baseline runner cannot rely on the reusable M0 schema to freeze its Profile after the M0
+descriptor selects revision `1.1.0`. Its existing `require_request` boundary therefore performs a
+separate early check that `stage_parameters.merge` contains integer `R=16` and
+`use_filters=false`, before workspace, vector-accessor, Registry, or stage construction. The direct
+runner regression is owned by `tests/cpp/baseline/test_cpp_main_pipeline.cpp`; the existing
+`cpp_main_pipeline` test receives the actual `cpp_main_baseline_runner` executable path through the
+minimal target dependency/path wiring in `tests/cpp/baseline/CMakeLists.txt` and invokes it with an
+otherwise valid request whose merge `R=7`. The existing
+`tests/python/test_cpp_main_baseline_config.py` continues to protect profile authoring and harness
+normalization, but its mocked runner call is not accepted as proof of runner-entry rejection.
 
 ### Failure and evidence
 
@@ -187,7 +224,8 @@ specs/007-xn-descent-local-build/
 └── contracts/
     ├── README.md
     ├── xn-descent-execution-contract.md
-    └── xn-descent-parameters.schema.json
+    ├── xn-descent-parameters.schema.json             # preserved design baseline
+    └── xn-descent-parameters-v1.1.0.schema.json      # relaxed revision design source
 ```
 
 `tasks.md` is intentionally absent and belongs to the later `/speckit-tasks` phase.
@@ -206,29 +244,40 @@ src/papers/xn_graph/xn_descent/
 ├── xn_descent_local_build.cpp
 └── xn_descent_experiment_runner.cpp
 
-src/baseline/cpp_main/m0_merge.cpp                 # parameterize existing M0 wrapper only
+src/baseline/cpp_main/descriptors.cpp               # M0 parameter schema path only
+src/baseline/cpp_main/cpp_main_baseline_runner.cpp  # preserve frozen merge R=16/filters=false
+src/baseline/cpp_main/m0_merge.cpp                  # parameterized existing M0 wrapper only
 contracts/baseline-v1/schemas/
-└── cpp-main-m0-parameters.schema.json            # explicit positive merge.R
+├── cpp-main-m0-parameters.schema.json              # restored frozen design baseline
+└── cpp-main-m0-parameters-v1.1.0.schema.json       # explicit positive merge.R revision
 
 contracts/papers/xn-graph-xn-descent-v1/
 ├── SOURCES.json
-└── schemas/xn-descent-parameters.schema.json       # byte-identical runtime copy
+└── schemas/
+    ├── xn-descent-parameters.schema.json           # preserved runtime baseline
+    └── xn-descent-parameters-v1.1.0.schema.json    # byte-identical revised runtime copy
 
 tests/CMakeLists.txt                                # add selected paper tests
 tests/cpp/papers/xn_graph/
+├── CMakeLists.txt
 ├── xn_descent_parameters_test.cpp
 ├── xn_descent_equation_try_insert_test.cpp
 ├── xn_descent_round_oracle_test.cpp
 ├── xn_descent_determinism_test.cpp
 ├── xn_descent_local_artifact_test.cpp
 └── xn_descent_pipeline_test.cpp
-tests/cpp/baseline/test_cpp_main_m0.cpp             # reusable-M0 and frozen-profile regression
+tests/fixtures/xn_descent/
+└── pipeline-compatible-request.json               # actually consumed request fixture
+tests/cpp/baseline/CMakeLists.txt                   # direct runner target/path wiring
+tests/cpp/baseline/test_cpp_main_descriptors_preflight.cpp
+tests/cpp/baseline/test_cpp_main_m0.cpp             # reusable-M0 regression
+tests/cpp/baseline/test_cpp_main_pipeline.cpp       # actual frozen-runner entry regression
 ```
 
 The exact split among private `.hpp/.cpp` files may be consolidated during task generation; the
 directories and responsibilities are the planned change surface. The runner owns only request
-validation and the complete existing P0/B1/M0 lifecycle; it does not add an XN-specific Merge or a
-second local-only lifecycle.
+validation and delegates Partition iteration, validation/publication, and Merge scheduling to the
+existing `PipelineExecutor`; it does not add an XN-specific Merge or a second local-only lifecycle.
 
 **Structure decision**: Use the established paper-module, paper-contract-copy, Feature-local
 runner, and `tests/cpp/papers/...` patterns. Do not add an Adapter, Artifact version, generic

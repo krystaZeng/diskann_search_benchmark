@@ -62,7 +62,8 @@ ImplementationDescriptor m0_descriptor() {
            "global-graph-artifact/v1",
            IdSpace::kGlobal,
            {"graph.global_adjacency/v1", "graph.medoids/v1"}},
-          "contracts/baseline-v1/schemas/cpp-main-m0-parameters.schema.json",
+          "contracts/baseline-v1/schemas/"
+          "cpp-main-m0-parameters-v1.1.0.schema.json",
           false};
 }
 

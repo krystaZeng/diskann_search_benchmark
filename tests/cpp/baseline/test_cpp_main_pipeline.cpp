@@ -7,22 +7,55 @@
 #include "diskann_pipeline/pipeline.hpp"
 #include "support/test_assert.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
 
+#ifndef CPP_MAIN_BASELINE_RUNNER
+#error "CPP_MAIN_BASELINE_RUNNER must name the real Baseline runner"
+#endif
+
 namespace dp = diskann_pipeline;
 namespace native = diskann_pipeline::cpp_main;
 namespace fixture = diskann_pipeline::cpp_main::test;
+using Json = nlohmann::json;
 
 namespace {
 
 const std::string kRunNonce = std::to_string(
     std::chrono::steady_clock::now().time_since_epoch().count());
+
+std::string shell_quote(const std::filesystem::path& value) {
+  std::string result = "'";
+  for (const char character : value.string()) {
+    result += character == '\'' ? "'\\''" : std::string(1, character);
+  }
+  result += "'";
+  return result;
+}
+
+std::string read_text(const std::filesystem::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(input),
+          std::istreambuf_iterator<char>()};
+}
+
+dp::WorkspaceRef workspace_layout(const std::filesystem::path& root) {
+  const auto absolute = std::filesystem::absolute(root);
+  return {absolute, absolute / "normal", absolute / "temporary",
+          absolute / "manifests", absolute / "reports",
+          absolute / "quarantine"};
+}
 
 class MissingOutputPartition final : public dp::PartitionStrategy {
  public:
@@ -86,6 +119,48 @@ dp::PipelineExecutionRequest request(const std::string& run_id,
   return value;
 }
 
+Json baseline_runner_request(const dp::WorkspaceRef& workspace,
+                             const dp::ArtifactRef& dataset,
+                             const std::string& request_id,
+                             std::int64_t merge_r, bool use_filters) {
+  return {
+      {"request_version", "1.0.0"},
+      {"request_id", request_id},
+      {"operation", "execute"},
+      {"study_class", "baseline_validation"},
+      {"profile_ref",
+       "experiments/configs/cpp-main-upstream-baseline/"
+       "baseline-run-profile.yaml"},
+      {"profile_checksum", std::string(64, 'c')},
+      {"profile_status", "draft"},
+      {"source", {{"commit", native::kPinnedCommit}}},
+      {"dataset_identity", {{"checksum", dataset.aggregate_checksum}}},
+      {"dataset", Json::parse(dp::serialize_artifact_ref(dataset))},
+      {"workspace",
+       {{"root", workspace.root.string()},
+        {"memory_budget_bytes", 1024ULL * 1024ULL * 1024ULL},
+        {"thread_budget", 2}}},
+      {"implementations",
+       {{"partition", native::kP0ImplementationId},
+        {"local_build", native::kB0ImplementationId},
+        {"merge", native::kM0ImplementationId}}},
+      {"stage_parameters",
+       {{"partition",
+         {{"R", 16},
+          {"build_DRAM_budget_gib", 0.6},
+          {"replication_factor", 2},
+          {"sample_probability", 1.0}}},
+        {"local_build", Json::parse(
+             R"({"L":32,"R":16,"alpha":1.2,"build_pq_bytes":0,"max_occlusion_size":750,"num_threads":6,"saturation":false,"use_opq":false})")},
+        {"merge", {{"R", merge_r}, {"use_filters", use_filters}}}}},
+      {"stage_invocations",
+       {{"partition", 0}, {"local_build", 0}, {"merge", 0}}},
+      {"admission", {{"sharded_path_required", true}}},
+      {"source_config",
+       {{"yaml_sha256", std::string(64, 'a')},
+        {"normalized_json_sha256", std::string(64, 'b')}}}};
+}
+
 struct PipelineFixture {
   explicit PipelineFixture(const std::string& label)
       : temporary(label + "-" + kRunNonce),
@@ -136,6 +211,86 @@ dp::ValidatedArtifact validate_terminal(
       dp::Validator(fixture_value.workspace).validate(*result.artifact, sources);
   DP_EXPECT_TRUE(global.valid());
   return *global.validated_artifact;
+}
+
+int invoke_baseline_runner(const Json& document,
+                           const std::filesystem::path& request_path,
+                           const std::filesystem::path& result_path,
+                           const std::filesystem::path& stdout_path,
+                           const std::filesystem::path& stderr_path) {
+  fixture::write_text(request_path, document.dump());
+  const auto command =
+      shell_quote(CPP_MAIN_BASELINE_RUNNER) + " execute --request " +
+      shell_quote(request_path) + " --result " + shell_quote(result_path) +
+      " >" + shell_quote(stdout_path) + " 2>" + shell_quote(stderr_path);
+  return std::system(command.c_str());
+}
+
+void test_frozen_baseline_runner_parameters() {
+  {
+    fixture::TemporaryDirectory temporary("runner-r7-" + kRunNonce);
+    const auto workspace = workspace_layout(temporary.path / "workspace");
+    fixture::NativeDatasetFixture dataset(workspace, 32, 4);
+    const auto request_path = temporary.path / "request.json";
+    const auto result_path = workspace.root / "result.json";
+    const auto stdout_path = temporary.path / "stdout.txt";
+    const auto stderr_path = temporary.path / "stderr.txt";
+    const auto status = invoke_baseline_runner(
+        baseline_runner_request(workspace, dataset.reference,
+                                "cpp-main-runner-r7", 7, false),
+        request_path, result_path, stdout_path, stderr_path);
+    DP_EXPECT_TRUE(status != 0);
+    DP_EXPECT_TRUE(!std::filesystem::exists(result_path));
+    DP_EXPECT_TRUE(!std::filesystem::exists(workspace.temporary_root));
+    DP_EXPECT_TRUE(!std::filesystem::exists(workspace.manifest_root));
+    DP_EXPECT_TRUE(read_text(stderr_path).find("merge.R") !=
+                   std::string::npos);
+  }
+
+  {
+    fixture::TemporaryDirectory temporary("runner-filters-" + kRunNonce);
+    const auto workspace = workspace_layout(temporary.path / "workspace");
+    fixture::NativeDatasetFixture dataset(workspace, 32, 4);
+    const auto request_path = temporary.path / "request.json";
+    const auto result_path = workspace.root / "result.json";
+    const auto stdout_path = temporary.path / "stdout.txt";
+    const auto stderr_path = temporary.path / "stderr.txt";
+    const auto status = invoke_baseline_runner(
+        baseline_runner_request(workspace, dataset.reference,
+                                "cpp-main-runner-filters", 16, true),
+        request_path, result_path, stdout_path, stderr_path);
+    DP_EXPECT_TRUE(status != 0);
+    DP_EXPECT_TRUE(!std::filesystem::exists(result_path));
+    DP_EXPECT_TRUE(!std::filesystem::exists(workspace.temporary_root));
+    DP_EXPECT_TRUE(!std::filesystem::exists(workspace.manifest_root));
+    DP_EXPECT_TRUE(read_text(stderr_path).find("use_filters") !=
+                   std::string::npos);
+  }
+
+  {
+    fixture::TemporaryDirectory temporary("runner-r16-" + kRunNonce);
+    const auto workspace = workspace_layout(temporary.path / "workspace");
+    fixture::NativeDatasetFixture dataset(workspace, 32, 4);
+    const auto request_path = temporary.path / "request.json";
+    const auto result_path = workspace.root / "result.json";
+    const auto stdout_path = temporary.path / "stdout.txt";
+    const auto stderr_path = temporary.path / "stderr.txt";
+    const auto status = invoke_baseline_runner(
+        baseline_runner_request(workspace, dataset.reference,
+                                "cpp-main-runner-r16", 16, false),
+        request_path, result_path, stdout_path, stderr_path);
+    DP_EXPECT_EQ(status, 0);
+    DP_EXPECT_TRUE(std::filesystem::is_regular_file(result_path));
+    if (std::filesystem::is_regular_file(result_path)) {
+      const auto result = Json::parse(read_text(result_path));
+      DP_EXPECT_EQ(result.at("outcome"), "SUCCEEDED");
+      DP_EXPECT_EQ(result.at("stage_invocations").at("partition"), 1);
+      DP_EXPECT_TRUE(
+          result.at("stage_invocations").at("local_build").get<std::size_t>() >=
+          std::size_t{2});
+      DP_EXPECT_EQ(result.at("stage_invocations").at("merge"), 1);
+    }
+  }
 }
 
 }  // namespace
@@ -238,6 +393,8 @@ int main() {
     DP_EXPECT_EQ(result.invocations.local_build, std::size_t{0});
     DP_EXPECT_EQ(result.invocations.merge, std::size_t{0});
   }
+
+  test_frozen_baseline_runner_parameters();
 
   return dp::test::finish();
 }

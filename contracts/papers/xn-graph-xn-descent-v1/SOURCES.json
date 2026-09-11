@@ -5,6 +5,11 @@
       "source": "specs/007-xn-descent-local-build/contracts/xn-descent-parameters.schema.json",
       "target": "contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters.schema.json",
       "sha256": "47055189e8aed98c60047fc570ed2df0a4040fb6503685e435c1a15171b740ed"
+    },
+    {
+      "source": "specs/007-xn-descent-local-build/contracts/xn-descent-parameters-v1.1.0.schema.json",
+      "target": "contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json",
+      "sha256": "c63dfc702cf9ad4db633c29dcb9616b0e011fed62ca6a2cde7d6a5038b8102d6"
     }
   ]
 }

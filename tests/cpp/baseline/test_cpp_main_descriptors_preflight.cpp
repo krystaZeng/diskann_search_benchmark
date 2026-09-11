@@ -5,7 +5,10 @@
 #include "support/test_assert.hpp"
 #include "validation/parameter_validator.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <filesystem>
+#include <fstream>
 
 namespace dp = diskann_pipeline;
 namespace native = diskann_pipeline::cpp_main;
@@ -47,6 +50,24 @@ int main() {
                            m0.provides.capabilities.end(),
                            "graph.medoids/v1") !=
                  m0.provides.capabilities.end());
+  DP_EXPECT_EQ(
+      m0.parameter_schema_path.generic_string(),
+      std::string("contracts/baseline-v1/schemas/"
+                  "cpp-main-m0-parameters-v1.1.0.schema.json"));
+  const auto m0_schema_path = kRepository / m0.parameter_schema_path;
+  DP_EXPECT_TRUE(std::filesystem::is_regular_file(m0_schema_path));
+  if (std::filesystem::is_regular_file(m0_schema_path)) {
+    std::ifstream input(m0_schema_path, std::ios::binary);
+    const auto schema = nlohmann::json::parse(input);
+    DP_EXPECT_EQ(
+        schema.at("$id").get<std::string>(),
+        std::string("https://diskann-repro.local/contracts/baseline-v1/"
+                    "cpp-main-m0-parameters-v1.1.0.schema.json"));
+    const auto& degree =
+        schema.at("$defs").at("merge").at("properties").at("R");
+    DP_EXPECT_EQ(degree.at("minimum"), 1);
+    DP_EXPECT_EQ(degree.at("maximum"), 4294967295ULL);
+  }
 
   dp::detail::validate_implementation_parameters(
       p0,
@@ -58,6 +79,12 @@ int main() {
       kRepository);
   dp::detail::validate_implementation_parameters(
       m0, R"({"R":16,"use_filters":false})", kRepository);
+  try {
+    dp::detail::validate_implementation_parameters(
+        m0, R"({"R":7,"use_filters":false})", kRepository);
+  } catch (const std::exception& error) {
+    dp::test::fail("M0 accepts R=7", __FILE__, __LINE__, error.what());
+  }
   DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
       p0, R"({"R":16})", kRepository));
   DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
@@ -66,6 +93,10 @@ int main() {
       kRepository));
   DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
       m0, R"({"R":16,"use_filters":false,"extra":true})", kRepository));
+  DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
+      m0, R"({"use_filters":false})", kRepository));
+  DP_EXPECT_THROW(dp::detail::validate_implementation_parameters(
+      m0, R"({"R":7.5,"use_filters":false})", kRepository));
 
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
   native::register_cpp_main_stage_bindings(registry);

@@ -3,6 +3,7 @@
 #include "baseline/cpp_main_stage_test_support.hpp"
 #include "support/test_assert.hpp"
 
+#include <array>
 #include <numeric>
 
 namespace dp = diskann_pipeline;
@@ -66,6 +67,134 @@ int main() {
   DP_EXPECT_EQ(metadata.at("payloads").at(0).at("role"), "global_graph");
   DP_EXPECT_EQ(metadata.at("payloads").at(1).at("role"), "medoids");
   DP_EXPECT_EQ(metadata.at("structural").at("global_node_count"), 20);
+
+  fixture::TestContext configurable_r(workspace, "m0-configurable-r");
+  const auto configurable_r_parameters = fixture::write_parameters(
+      configurable_r.context.temporary_storage,
+      R"({"R":7,"use_filters":false})");
+  const auto configurable_r_result = native::make_m0_merge()->merge(
+      partition, {local0, local1}, configurable_r_parameters,
+      configurable_r.context);
+  DP_EXPECT_EQ(configurable_r_result.status, dp::StageStatus::kSucceeded);
+  DP_EXPECT_TRUE(configurable_r_result.output_candidate.has_value());
+  DP_EXPECT_TRUE(configurable_r.metrics.saw("cpp_main.m0.merge_shards"));
+  if (configurable_r_result.output_candidate) {
+    const auto configurable_r_validation =
+        dp::Validator(fixture::candidate_workspace(configurable_r.context))
+            .validate(*configurable_r_result.output_candidate,
+                      {*partition_validation.validated_artifact,
+                       *local0_validation.validated_artifact,
+                       *local1_validation.validated_artifact});
+    DP_EXPECT_TRUE(configurable_r_validation.valid());
+    const auto configurable_r_metadata = fixture::read_json(
+        configurable_r.context.temporary_storage.stage_root /
+        configurable_r_result.output_candidate->metadata_path);
+    DP_EXPECT_EQ(configurable_r_metadata.at("structural")
+                     .at("declared_max_degree"),
+                 7);
+    DP_EXPECT_TRUE(configurable_r_metadata.at("structural")
+                       .at("observed_max_degree")
+                       .get<std::uint32_t>() <= 7U);
+  }
+
+  {
+    fixture::TemporaryDirectory degree_eleven_temporary("m0-degree-eleven");
+    const auto degree_eleven_workspace = dp::create_workspace(
+        degree_eleven_temporary.path / "workspace");
+    const fixture::NativeDatasetFixture degree_eleven_dataset(
+        degree_eleven_workspace, 20, 4);
+    std::vector<dp::GlobalNodeId> degree_eleven_map(20);
+    std::iota(degree_eleven_map.begin(), degree_eleven_map.end(), 0U);
+    std::vector<std::vector<std::uint32_t>> degree_eleven_adjacency(20);
+    for (std::uint32_t node = 0; node < 20; ++node) {
+      for (std::uint32_t offset = 1; offset <= 11; ++offset) {
+        degree_eleven_adjacency[node].push_back((node + offset) % 20);
+      }
+    }
+    const auto degree_eleven_partition = fixture::materialize_partition(
+        degree_eleven_workspace, degree_eleven_dataset,
+        {degree_eleven_map, degree_eleven_map});
+    const auto degree_eleven_local0 = fixture::materialize_local(
+        degree_eleven_workspace, degree_eleven_dataset,
+        degree_eleven_partition, 0, degree_eleven_map,
+        degree_eleven_adjacency);
+    const auto degree_eleven_local1 = fixture::materialize_local(
+        degree_eleven_workspace, degree_eleven_dataset,
+        degree_eleven_partition, 1, degree_eleven_map,
+        degree_eleven_adjacency);
+
+    const auto degree_eleven_dataset_validation =
+        dp::Validator(degree_eleven_workspace)
+            .validate(degree_eleven_dataset.reference);
+    DP_EXPECT_TRUE(degree_eleven_dataset_validation.valid());
+    const auto degree_eleven_partition_validation =
+        dp::Validator(degree_eleven_workspace)
+            .validate(degree_eleven_partition,
+                      {*degree_eleven_dataset_validation.validated_artifact});
+    DP_EXPECT_TRUE(degree_eleven_partition_validation.valid());
+    const auto degree_eleven_local0_validation =
+        dp::Validator(degree_eleven_workspace)
+            .validate(degree_eleven_local0,
+                      {*degree_eleven_partition_validation.validated_artifact});
+    const auto degree_eleven_local1_validation =
+        dp::Validator(degree_eleven_workspace)
+            .validate(degree_eleven_local1,
+                      {*degree_eleven_partition_validation.validated_artifact});
+    DP_EXPECT_TRUE(degree_eleven_local0_validation.valid());
+    DP_EXPECT_TRUE(degree_eleven_local1_validation.valid());
+
+    fixture::TestContext degree_eleven(degree_eleven_workspace,
+                                       "m0-degree-eleven");
+    const auto degree_eleven_parameters = fixture::write_parameters(
+        degree_eleven.context.temporary_storage,
+        R"({"R":16,"use_filters":false})");
+    const auto degree_eleven_result = native::make_m0_merge()->merge(
+        degree_eleven_partition,
+        {degree_eleven_local0, degree_eleven_local1},
+        degree_eleven_parameters, degree_eleven.context);
+    DP_EXPECT_EQ(degree_eleven_result.status, dp::StageStatus::kSucceeded);
+    DP_EXPECT_TRUE(degree_eleven_result.output_candidate.has_value());
+    DP_EXPECT_TRUE(degree_eleven.metrics.saw("cpp_main.m0.merge_shards"));
+    if (degree_eleven_result.output_candidate) {
+      const auto degree_eleven_output_validation =
+          dp::Validator(fixture::candidate_workspace(degree_eleven.context))
+              .validate(
+                  *degree_eleven_result.output_candidate,
+                  {*degree_eleven_partition_validation.validated_artifact,
+                   *degree_eleven_local0_validation.validated_artifact,
+                   *degree_eleven_local1_validation.validated_artifact});
+      DP_EXPECT_TRUE(degree_eleven_output_validation.valid());
+      const auto degree_eleven_metadata = fixture::read_json(
+          degree_eleven.context.temporary_storage.stage_root /
+          degree_eleven_result.output_candidate->metadata_path);
+      DP_EXPECT_EQ(degree_eleven_metadata.at("structural")
+                       .at("declared_max_degree"),
+                   16);
+      DP_EXPECT_TRUE(degree_eleven_metadata.at("structural")
+                         .at("observed_max_degree")
+                         .get<std::uint32_t>() <= 16U);
+    }
+  }
+
+  const std::array<std::pair<const char*, const char*>, 5>
+      invalid_r_parameters{{
+          {"m0-r-missing", R"({"use_filters":false})"},
+          {"m0-r-zero", R"({"R":0,"use_filters":false})"},
+          {"m0-r-negative", R"({"R":-1,"use_filters":false})"},
+          {"m0-r-non-integer", R"({"R":7.5,"use_filters":false})"},
+          {"m0-r-too-large",
+           R"({"R":4294967296,"use_filters":false})"},
+      }};
+  for (const auto& invalid_r : invalid_r_parameters) {
+    fixture::TestContext invalid(workspace, invalid_r.first);
+    const auto invalid_parameters = fixture::write_parameters(
+        invalid.context.temporary_storage, invalid_r.second);
+    const auto invalid_result = native::make_m0_merge()->merge(
+        partition, {local0, local1}, invalid_parameters, invalid.context);
+    DP_EXPECT_EQ(invalid_result.status, dp::StageStatus::kFailed);
+    DP_EXPECT_TRUE(!invalid_result.output_candidate.has_value());
+    DP_EXPECT_TRUE(!invalid.metrics.saw("cpp_main.m0.merge_shards"));
+  }
 
   fixture::TestContext missing(workspace, "m0-missing");
   const auto missing_parameters = fixture::write_parameters(

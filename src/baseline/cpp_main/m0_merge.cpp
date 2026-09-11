@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
 
@@ -48,6 +49,39 @@ Json read_json(const std::filesystem::path& path) {
   return detail::parse_json_strict(
       std::string(std::istreambuf_iterator<char>(input),
                   std::istreambuf_iterator<char>()));
+}
+
+std::uint32_t parse_merge_degree(const Json& parameters) {
+  const auto found = parameters.find("R");
+  if (found == parameters.end()) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "M0 parameter R is required");
+  }
+  if (!found->is_number_integer()) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "M0 parameter R must be an integer");
+  }
+
+  std::uint64_t value = 0;
+  if (found->is_number_unsigned()) {
+    value = found->get<std::uint64_t>();
+  } else {
+    const auto signed_value = found->get<std::int64_t>();
+    if (signed_value <= 0) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "M0 parameter R must be positive");
+    }
+    value = static_cast<std::uint64_t>(signed_value);
+  }
+  if (value == 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "M0 parameter R must be positive");
+  }
+  if (value > std::numeric_limits<std::uint32_t>::max()) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "M0 parameter R exceeds uint32 range");
+  }
+  return static_cast<std::uint32_t>(value);
 }
 
 DatasetIdentity parse_dataset(const Json& value) {
@@ -249,10 +283,6 @@ LocalInput load_local(const WorkspaceRef& workspace,
   const auto declared = metadata.at("structural")
                             .at("declared_max_degree")
                             .get<std::uint32_t>();
-  if (declared > 10) {
-    throw PipelineError(ErrorCategory::kDegreeExceeded,
-                        "M0 LocalGraph exceeds the B0 degree bound");
-  }
   const auto graph = validate_local_graph(
       graph_path, static_cast<NodeCount>(partition.maps[id].size()), declared);
   if (graph.observed_max_degree !=
@@ -283,10 +313,10 @@ class CppMainM0 final : public GraphMerger {
       }
       const auto parameters = read_json(stage_manifest_path);
       detail::require_object_shape(parameters, {"R", "use_filters"});
-      const auto r = parameters.at("R").get<std::uint32_t>();
-      if (r != 16 || parameters.at("use_filters").get<bool>()) {
+      const auto r = parse_merge_degree(parameters);
+      if (parameters.at("use_filters").get<bool>()) {
         throw PipelineError(ErrorCategory::kSchemaInvalid,
-                            "M0 parameters differ from the approved Profile");
+                            "M0 filtered merge is unsupported");
       }
       const auto partition =
           load_partition(context.workspace, partition_artifact);

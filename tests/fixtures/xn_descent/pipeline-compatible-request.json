@@ -1,0 +1,58 @@
+{
+  "request_version": "1.0.0",
+  "operation": "execute",
+  "request_id": "replace-request-id",
+  "study_class": "single_paper_reproduction",
+  "reproduction_mode": "faithful_adaptation",
+  "replacement_scope": "local_build_only",
+  "profile": "pipeline-compatible",
+  "workspace": {
+    "root": "/replace/workspace",
+    "memory_budget_bytes": 1073741824,
+    "thread_budget": 2
+  },
+  "dataset": {
+    "metadata_path": "replace/artifact.json",
+    "artifact_type": "dataset",
+    "format_version": "diskann-float32-dataset/v1",
+    "aggregate_checksum": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "implementations": {
+    "partition": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+    "local_build": "xn_graph_xn_descent_local_build_v1",
+    "merge": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1"
+  },
+  "stage_parameters": {
+    "partition": {
+      "R": 16,
+      "build_DRAM_budget_gib": 0.6,
+      "replication_factor": 2,
+      "sample_probability": 1.0
+    },
+    "local_build": {
+      "schema_version": "xn-descent-parameters/v1",
+      "validation_profile": "pipeline-compatible",
+      "omega": 4,
+      "lambda": 12,
+      "alpha": 1.2,
+      "seed": 42,
+      "iteration_cap": 128,
+      "prng_policy": "mt19937_64-splitmix64-per-node-v1",
+      "sampling_policy": "partial-fisher-yates-unbiased-v1",
+      "tie_break_policy": "distance-then-local-node-id-v1",
+      "round_model": "deterministic-bsp-snapshot-proposal-reduction-v1",
+      "convergence_rule": "full-state-fixed-point-or-three-round-c-g-stability-v1",
+      "entry_point_rule": "partition-local-medoid-v1",
+      "distance_implementation": "squared-l2-alpha-squared-scale-safe-v1",
+      "reproduction_mode": "faithful_adaptation"
+    },
+    "merge": {
+      "R": 7,
+      "use_filters": false
+    }
+  },
+  "source_config": {
+    "yaml_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized_json_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

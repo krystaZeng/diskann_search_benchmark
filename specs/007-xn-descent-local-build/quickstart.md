@@ -1,43 +1,51 @@
-# Quickstart Plan: XN-Descent Validation
+# Quickstart: XN-Descent Validation
 
-This file plans the executable validation sequence for the later implementation phase. **None of
-the commands below exists as a guaranteed current entry point, and none was run during Plan.** Every
-command marked `[PLANNED]` must be created or confirmed by later tasks before execution.
+This file records the implemented validation entries, the commands already exercised through
+T034, and the still-pending external Linux and SIFT1M gates. A command labeled `[VERIFIED]` has
+corresponding evidence under `validation/`; `[PENDING]` means it is an executable handoff and not a
+claim that it has run.
 
 The sequence is intentionally gated. A later gate cannot convert a failed or unrun earlier gate
 into a pass.
 
-## 1. Planned build entries
+## 1. Build entries
 
-`[PLANNED]` Use the core-only path for macOS `semantic-small` validation:
+`[VERIFIED: T034 macOS]` Use the core-only path for macOS `semantic-small` validation:
 
 ```bash
 cmake -S . -B build/xn-descent-core-debug \
   -DCMAKE_BUILD_TYPE=Debug \
   -DBUILD_TESTING=ON \
   -DDISKANN_CPP_MAIN_BASELINE=OFF \
-  -DDISKANN_XN_DESCENT=ON
+  -DDISKANN_XN_DESCENT=ON \
+  -DDISKANN_GP_ANN_OGP=OFF \
+  -DDISKANN_HNSW_MERGER=OFF \
+  -DDISKANN_SEARCH_EVALUATION=OFF
 cmake --build build/xn-descent-core-debug --parallel
 ```
 
-Use the Baseline-enabled path for Linux `pipeline-compatible` validation:
+`[VERIFIED: T034 Docker Linux/amd64; PENDING: T037 external Linux]` Use the Baseline-enabled path
+for complete `pipeline-compatible` and `paper-style` validation:
 
 ```bash
 cmake -S . -B build/xn-descent-linux \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON \
   -DDISKANN_CPP_MAIN_BASELINE=ON \
-  -DDISKANN_XN_DESCENT=ON
+  -DDISKANN_XN_DESCENT=ON \
+  -DDISKANN_GP_ANN_OGP=OFF \
+  -DDISKANN_HNSW_MERGER=OFF \
+  -DDISKANN_SEARCH_EVALUATION=OFF
 cmake --build build/xn-descent-linux --parallel
 ```
 
-The later task must verify actual target names before retaining these commands. Both builds must
-remain out-of-tree and must not write into `upstream/diskann-cpp-main/`. Pipeline preflight,
-P0 → B1 → M0 closure, and Baseline tests use only the Linux Baseline-enabled directory.
+The target names below are registered by the current CMake files. Both builds remain out-of-tree
+and must not write into `upstream/diskann-cpp-main/`. Pipeline preflight, P0 → B1×Partition →
+M0 closure, the Feature runner, and Baseline tests use only a Baseline-enabled Linux directory.
 
 ## 2. Parameter and Equation (2) unit gate
 
-`[PLANNED]`
+`[VERIFIED: T034]`
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug --output-on-failure \
@@ -47,7 +55,10 @@ ctest --test-dir build/xn-descent-core-debug --output-on-failure \
 Required cases:
 
 - reject non-finite or `<1` `alpha`, zero `omega`, zero `lambda`, and zero cap before construction;
-- enforce all three profile constraints in runtime semantic validation, not schema text alone;
+- accept all three declared profiles while enforcing the same core positive-`lambda` validation;
+  `pipeline-compatible` has no maximum 10 and `paper-style` does not force 64;
+- verify parameter-contract revision `1.1.0` through the exact B1 descriptor schema path, distinct
+  versioned `$id`, byte-identical Feature/runtime copies, and matching `SOURCES.json` SHA-256;
 - squared L2 uses `alpha^2`, never `alpha`;
 - both comparisons are strict and equality in either comparison is non-occluding;
 - zero, ordinary, very large exponent, invalid/non-finite, and direct-overflow cases have explicit
@@ -55,7 +66,7 @@ Required cases:
 
 ## 3. TryInsert unit gate
 
-`[PLANNED]`
+`[VERIFIED: T034]`
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug --output-on-failure \
@@ -73,7 +84,7 @@ Required cases:
 
 ## 4. Small-graph round oracle gate
 
-`[PLANNED]`
+`[VERIFIED: T034]`
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug --output-on-failure \
@@ -96,7 +107,7 @@ The fixture records every normalized boundary `C/R/G` state. It must prove:
 
 ## 5. Thread-count and scheduling determinism gate
 
-`[PLANNED]`
+`[VERIFIED: T034]`
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug --output-on-failure \
@@ -116,7 +127,7 @@ The test also verifies each node's random stream is independent of worker assign
 
 ## 6. Failure and resource gate
 
-`[PLANNED]`
+`[VERIFIED: T034]`
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug --output-on-failure \
@@ -137,7 +148,7 @@ Required cases:
 
 ## 7. Artifact, Manifest, and validator contract gate
 
-`[PLANNED]`
+`[VERIFIED: T034 macOS]`
 
 ```bash
 ctest --test-dir build/xn-descent-core-debug --output-on-failure \
@@ -162,7 +173,7 @@ or duplicate edge must never enter normal publication.
 
 ## 8. Reusable M0 parameter gate
 
-`[PLANNED]`
+`[VERIFIED: T034 Docker Linux/amd64]`
 
 ```bash
 ctest --test-dir build/xn-descent-linux --output-on-failure \
@@ -170,13 +181,28 @@ ctest --test-dir build/xn-descent-linux --output-on-failure \
 ```
 
 Submit requests with independent positive `lambda` and `merge.R`, including `lambda>10`. Legal
-requests must not be rejected by the frozen B0 local degree. Invalid `merge.R`, or a missing,
-partial, duplicate, or invalid Partition-local graph collection, must not enter M0. The fixed
-Baseline request remains `R=16` with B0 local degree 10.
+requests must not be rejected by the frozen B0 local degree. The request fixture at
+`tests/fixtures/xn_descent/pipeline-compatible-request.json` must be read by the test rather than
+merely existing on disk. Missing, boolean, string, fractional, negative, zero, and greater-than-
+`UINT32_MAX` `merge.R` values must fail for an explicitly asserted merge-parameter reason before
+Registry/factory creation or any P0/B1/M0 invocation; both factory and stage counters remain zero.
+The public `ParameterValidator` is not credited with numeric range enforcement, and M0 retains its
+runtime defense-in-depth check.
+
+The revised descriptors must point exactly to
+`contracts/baseline-v1/schemas/cpp-main-m0-parameters-v1.1.0.schema.json` and
+`contracts/papers/xn-graph-xn-descent-v1/schemas/xn-descent-parameters-v1.1.0.schema.json`.
+The old schema paths and historical evidence remain preserved.
+
+The fixed Baseline request remains `R=16` with B0 local degree 10. In addition to the existing
+configuration test, `tests/cpp/baseline/test_cpp_main_pipeline.cpp` must invoke the real
+`cpp_main_baseline_runner` path supplied by `tests/cpp/baseline/CMakeLists.txt` and prove that an
+otherwise valid `baseline_validation` request with merge `R=7` is rejected before workspace or
+stage creation. A generic M0 success with `R=16` is not a substitute for this runner-entry test.
 
 ## 9. Small P0 → B1 → M0 closure
 
-`[PLANNED]`
+`[VERIFIED: T034 Docker Linux/amd64]`
 
 ```bash
 ctest --test-dir build/xn-descent-linux --output-on-failure \
@@ -184,71 +210,209 @@ ctest --test-dir build/xn-descent-linux --output-on-failure \
 ```
 
 The closure uses one immutable request, the exact current P0 and M0 identities, B1 identity, and a
-small native Dataset. It must show ordered validated P0 → each explicit B1 Partition → M0, complete
-local set, M0-admitted native media/map, valid final GlobalNodeIds, and separate stage manifests
-and evidence. The report labels the run a component-level faithful adaptation, not full XN-Graph.
+small native Dataset. It must show ordered validated P0 → exactly one B1 for each explicit
+Partition → M0, complete local set, M0-admitted native media/map, valid final GlobalNodeIds, and
+separate stage manifests and evidence. Use different legal values for `lambda` and `merge.R` and
+verify LocalGraph declared degrees reflect `lambda` while the GlobalGraph declared degree reflects
+`merge.R`. If an earlier B1 succeeds and a later B1 fails or omits output, the partial collection
+must not enter M0; corrupted LocalGraph output has the same downstream result. The report labels
+the run a component-level faithful adaptation, not full XN-Graph.
 
-## 10. Partitioned `lambda=64` validation
+## 10. Partitioned `paper-style` validation
 
-`[PLANNED]` The later task must update and document the exact Feature-runner request before enabling
-this command:
+`[VERIFIED: T034 small pipeline]` The current test runs `paper-style` through the same complete
+partitioned lifecycle as `pipeline-compatible`:
+
+```bash
+ctest --test-dir build/xn-descent-linux --output-on-failure \
+  -R '^xn_descent_small_pipeline_test$'
+```
+
+The request selects `paper-style`, an explicit legal `lambda` (with 64 as one paper-derived
+example, not a required value), explicit positive `merge.R`, P0, B1, and the existing M0. Success
+requires one validated LocalGraphArtifact for every Partition before M0 and publishes a validated
+GlobalGraph plus separate Manifest/evidence. It uses the same lifecycle as
+`pipeline-compatible`, remains a component-level faithful adaptation, and does not claim BBP or
+the complete XN-Graph system. The executable target
+`xn_descent_experiment_runner` is available in a Baseline-ON build, but no paper-scale request has
+been executed.
+
+## 11. SIFT1M freeze and execution gate
+
+`[PENDING: T038]` The frozen material has two parts:
+
+1. `experiments/configs/xn-descent-local-build/sift1m-validation.json` contains exactly the fields
+   accepted by `xn_descent_experiment_runner --request`: request identity/classification, absolute
+   workspace and budgets, Dataset Artifact reference, fixed P0/B1/M0 identities, profile, three
+   stage-parameter objects, and the two-digest `source_config`. It contains no environment,
+   repetition, aggregation, or review-only fields that the strict runner would reject.
+2. This section records the target environment, exact build command, one-attempt policy, retention
+   and aggregation rules, and binds them to the final request path and SHA-256.
+
+Read-only inspection found a usable *candidate*, not a frozen target-environment input:
+
+- metadata:
+  `build/ogp-partition-adaptation/runs/sift1m-structural/attempt-004/normal/datasets/sift1m/artifact.json`;
+- Dataset Artifact aggregate checksum:
+  `4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e`;
+- raw `vectors.bin` payload checksum (independently rechecked):
+  `8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e`;
+- shape/type: 1,000,000 rows, 128 float32 dimensions, L2; payload length 512,000,008 bytes.
+
+The raw payload checksum is not the Dataset Artifact aggregate checksum. This ignored build path is
+not portable to the target Linux host and therefore cannot be copied into the formal request
+without target-side admission and path verification.
+
+The current repository gives evidence-backed parameter candidates only: fixed P0 uses `R=16`,
+`build_DRAM_budget_gib=0.6`, and `replication_factor=2`; its `sample_probability` remains an
+explicit choice. The paper reports typical `omega=32–40` and an all-memory comparison example
+`lambda=64`; neither selects an XN SIFT1M profile, `merge.R`, seed, cap, thread count, or memory
+budget on the user's behalf. Those values must be frozen explicitly and `lambda` must remain
+independent of `merge.R`.
+
+`source_config` is also unresolved for a standalone JSON request. Existing repository generators
+define `yaml_sha256` as the bytes of a source YAML and `normalized_json_sha256` as a canonical
+normalized configuration/request digest before inserting `source_config`. The XN runner only
+checks that the two values are lowercase SHA-256 strings; it does not define a JSON-only source
+hash or a self-excluding canonicalization rule. Creating a fictitious YAML digest or inventing a
+new rule here would change established provenance semantics. T038 therefore remains incomplete
+until the applicable rule and hash inputs are approved or implemented in a separately authorized
+contract/runner change.
+
+Before T038 can be checked, freeze all of the following together:
+
+- the target Linux Dataset metadata/payload paths and successful Artifact validation, with both
+  checksums above independently verified in that environment;
+- `sample_probability`; profile; `omega`, `lambda`, `alpha`, seed and iteration cap; explicit
+  positive `merge.R`; memory and thread budgets; absolute workspace and request ID;
+- Linux compiler/version, complete CMake flags, CPU/RAM/OS/numerical environment, and result/log
+  locations;
+- one attempt only, preservation of both success and failure output, no parameter-changing retry,
+  no best-run selection, and aggregation by retaining the sole attempt as-is;
+- the authoritative `source_config` inputs and canonicalization rule.
+
+After these are resolved, parse the JSON, validate its Dataset and parameter references without
+executing stages, compute its SHA-256, and record here:
+
+```text
+request: experiments/configs/xn-descent-local-build/sift1m-validation.json
+request_sha256: <record only after the final file exists>
+status: frozen, awaiting T039 human approval; not authorized to run
+```
+
+Only after T039 records explicit approval may T040 invoke:
 
 ```bash
 build/xn-descent-linux/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
-  --request /absolute/path/to/reviewed-partitioned-merge-request.json
+  --request experiments/configs/xn-descent-local-build/sift1m-validation.json
 ```
 
-The request selects a paper-derived `lambda=64`, explicit positive `merge.R`, P0, B1, and the
-existing M0. Success requires one validated LocalGraphArtifact for every Partition before M0 and
-publishes a validated GlobalGraph plus separate Manifest/evidence. It remains a component-level
-faithful adaptation and does not claim BBP or the complete XN-Graph system.
+Missing or failed SIFT1M validation leaves the Feature incomplete. No SIFT100M or larger run is
+authorized.
 
-## 11. SIFT1M validation gate
+## 12. External Linux rebuild and replay handoff
 
-Before execution, a human must review:
+`[PENDING USER EXECUTION: T037]` Docker evidence from T034 is useful regression evidence but is not
+the user-executed external Linux record required here. The user must perform the following on the
+target Linux host; the macOS Codex must not mark this task complete on their behalf.
 
-- semantic and small-pipeline test results;
-- the implementation diff against `source-mapping.md`;
-- the exact SIFT1M Dataset path/checksum and Partition/P0 parameters;
-- `omega`, `lambda`, `merge.R`, `alpha`, seed, cap, profile, memory/thread budget;
-- compiler/build flags, hardware, OS, and the intended result/aggregation policy.
+### 12.1 Transfer the exact reviewed source
 
-`[PLANNED]` After that review, run the verified Feature runner with a predeclared request:
+Record `git rev-parse HEAD`. If the reviewed tree is committed, check out that exact commit with
+submodules and verify the pinned gitlink. If it is still dirty, migrate both categories below:
 
 ```bash
-XN_SIFT1M_REQUEST=/absolute/path/to/reviewed-sift1m-request.json
-build/xn-descent-linux/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
-  --request "$XN_SIFT1M_REQUEST"
+# On the reviewed source host; paths are examples outside the repository.
+git diff HEAD --binary --full-index > /tmp/xn-reviewed-tracked.patch
+git ls-files --others --exclude-standard -z \
+  | tar --null -T - -czf /tmp/xn-reviewed-untracked.tar.gz
+shasum -a 256 /tmp/xn-reviewed-tracked.patch \
+  /tmp/xn-reviewed-untracked.tar.gz
 ```
 
-Run the profile-specific validation and report separately. Missing or failed SIFT1M validation
-means implementation validation remains incomplete. After the run, a human reviews the
-implementation diff, validation evidence, failures, and SIFT1M results before the Feature can be
-reported as fully validated. No SIFT100M or larger run is authorized.
+An empty untracked list must be recorded as empty instead of producing a misleading archive. On
+Linux, apply/extract only after checking both transfer hashes, then compare a complete sorted file
+hash inventory with the reviewed source. A tracked patch alone is insufficient because the current
+reviewed tree includes new schema, fixture, and validation files.
 
-## 12. Linux rebuild and replay gate
+Verify before building:
 
-On the target Linux host, check out the same reviewed project commit and pinned upstream gitlink;
-rebuild from source with the actual confirmed CMake targets. Do not copy the macOS binary as a
-substitute.
+```bash
+git rev-parse HEAD
+git status --short
+git -C upstream/diskann-cpp-main rev-parse HEAD
+git -C upstream/diskann-cpp-main status --short
+git diff --submodule=short -- upstream/diskann-cpp-main
+```
 
-`[PLANNED]`
+The upstream result must be
+`78256bbab4685e1774e78d331e081a153be26823`, clean, with no gitlink difference.
+
+### 12.2 Rebuild on Linux
+
+Do not copy a macOS binary. In a new out-of-tree Linux directory, use the actual registered
+targets:
 
 ```bash
 cmake -S . -B build/xn-descent-linux \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON \
   -DDISKANN_CPP_MAIN_BASELINE=ON \
-  -DDISKANN_XN_DESCENT=ON
-cmake --build build/xn-descent-linux --parallel
-ctest --test-dir build/xn-descent-linux --output-on-failure \
-  -R '^xn_descent_'
+  -DDISKANN_XN_DESCENT=ON \
+  -DDISKANN_GP_ANN_OGP=OFF \
+  -DDISKANN_HNSW_MERGER=OFF \
+  -DDISKANN_SEARCH_EVALUATION=OFF
+
+cmake --build build/xn-descent-linux --parallel --target \
+  xn_descent_experiment_runner \
+  xn_descent_parameters_test \
+  xn_descent_equation_try_insert_test \
+  xn_descent_round_oracle_test \
+  xn_descent_local_artifact_test \
+  xn_descent_determinism_test \
+  xn_descent_pipeline_test \
+  cpp_main_native_formats \
+  cpp_main_descriptors_preflight \
+  cpp_main_pipeline \
+  production_surface
 ```
 
-Repeat an identical Linux request at least twice and vary only a valid thread count; require exact
-Linux-internal graph and termination replay. Record Linux compiler/flags/architecture/numerical
-environment independently. Compare macOS and Linux checksums for disclosure only: a difference is
-recorded and does not fail the agreed replay guarantee.
+List and run all XN tests plus the required Baseline/surface regressions:
+
+```bash
+ctest --test-dir build/xn-descent-linux -N \
+  -R '^(xn_descent_.*|cpp_main_(native_formats|descriptors_preflight|pipeline)|production_surface)$'
+
+ctest --test-dir build/xn-descent-linux --output-on-failure --no-tests=error \
+  -R '^(xn_descent_.*|cpp_main_(native_formats|descriptors_preflight|pipeline)|production_surface)$'
+```
+
+### 12.3 Linux-internal replay and returned evidence
+
+Run `xn_descent_determinism_test` twice. Its production-path fixture already compares
+thread budgets 1, 2, and at least the node count plus multiple owner schedules, so no public
+scheduler or comparison tool is needed:
+
+```bash
+ctest --test-dir build/xn-descent-linux -V \
+  -R '^xn_descent_determinism_test$' \
+  > build/xn-descent-linux/xn-determinism-replay-1.log
+ctest --test-dir build/xn-descent-linux -V \
+  -R '^xn_descent_determinism_test$' \
+  > build/xn-descent-linux/xn-determinism-replay-2.log
+```
+
+Preserve the two runs' native B1 payload checksum, complete normalized C/R/G digest, completed
+rounds, convergence condition, entry point, and thread-variant assertions. Exclude run ID,
+timestamps, and absolute paths. Compare replay only for the same Partition input within Linux; do
+not require a random P0/M0 full pipeline or final GlobalGraph to be byte-identical, and report any
+macOS/Linux checksum difference for disclosure rather than failure.
+
+Return `linux-validation.md` content or raw evidence containing the project commit, dirty patch and
+untracked-archive checksums if applicable, exact commands and exit results, complete selected test
+list, compiler/version, CMake/generator/build flags, architecture, OS/kernel, CPU/RAM and numerical
+environment, Dataset/Partition identities used by replay, and the Linux-internal hashes above. T037
+remains unchecked until this real evidence is received and reviewed.
 
 ## 13. Completion report template
 

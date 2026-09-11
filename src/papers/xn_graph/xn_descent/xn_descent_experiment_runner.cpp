@@ -106,6 +106,37 @@ bool safe_run_id(const std::string& value) {
   });
 }
 
+std::uint32_t require_merge_degree(const Json& merge) {
+  if (!merge.is_object() || !merge.contains("R")) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent merge.R is required");
+  }
+  const auto& value = merge.at("R");
+  std::uint64_t parsed = 0;
+  if (value.is_number_unsigned()) {
+    parsed = value.get<std::uint64_t>();
+  } else if (value.is_number_integer()) {
+    const auto signed_value = value.get<std::int64_t>();
+    if (signed_value <= 0) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "XN-Descent merge.R must be an integer in 1..UINT32_MAX");
+    }
+    parsed = static_cast<std::uint64_t>(signed_value);
+  } else {
+    throw PipelineError(
+        ErrorCategory::kSchemaInvalid,
+        "XN-Descent merge.R must be an integer in 1..UINT32_MAX");
+  }
+  if (parsed == 0 ||
+      parsed > std::numeric_limits<std::uint32_t>::max()) {
+    throw PipelineError(
+        ErrorCategory::kSchemaInvalid,
+        "XN-Descent merge.R must be an integer in 1..UINT32_MAX");
+  }
+  return static_cast<std::uint32_t>(parsed);
+}
+
 NormalizedRequest preflight(const std::string& request_json) {
   auto request = detail::parse_json_strict(request_json);
   detail::require_object_shape(
@@ -185,6 +216,7 @@ NormalizedRequest preflight(const std::string& request_json) {
     throw PipelineError(ErrorCategory::kSchemaInvalid,
                         "XN-Descent stage parameters must be objects");
   }
+  static_cast<void>(require_merge_degree(stage_parameters.at("merge")));
   detail::validate_implementation_parameters(
       cpp_main::p0_descriptor(), stage_parameters.at("partition").dump(),
       XN_DESCENT_PROJECT_ROOT);
@@ -207,20 +239,11 @@ NormalizedRequest preflight(const std::string& request_json) {
         ErrorCategory::kSchemaInvalid,
         "XN-Descent request profile differs from local parameters");
   }
-  if (profile == "paper-style") {
+  if (profile != "pipeline-compatible" && profile != "paper-style") {
     throw PipelineError(
         ErrorCategory::kSchemaInvalid,
-        "paper-style XN-Descent requests cannot select or invoke Merge");
-  }
-  if (profile != "pipeline-compatible") {
-    throw PipelineError(
-        ErrorCategory::kSchemaInvalid,
-        "XN-Descent P0/B1/M0 runner requires profile pipeline-compatible");
-  }
-  if (xn_parameters.lambda > 10) {
-    throw PipelineError(
-        ErrorCategory::kDegreeExceeded,
-        "pipeline-compatible XN-Descent requires lambda <= 10 before P0");
+        "XN-Descent partitioned runner requires pipeline-compatible or "
+        "paper-style profile");
   }
 
   detail::require_object_shape(
