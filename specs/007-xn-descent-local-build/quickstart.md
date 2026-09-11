@@ -171,6 +171,36 @@ The accepted candidate must prove:
 Negative candidates with corrupted bytes, checksum, map, lineage, degree, entry point, self edge,
 or duplicate edge must never enter normal publication.
 
+### 7.1 Runner request provenance
+
+`[VERIFIED: JSON request-provenance regression]` The Baseline-enabled
+`xn_descent_experiment_runner` accepts two Feature-local wire versions:
+
+- `1.0.0` keeps the historical caller-supplied `source_config` object with
+  `yaml_sha256` and `normalized_json_sha256`;
+- `1.1.0` is the JSON-only form used by new direct request files. It must omit
+  `source_config`; the runner records `source_format=json`, the SHA-256 of the exact input bytes,
+  the SHA-256 of the strictly parsed ordered-key compact `dump()` bytes, and
+  `normalization_policy=xn-json-compact-v1` in every parent stage BuildManifest.
+
+The normalization rule does not add defaults or a newline and does not reorder arrays. It rejects
+duplicate keys and invalid JSON and is not an RFC 8785 claim. Whitespace or object-key order can
+therefore change `raw_request_sha256` without changing `normalized_json_sha256`; changing an
+effective parameter changes the normalized hash. The implementation intentionally does not use
+the restricted canonicalizer because XN requests contain floating-point values.
+
+The two existing pipeline CTests cover old-version preservation, new-version real small-graph
+P0/B1/M0 execution, source propagation into all parent BuildManifests, hash sensitivity, and
+pre-stage protocol rejection:
+
+```bash
+ctest --test-dir build/xn-descent-linux --output-on-failure --no-tests=error \
+  -R '^xn_descent_(pipeline_preflight|small_pipeline)_test$'
+```
+
+Detailed Red/Green evidence is in
+`specs/007-xn-descent-local-build/validation/json-request-provenance.md`.
+
 ## 8. Reusable M0 parameter gate
 
 `[VERIFIED: T034 Docker Linux/amd64]`
@@ -242,10 +272,11 @@ been executed.
 `[PENDING: T038]` The frozen material has two parts:
 
 1. `experiments/configs/xn-descent-local-build/sift1m-validation.json` contains exactly the fields
-   accepted by `xn_descent_experiment_runner --request`: request identity/classification, absolute
-   workspace and budgets, Dataset Artifact reference, fixed P0/B1/M0 identities, profile, three
-   stage-parameter objects, and the two-digest `source_config`. It contains no environment,
-   repetition, aggregation, or review-only fields that the strict runner would reject.
+   accepted by `xn_descent_experiment_runner --request` using `request_version: 1.1.0`: request
+   identity/classification, absolute workspace and budgets, Dataset Artifact reference, fixed
+   P0/B1/M0 identities, profile, and three stage-parameter objects. It omits `source_config`, which
+   the runner derives from the actual JSON bytes. It contains no environment, repetition,
+   aggregation, or review-only fields that the strict runner would reject.
 2. This section records the target environment, exact build command, one-attempt policy, retention
    and aggregation rules, and binds them to the final request path and SHA-256.
 
@@ -270,14 +301,38 @@ explicit choice. The paper reports typical `omega=32–40` and an all-memory com
 budget on the user's behalf. Those values must be frozen explicitly and `lambda` must remain
 independent of `merge.R`.
 
-`source_config` is also unresolved for a standalone JSON request. Existing repository generators
-define `yaml_sha256` as the bytes of a source YAML and `normalized_json_sha256` as a canonical
-normalized configuration/request digest before inserting `source_config`. The XN runner only
-checks that the two values are lowercase SHA-256 strings; it does not define a JSON-only source
-hash or a self-excluding canonicalization rule. Creating a fictitious YAML digest or inventing a
-new rule here would change established provenance semantics. T038 therefore remains incomplete
-until the applicable rule and hash inputs are approved or implemented in a separately authorized
-contract/runner change.
+To avoid designing the request from scratch, the evidence-backed single-run recommendation for
+one consolidated user decision is shown below. It is a proposal, not a frozen request or execution
+approval:
+
+```text
+request_version: 1.1.0
+request_id: xn-sift1m-paper-v1-seed42
+profile: paper-style
+P0: R=16, build_DRAM_budget_gib=0.6, replication_factor=2,
+    sample_probability=0.256
+B1: omega=40, lambda=64, alpha=1.2, seed=42, iteration_cap=128
+M0: merge.R=64, use_filters=false
+workspace suggestion: /data/xn-descent/workspaces/xn-sift1m-paper-v1-seed42
+result suggestion: experiments/results/xn-descent-local-build/sift1m-validation.json
+attempts: exactly one; retain success or failure; no parameter-changing retry or best-run selection
+```
+
+The P0 values and `alpha=1.2` come from the existing SIFT1M Baseline profile; `omega=40` is the
+upper end of the paper's stated typical range; `lambda=64` is the paper's all-memory comparison
+degree; `merge.R=64` is explicitly chosen independently so M0 does not lower that proposed output
+cap. Seed 42 is the implemented default and cap 128 is the already validated safety-cap candidate,
+not a paper-stated convergence value. The target host must still confirm the Dataset paths, a
+16-GiB memory-budget proposal, a 16-thread-budget proposal (both reduced if the real host cannot
+provide them), output capacity, and the complete environment record before these values can be
+written into the formal request.
+
+The standalone JSON provenance rule is now resolved by request version `1.1.0`: the request omits
+`source_config`, and the runner derives the exact raw-byte digest and
+`xn-json-compact-v1` normalized digest without a self-reference. The final file's separate SHA-256
+must still be recorded below so T039 can verify that the reviewed file is the one submitted.
+This protocol completion does not freeze target paths, resources, or experiment parameters, so
+T038 remains incomplete until those values are confirmed together.
 
 Before T038 can be checked, freeze all of the following together:
 
@@ -289,7 +344,8 @@ Before T038 can be checked, freeze all of the following together:
   locations;
 - one attempt only, preservation of both success and failure output, no parameter-changing retry,
   no best-run selection, and aggregation by retaining the sole attempt as-is;
-- the authoritative `source_config` inputs and canonicalization rule.
+- `request_version: 1.1.0`, omission of caller `source_config`, and the final request-file SHA-256
+  bound to this policy.
 
 After these are resolved, parse the JSON, validate its Dataset and parameter references without
 executing stages, compute its SHA-256, and record here:
@@ -318,8 +374,10 @@ target Linux host; the macOS Codex must not mark this task complete on their beh
 
 ### 12.1 Transfer the exact reviewed source
 
-Record `git rev-parse HEAD`. If the reviewed tree is committed, check out that exact commit with
-submodules and verify the pinned gitlink. If it is still dirty, migrate both categories below:
+Record `git rev-parse HEAD`. For this handoff, use the final provenance-fix commit reported with the
+completed local work, check out that exact commit with submodules, and verify the pinned gitlink.
+Do not copy a branch tip that has advanced. If any later reviewed changes are intentionally kept
+uncommitted, migrate both categories below and bind them to the recorded commit:
 
 ```bash
 # On the reviewed source host; paths are examples outside the repository.
@@ -330,10 +388,11 @@ shasum -a 256 /tmp/xn-reviewed-tracked.patch \
   /tmp/xn-reviewed-untracked.tar.gz
 ```
 
-An empty untracked list must be recorded as empty instead of producing a misleading archive. On
-Linux, apply/extract only after checking both transfer hashes, then compare a complete sorted file
-hash inventory with the reviewed source. A tracked patch alone is insufficient because the current
-reviewed tree includes new schema, fixture, and validation files.
+An empty tracked patch or untracked list must be recorded as empty instead of producing a
+misleading transfer artifact. On Linux, apply/extract only after checking every transfer hash,
+then compare a complete sorted file hash inventory with the reviewed source. Never transfer only a
+tracked patch while omitting new files. If the final handoff commit is clean, no patch/archive is
+needed and `git status --short` must remain empty.
 
 Verify before building:
 
@@ -413,6 +472,11 @@ untracked-archive checksums if applicable, exact commands and exit results, comp
 list, compiler/version, CMake/generator/build flags, architecture, OS/kernel, CPU/RAM and numerical
 environment, Dataset/Partition identities used by replay, and the Linux-internal hashes above. T037
 remains unchecked until this real evidence is received and reviewed.
+
+The JSON provenance patch is exercised by the two `xn_descent_pipeline_*` entries already selected
+above. The returned evidence must state that `request_version: 1.1.0` completed the real small
+partitioned path and that its parent BuildManifests carried the runner-generated source object;
+this remains a Linux-host observation and is not inferred from the local Docker result.
 
 ## 13. Completion report template
 

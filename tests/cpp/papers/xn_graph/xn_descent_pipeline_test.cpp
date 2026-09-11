@@ -4,6 +4,7 @@
 #include "baseline/cpp_main/source_build_identity.hpp"
 #include "baseline/cpp_main/stage_bindings.hpp"
 #include "baseline/cpp_main_stage_test_support.hpp"
+#include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/document_codec.hpp"
 #include "diskann_pipeline/registry.hpp"
 #include "support/test_assert.hpp"
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -79,6 +81,11 @@ Json request(const std::filesystem::path& workspace,
       local_parameters(profile, lambda);
   document["stage_parameters"]["merge"]["R"] = std::move(merge_r);
   return document;
+}
+
+void select_json_only_request(Json& document) {
+  document["request_version"] = "1.1.0";
+  document.erase("source_config");
 }
 
 xn::ExperimentStageFactories counting_factories(FactoryCounts& counts) {
@@ -236,6 +243,57 @@ void test_preflight_rejections() {
   DP_EXPECT_TRUE(semantic_result.execution.failure.has_value());
   DP_EXPECT_TRUE(!std::filesystem::exists(semantic_workspace));
   expect_zero_invocations(semantic_result, semantic_counts);
+
+  const auto expect_protocol_rejected =
+      [&](const std::string& label, const std::string& request_json,
+          const std::string& reason_fragment) {
+        const auto workspace = temporary.path / (label + "-workspace");
+        FactoryCounts counts;
+        const auto factories = counting_factories(counts);
+        const auto result = xn::execute_pipeline_experiment_request(
+            request_json, &factories);
+        DP_EXPECT_EQ(result.execution.status, dp::StageStatus::kFailed);
+        DP_EXPECT_TRUE(result.execution.failure.has_value());
+        if (result.execution.failure) {
+          DP_EXPECT_TRUE(result.execution.failure->reason.find(
+                             reason_fragment) != std::string::npos);
+        }
+        DP_EXPECT_TRUE(!std::filesystem::exists(workspace));
+        expect_zero_invocations(result, counts);
+      };
+
+  auto caller_source = request(
+      temporary.path / "xn-json-source-config-workspace", placeholder,
+      "xn-json-source-config", "pipeline-compatible", 12, 7);
+  caller_source["request_version"] = "1.1.0";
+  expect_protocol_rejected("xn-json-source-config", caller_source.dump(),
+                           "source_config");
+
+  auto unsupported = request(
+      temporary.path / "xn-unsupported-version-workspace", placeholder,
+      "xn-unsupported-version", "pipeline-compatible", 12, 7);
+  unsupported["request_version"] = "9.9.9";
+  expect_protocol_rejected("xn-unsupported-version", unsupported.dump(),
+                           "request_version");
+
+  auto duplicate = request(
+      temporary.path / "xn-duplicate-key-workspace", placeholder,
+      "xn-duplicate-key", "pipeline-compatible", 12, 7);
+  select_json_only_request(duplicate);
+  const auto duplicate_text =
+      std::string("{\"request_version\":\"1.1.0\",") +
+      duplicate.dump().substr(1);
+  expect_protocol_rejected("xn-duplicate-key", duplicate_text,
+                           "duplicate JSON object key");
+
+  auto invalid = request(temporary.path / "xn-invalid-json-workspace",
+                         placeholder, "xn-invalid-json",
+                         "pipeline-compatible", 12, 7);
+  select_json_only_request(invalid);
+  const auto valid_text = invalid.dump();
+  expect_protocol_rejected("xn-invalid-json",
+                           valid_text.substr(0, valid_text.size() - 1),
+                           "invalid JSON");
 }
 
 class MissingOutputLocal final : public dp::LocalGraphBuilder {
@@ -311,23 +369,77 @@ struct SmallRun {
   dp::ArtifactRef dataset;
   xn::ExperimentRunnerResult result;
   FactoryCounts factories;
+  std::string request_json;
 };
 
 SmallRun execute_small(const std::string& label, const std::string& profile,
                        std::uint32_t lambda, std::uint32_t merge_r,
-                       dp::LocalBuildFactory local_factory = {}) {
+                       dp::LocalBuildFactory local_factory = {},
+                       const std::function<std::string(Json&)>& encoder = {}) {
   auto temporary = std::make_unique<fixture::TemporaryDirectory>(label);
   const auto workspace = dp::create_workspace(temporary->path / "workspace");
   fixture::NativeDatasetFixture dataset(workspace, 96, 4);
-  const auto document = request(workspace.root, dataset.reference, label,
-                                profile, lambda, merge_r);
-  SmallRun result{std::move(temporary), workspace, dataset.reference, {}, {}};
+  auto document = request(workspace.root, dataset.reference, label, profile,
+                          lambda, merge_r);
+  const auto request_json =
+      encoder ? encoder(document) : document.dump();
+  SmallRun result{std::move(temporary), workspace, dataset.reference, {}, {},
+                  request_json};
   result.factories = {};
   auto factories = counting_factories(result.factories);
   if (local_factory) factories.local_build = std::move(local_factory);
-  result.result = xn::execute_pipeline_experiment_request(document.dump(),
+  result.result = xn::execute_pipeline_experiment_request(request_json,
                                                           &factories);
   return result;
+}
+
+Json expected_json_source_config(const std::string& request_json) {
+  return {{"source_format", "json"},
+          {"raw_request_sha256", dp::sha256_bytes(request_json)},
+          {"normalized_json_sha256",
+           dp::sha256_bytes(Json::parse(request_json).dump())},
+          {"normalization_policy", "xn-json-compact-v1"}};
+}
+
+Json expect_parent_manifest_source_config(const SmallRun& run,
+                                          const Json& expected) {
+  const auto& execution = run.result.execution;
+  DP_EXPECT_EQ(execution.build_manifest_paths.size(),
+               execution.invocations.local_build + std::size_t{2});
+  std::size_t partitions = 0;
+  std::size_t locals = 0;
+  std::size_t merges = 0;
+  for (const auto& path : execution.build_manifest_paths) {
+    const auto manifest = dp::parse_build_manifest(read_text(path));
+    const auto parameters = Json::parse(manifest.parameters_json);
+    DP_EXPECT_EQ(parameters.at("source_config"), expected);
+    if (manifest.stage == "partition") {
+      ++partitions;
+    } else if (manifest.stage == "local_build") {
+      ++locals;
+    } else if (manifest.stage == "merge") {
+      ++merges;
+    }
+  }
+  DP_EXPECT_EQ(partitions, std::size_t{1});
+  DP_EXPECT_EQ(locals, execution.invocations.local_build);
+  DP_EXPECT_EQ(merges, std::size_t{1});
+  return expected;
+}
+
+enum class WireEncoding { kCompact, kPretty, kReverseTopLevel };
+
+std::string encode_wire_request(const Json& document, WireEncoding encoding) {
+  if (encoding == WireEncoding::kPretty) return document.dump(2);
+  if (encoding == WireEncoding::kReverseTopLevel) {
+    nlohmann::ordered_json reversed = nlohmann::ordered_json::object();
+    for (auto iterator = document.rbegin(); iterator != document.rend();
+         ++iterator) {
+      reversed[iterator.key()] = iterator.value();
+    }
+    return reversed.dump();
+  }
+  return document.dump();
 }
 
 void verify_successful_partitioned_merge(const SmallRun& run,
@@ -403,10 +515,71 @@ void verify_successful_partitioned_merge(const SmallRun& run,
   DP_EXPECT_EQ(result_document.at("full_xn_graph_system_reproduction"), false);
 }
 
+struct ProvenanceObservation {
+  std::string request_json;
+  Json source_config;
+};
+
+ProvenanceObservation execute_provenance_variant(
+    const std::filesystem::path& workspace_root, WireEncoding encoding,
+    const std::function<void(Json&)>& mutate = {}) {
+  const auto workspace = dp::create_workspace(workspace_root);
+  fixture::NativeDatasetFixture dataset(workspace, 96, 4);
+  auto document = request(workspace.root, dataset.reference, "xn-json-wire",
+                          "pipeline-compatible", 12, 7);
+  select_json_only_request(document);
+  if (mutate) mutate(document);
+  const auto request_json = encode_wire_request(document, encoding);
+
+  SmallRun run{nullptr, workspace, dataset.reference, {}, {}, request_json};
+  auto factories = counting_factories(run.factories);
+  run.result = xn::execute_pipeline_experiment_request(request_json, &factories);
+  verify_successful_partitioned_merge(run, 12, 7);
+  const auto source_config = expect_parent_manifest_source_config(
+      run, expected_json_source_config(request_json));
+  return {request_json, source_config};
+}
+
+void test_json_request_provenance() {
+  fixture::TemporaryDirectory temporary("xn-json-provenance");
+  const auto workspace_root = temporary.path / "workspace";
+
+  const auto compact = execute_provenance_variant(
+      workspace_root, WireEncoding::kCompact);
+  std::filesystem::remove_all(workspace_root);
+  const auto pretty =
+      execute_provenance_variant(workspace_root, WireEncoding::kPretty);
+  std::filesystem::remove_all(workspace_root);
+  const auto reordered = execute_provenance_variant(
+      workspace_root, WireEncoding::kReverseTopLevel);
+  std::filesystem::remove_all(workspace_root);
+  const auto changed = execute_provenance_variant(
+      workspace_root, WireEncoding::kCompact, [](Json& document) {
+        document["stage_parameters"]["local_build"]["seed"] = 43;
+      });
+
+  DP_EXPECT_TRUE(compact.request_json != pretty.request_json);
+  DP_EXPECT_TRUE(compact.request_json != reordered.request_json);
+  DP_EXPECT_TRUE(compact.source_config.at("raw_request_sha256") !=
+                 pretty.source_config.at("raw_request_sha256"));
+  DP_EXPECT_TRUE(compact.source_config.at("raw_request_sha256") !=
+                 reordered.source_config.at("raw_request_sha256"));
+  DP_EXPECT_EQ(compact.source_config.at("normalized_json_sha256"),
+               pretty.source_config.at("normalized_json_sha256"));
+  DP_EXPECT_EQ(compact.source_config.at("normalized_json_sha256"),
+               reordered.source_config.at("normalized_json_sha256"));
+  DP_EXPECT_TRUE(compact.source_config.at("normalized_json_sha256") !=
+                 changed.source_config.at("normalized_json_sha256"));
+}
+
 void test_small_pipeline_and_validation_gate() {
   const auto pipeline_run = execute_small(
       "xn-small-pipeline-lambda12-r7", "pipeline-compatible", 12, 7);
   verify_successful_partitioned_merge(pipeline_run, 12, 7);
+  expect_parent_manifest_source_config(
+      pipeline_run,
+      Json{{"yaml_sha256", std::string(64, 'a')},
+           {"normalized_json_sha256", std::string(64, 'b')}});
 
   const auto paper_run =
       execute_small("xn-small-paper-lambda64-r9", "paper-style", 64, 9);
@@ -452,6 +625,7 @@ int main(int argc, char** argv) {
     test_preflight_rejections();
   } else if (mode == "small_pipeline") {
     test_small_pipeline_and_validation_gate();
+    test_json_request_provenance();
   } else {
     throw std::runtime_error("unknown XN pipeline test mode");
   }

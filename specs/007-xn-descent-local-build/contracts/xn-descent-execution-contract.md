@@ -58,6 +58,44 @@ The stage accepts an aggregate PartitionArtifact plus one explicit PartitionId. 
 by applying the selected LocalToGlobal map before calling `VectorAccessor`. It does not require a
 P0 centroid or ascending-map capability.
 
+### 2.1 XN runner request wire versions and source provenance
+
+The Feature-local `xn_descent_experiment_runner` accepts two request wire versions. They do not
+change the B1 implementation identity/version or the XN parameter document's
+`schema_version: xn-descent-parameters/v1`.
+
+- `request_version: 1.0.0` retains the historical input shape. The caller must provide exactly
+  `source_config.yaml_sha256` and `source_config.normalized_json_sha256`; after validation that
+  object is preserved as the execution source configuration.
+- `request_version: 1.1.0` is the JSON-only input shape. The caller must omit `source_config`.
+  The runner derives the source configuration from the exact request text it received before
+  creating the workspace, Registry, factories, or stages.
+
+For `1.1.0`, the generated source configuration is:
+
+```json
+{
+  "source_format": "json",
+  "raw_request_sha256": "<SHA-256 of the exact input bytes>",
+  "normalized_json_sha256": "<SHA-256 of xn-json-compact-v1 bytes>",
+  "normalization_policy": "xn-json-compact-v1"
+}
+```
+
+`xn-json-compact-v1` first uses the existing strict parser, which rejects invalid JSON and
+duplicate object keys. It then uses the parsed `nlohmann::json` value's ordered object keys and
+compact `dump()` bytes: no trailing newline, no default-field injection, and no array reordering.
+This is a Feature-local serialization rule, not RFC 8785. It does not use
+`canonicalize_restricted_json`, because valid XN requests include floating-point fields such as
+`alpha`.
+
+The runner supplies the resulting object through the existing
+`PipelineExecutionRequest.source_config_json`. `PipelineExecutor` places it in each parent stage
+BuildManifest's `parameters.source_config`; no second Manifest or publication lifecycle exists.
+Because a `1.1.0` input contains no `source_config`, hashing the complete raw and parsed request
+does not create a self-reference. The separate SHA-256 of the final request file remains an
+approval-time integrity check in `quickstart.md`.
+
 ## 3. Validation ownership
 
 Before construction, the execution owner must:

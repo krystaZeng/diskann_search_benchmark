@@ -14,6 +14,7 @@ int main(int argc, char** argv) {
 #include "baseline/cpp_main/source_build_identity.hpp"
 #include "baseline/cpp_main/stage_bindings.hpp"
 #include "core/json_codec.hpp"
+#include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/document_codec.hpp"
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/workspace.hpp"
@@ -45,6 +46,7 @@ using Json = nlohmann::json;
 
 struct NormalizedRequest {
   Json document;
+  Json source_config;
   ArtifactRef dataset;
   std::filesystem::path workspace_root;
   std::uint64_t memory_budget_bytes{0};
@@ -139,12 +141,29 @@ std::uint32_t require_merge_degree(const Json& merge) {
 
 NormalizedRequest preflight(const std::string& request_json) {
   auto request = detail::parse_json_strict(request_json);
-  detail::require_object_shape(
-      request,
-      {"request_version", "operation", "request_id", "study_class",
-       "reproduction_mode", "replacement_scope", "profile", "workspace",
-       "dataset", "implementations", "stage_parameters", "source_config"});
-  require_exact_string(request, "request_version", "1.0.0");
+  if (!request.is_object() || !request.contains("request_version") ||
+      !request.at("request_version").is_string()) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent request_version must be a string");
+  }
+  const auto request_version =
+      request.at("request_version").get<std::string>();
+  if (request_version == "1.0.0") {
+    detail::require_object_shape(
+        request,
+        {"request_version", "operation", "request_id", "study_class",
+         "reproduction_mode", "replacement_scope", "profile", "workspace",
+         "dataset", "implementations", "stage_parameters", "source_config"});
+  } else if (request_version == "1.1.0") {
+    detail::require_object_shape(
+        request,
+        {"request_version", "operation", "request_id", "study_class",
+         "reproduction_mode", "replacement_scope", "profile", "workspace",
+         "dataset", "implementations", "stage_parameters"});
+  } else {
+    throw PipelineError(ErrorCategory::kUnsupportedVersion,
+                        "XN-Descent request_version is unsupported");
+  }
   require_exact_string(request, "operation", "execute");
   require_exact_string(request, "study_class",
                        "single_paper_reproduction");
@@ -246,15 +265,25 @@ NormalizedRequest preflight(const std::string& request_json) {
         "paper-style profile");
   }
 
-  detail::require_object_shape(
-      request.at("source_config"),
-      {"yaml_sha256", "normalized_json_sha256"});
-  if (!is_sha256(request.at("source_config").at("yaml_sha256")) ||
-      !is_sha256(
-          request.at("source_config").at("normalized_json_sha256"))) {
-    throw PipelineError(
-        ErrorCategory::kSchemaInvalid,
-        "XN-Descent source_config must contain two SHA-256 identities");
+  Json source_config;
+  if (request_version == "1.0.0") {
+    detail::require_object_shape(
+        request.at("source_config"),
+        {"yaml_sha256", "normalized_json_sha256"});
+    if (!is_sha256(request.at("source_config").at("yaml_sha256")) ||
+        !is_sha256(
+            request.at("source_config").at("normalized_json_sha256"))) {
+      throw PipelineError(
+          ErrorCategory::kSchemaInvalid,
+          "XN-Descent source_config must contain two SHA-256 identities");
+    }
+    source_config = request.at("source_config");
+  } else {
+    source_config = {
+        {"source_format", "json"},
+        {"raw_request_sha256", sha256_bytes(request_json)},
+        {"normalized_json_sha256", sha256_bytes(request.dump())},
+        {"normalization_policy", "xn-json-compact-v1"}};
   }
 
   const auto dataset = parse_artifact_ref(request.at("dataset").dump());
@@ -267,7 +296,8 @@ NormalizedRequest preflight(const std::string& request_json) {
 
   const auto memory_budget_bytes =
       workspace.at("memory_budget_bytes").get<std::uint64_t>();
-  return {std::move(request), dataset, workspace_root, memory_budget_bytes,
+  return {std::move(request), std::move(source_config), dataset,
+          workspace_root, memory_budget_bytes,
           static_cast<std::uint32_t>(thread_budget_value)};
 }
 
@@ -475,8 +505,7 @@ ExperimentRunnerResult execute_pipeline_experiment_request(
     execution_request.local_parameters_json =
         parameters.at("local_build").dump();
     execution_request.merge_parameters_json = parameters.at("merge").dump();
-    execution_request.source_config_json =
-        document.at("source_config").dump();
+    execution_request.source_config_json = request->source_config.dump();
     execution_request.source = project_source();
     execution_request.stage_sources = StageSourceIdentities{
         diskann.source, project_source(), diskann.source};

@@ -12,7 +12,8 @@ Search*
 
 This mapping separates paper-stated semantics, repository-required faithful adaptations, and
 engineering safety policies. Paths and function names below describe the implementation and tests
-validated through T034; later Linux-host and SIFT1M gates remain explicitly unexecuted.
+validated through T036 plus the Feature-local JSON-only provenance compatibility regression; later
+Linux-host and SIFT1M gates remain explicitly unexecuted.
 
 ## 1. Paper Algorithm 1 mapping
 
@@ -126,6 +127,7 @@ adaptations in `research.md` and the Feature-local contracts.
 | Parameter validator gap | `src/validation/parameter_validator.cpp` implements recursive `type`, `const`, `required`, `additionalProperties`, and `properties`, but not numeric bounds, `enum`, or conditionals | Keep the public validator unchanged; B1 parsing owns XN semantic/profile checks and the XN runner explicitly parses `merge.R` in `1..UINT32_MAX` before Registry/factory/workspace/stage activity |
 | XN profile validation | `src/papers/xn_graph/xn_descent/parameters.cpp::parse_parameters` | Accept both full-pipeline profiles with any positive uint32 `lambda`; retain strict fields, alpha/seed/policy checks, Algorithm 1, and convergence semantics |
 | XN runner preflight | `src/papers/xn_graph/xn_descent/xn_descent_experiment_runner.cpp::preflight` and `require_merge_degree` | Admit both full-pipeline profiles; parse signed/unsigned integer `merge.R` without `double`, reject missing/bool/string/fraction/negative/zero/overflow with a merge-specific reason before any factory or stage call |
+| XN request provenance | `xn_descent_experiment_runner.cpp::preflight`; `PipelineExecutionRequest.source_config_json`; `pipeline_executor.cpp::manifest_parameters` | Preserve the caller's two-digest object for request 1.0.0; for JSON-only 1.1.0 reject caller `source_config` and derive exact-raw plus ordered compact parsed-JSON SHA-256 identities under `xn-json-compact-v1`, then reuse every parent stage BuildManifest |
 | P0 membership/maps | `specs/002-cpp-main-upstream-baseline/source-mapping.md` SM013–SM018; `p0_partition.cpp` | Select exact PartitionId and copy its complete map; P0 centroid is not an entry point |
 | B0 entry concept | pinned `in_mem_data_store.cpp` centroid/medoid selection and `index.cpp` link/save path | B1 local medoid is conceptually aligned but explicitly a separate deterministic adaptation |
 | Native local graph | `specs/002-cpp-main-upstream-baseline/contracts/native-formats.md` section 6; pinned `in_mem_graph_store.cpp` | Emit exact reviewed header/rows; actual observed maximum in header; zero frozen points |
@@ -212,10 +214,12 @@ and historical validation evidence remain distinguishable and are not retroactiv
 | `tests/cpp/papers/xn_graph/xn_descent_round_oracle_test.cpp` | `xn_descent_round_oracle_test` | complete single-round and convergence oracles, cross-update visibility and both convergence conditions |
 | `tests/cpp/papers/xn_graph/xn_descent_local_artifact_test.cpp` | `xn_descent_local_artifact_test` | deterministic entry point, native payload, LocalGraph fields, Validator and stage Manifest/failure behavior |
 | `tests/cpp/papers/xn_graph/xn_descent_determinism_test.cpp` | `xn_descent_determinism_test`; `xn_descent_termination_test`; `xn_descent_resource_test` | thread/schedule replay, fixed point and R-cycle termination, memory/allocation/cancellation behavior |
-| `tests/cpp/papers/xn_graph/xn_descent_pipeline_test.cpp` | `xn_descent_pipeline_preflight_test`; `xn_descent_small_pipeline_test` | request preflight, parameter-contract paths, complete multi-Partition P0/B1/M0 execution and downstream gates |
+| `tests/cpp/papers/xn_graph/xn_descent_pipeline_test.cpp` | `xn_descent_pipeline_preflight_test`; `xn_descent_small_pipeline_test` | request preflight, 1.0.0/1.1.0 provenance compatibility and Manifest propagation, parameter-contract paths, complete multi-Partition P0/B1/M0 execution and downstream gates |
 
 The first eight XN CTests are available in the Baseline-OFF core build. The two pipeline CTests and
 `xn_descent_experiment_runner` are intentionally created only with
 `DISKANN_CPP_MAIN_BASELINE=ON`. T034 recorded macOS core 33/33 and Docker Linux/amd64 25/25
 regressions; those results do not substitute for T037's user-executed external Linux evidence or
-the still-gated SIFT1M run.
+the still-gated SIFT1M run. The later JSON request-provenance regression used the same two CTest
+entries and is recorded separately in `validation/json-request-provenance.md`; it did not rerun or
+relabel the T034 cross-module matrix.
