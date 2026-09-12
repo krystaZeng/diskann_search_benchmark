@@ -240,8 +240,21 @@ void test_determinism() {
                xn::kImplementationVersion);
   DP_EXPECT_TRUE(!stage_two.manifest.source.repository.empty());
   DP_EXPECT_TRUE(!stage_two.manifest.source.commit.empty());
-  DP_EXPECT_TRUE(stage_two.manifest.source.dirty_worktree);
-  DP_EXPECT_TRUE(stage_two.manifest.source.dirty_source_checksum.has_value());
+  if (stage_two.manifest.source.dirty_worktree) {
+    DP_EXPECT_TRUE(
+        stage_two.manifest.source.dirty_source_checksum.has_value());
+    if (stage_two.manifest.source.dirty_source_checksum) {
+      const auto& checksum =
+          *stage_two.manifest.source.dirty_source_checksum;
+      DP_EXPECT_EQ(checksum.size(), std::size_t{64});
+      DP_EXPECT_TRUE(std::all_of(checksum.begin(), checksum.end(), [](char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+      }));
+    }
+  } else {
+    DP_EXPECT_TRUE(
+        !stage_two.manifest.source.dirty_source_checksum.has_value());
+  }
   DP_EXPECT_TRUE(!stage_two.manifest.dataset.dataset_checksum.empty());
   DP_EXPECT_EQ(stage_two.manifest.input_artifacts.size(), std::size_t{2});
   DP_EXPECT_TRUE(std::all_of(
