@@ -267,117 +267,190 @@ the complete XN-Graph system. The executable target
 `xn_descent_experiment_runner` is available in a Baseline-ON build, but no paper-scale request has
 been executed.
 
-## 11. SIFT1M freeze and execution gate
+## 11. Local Docker SIFT1M freeze and execution gate
 
-`[PENDING: T038]` The frozen material has two parts:
+`[FROZEN: T038; T039 APPROVED]` The immutable request and this section jointly define the local
+Docker Linux/amd64 construction-scale validation. Freezing the material is not execution approval:
+no runner preflight, P0, B1, M0, search, evaluation, or SIFT1M stage has run.
 
-1. `experiments/configs/xn-descent-local-build/sift1m-validation.json` contains exactly the fields
-   accepted by `xn_descent_experiment_runner --request` using `request_version: 1.1.0`: request
-   identity/classification, absolute workspace and budgets, Dataset Artifact reference, fixed
-   P0/B1/M0 identities, profile, and three stage-parameter objects. It omits `source_config`, which
-   the runner derives from the actual JSON bytes. It contains no environment, repetition,
-   aggregation, or review-only fields that the strict runner would reject.
-2. This section records the target environment, exact build command, one-attempt policy, retention
-   and aggregation rules, and binds them to the final request path and SHA-256.
-
-Read-only inspection found a usable *candidate*, not a frozen target-environment input:
-
-- metadata:
-  `build/ogp-partition-adaptation/runs/sift1m-structural/attempt-004/normal/datasets/sift1m/artifact.json`;
-- Dataset Artifact aggregate checksum:
-  `4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e`;
-- raw `vectors.bin` payload checksum (independently rechecked):
-  `8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e`;
-- shape/type: 1,000,000 rows, 128 float32 dimensions, L2; payload length 512,000,008 bytes.
-
-The raw payload checksum is not the Dataset Artifact aggregate checksum. This ignored build path is
-not portable to the target Linux host and therefore cannot be copied into the formal request
-without target-side admission and path verification.
-
-The current repository gives evidence-backed parameter candidates only: fixed P0 uses `R=16`,
-`build_DRAM_budget_gib=0.6`, and `replication_factor=2`; its `sample_probability` remains an
-explicit choice. The paper reports typical `omega=32–40` and an all-memory comparison example
-`lambda=64`; neither selects an XN SIFT1M profile, `merge.R`, seed, cap, thread count, or memory
-budget on the user's behalf. Those values must be frozen explicitly and `lambda` must remain
-independent of `merge.R`.
-
-To avoid designing the request from scratch, the evidence-backed single-run recommendation for
-one consolidated user decision is shown below. It is a proposal, not a frozen request or execution
-approval:
+### 11.1 Frozen request and Dataset identity
 
 ```text
+request: experiments/configs/xn-descent-local-build/sift1m-validation.json
+request_sha256: b71453ecad9360f4af9d33c02ff1a05e69f07c6ef3c63599097d104d8a0c1f23
 request_version: 1.1.0
 request_id: xn-sift1m-paper-v1-seed42
+status: frozen; T039 approved one exact run; T040 not yet executed
+```
+
+The request omits `source_config`; the runner will derive the raw-byte and
+`xn-json-compact-v1` hashes only when T040 is authorized. Static review confirmed the runner's
+exact top-level/nested field sets, implementation identities, parameter types and fixed policy
+strings. It did not call `operation=execute` as a fake dry run.
+
+The local-only Dataset source is the ignored build directory:
+
+```text
+build/ogp-partition-adaptation/runs/sift1m-structural/attempt-004/normal/datasets/sift1m
+```
+
+Read-only validation at that source established:
+
+- Dataset metadata is strict JSON with no duplicate keys;
+- type/version is `dataset` / `diskann-float32-dataset/v1`;
+- shape is 1,000,000 rows by 128 float32 dimensions under L2;
+- `vectors.bin` is 512,000,008 bytes and its native header is `(1000000,128)`;
+- raw payload SHA-256 is
+  `8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e`;
+- the repository's `diskann-artifact-c14n-v1` implementation recomputes aggregate checksum
+  `4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e`.
+
+The raw payload and aggregate checksums are different identities. The request uses relative
+`dataset.metadata_path=datasets/sift1m/artifact.json`; with workspace root `/xn-run/workspace`, it
+resolves under `workspace.normal_root` to
+`/xn-run/workspace/normal/datasets/sift1m/artifact.json`, and that metadata's relative payload path
+resolves to `/xn-run/workspace/normal/datasets/sift1m/vectors.bin`. It contains no absolute Dataset
+path or `..` component.
+
+### 11.2 Frozen parameters and observed resources
+
+```text
 profile: paper-style
 P0: R=16, build_DRAM_budget_gib=0.6, replication_factor=2,
     sample_probability=0.256
 B1: omega=40, lambda=64, alpha=1.2, seed=42, iteration_cap=128
 M0: merge.R=64, use_filters=false
-workspace suggestion: /data/xn-descent/workspaces/xn-sift1m-paper-v1-seed42
-result suggestion: experiments/results/xn-descent-local-build/sift1m-validation.json
-attempts: exactly one; retain success or failure; no parameter-changing retry or best-run selection
+workspace.root: /xn-run/workspace
+memory_budget_bytes: 17179869184
+thread_budget: 6
 ```
 
-The P0 values and `alpha=1.2` come from the existing SIFT1M Baseline profile; `omega=40` is the
-upper end of the paper's stated typical range; `lambda=64` is the paper's all-memory comparison
-degree; `merge.R=64` is explicitly chosen independently so M0 does not lower that proposed output
-cap. Seed 42 is the implemented default and cap 128 is the already validated safety-cap candidate,
-not a paper-stated convergence value. The target host must still confirm the Dataset paths, a
-16-GiB memory-budget proposal, a 16-thread-budget proposal (both reduced if the real host cannot
-provide them), output capacity, and the complete environment record before these values can be
-written into the formal request.
+The implementation tuple is the current descriptor tuple: pinned P0
+`cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1`, B1
+`xn_graph_xn_descent_local_build_v1`, and pinned M0
+`cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1`. `lambda` and
+`merge.R` remain independent even though both are 64 in this request.
 
-The standalone JSON provenance rule is now resolved by request version `1.1.0`: the request omits
-`source_config`, and the runner derives the exact raw-byte digest and
-`xn-json-compact-v1` normalized digest without a self-reference. The final file's separate SHA-256
-must still be recorded below so T039 can verify that the reviewed file is the one submitted.
-This protocol completion does not freeze target paths, resources, or experiment parameters, so
-T038 remains incomplete until those values are confirmed together.
+The 2026-09-14 offline diagnostic container used image
+`sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf`
+as `linux/amd64` and observed:
 
-Before T038 can be checked, freeze all of the following together:
+- LinuxKit kernel `5.15.49-linuxkit`, x86_64;
+- 6 processors; cgroup CPU `max 100000` (no narrower quota observed);
+- total memory 20,991,467,520 bytes and currently available memory 19,054,678,016 bytes;
+- cgroup memory `max` (no narrower cgroup limit observed);
+- declared-memory-budget margins of 3,811,598,336 bytes against total and 1,874,808,832 bytes
+  against the point-in-time available value;
+- CMake 3.22.1 and GCC 11.4.0;
+- 16,498,421,760 bytes free on the `/xn-run` filesystem at inspection time;
+- repository mount read-only and output mount read-write.
 
-- the target Linux Dataset metadata/payload paths and successful Artifact validation, with both
-  checksums above independently verified in that environment;
-- `sample_probability`; profile; `omega`, `lambda`, `alpha`, seed and iteration cap; explicit
-  positive `merge.R`; memory and thread budgets; absolute workspace and request ID;
-- Linux compiler/version, complete CMake flags, CPU/RAM/OS/numerical environment, and result/log
-  locations;
-- one attempt only, preservation of both success and failure output, no parameter-changing retry,
-  no best-run selection, and aggregation by retaining the sole attempt as-is;
-- `request_version: 1.1.0`, omission of caller `source_config`, and the final request-file SHA-256
-  bound to this policy.
+These observations show only that six workers are visible and the declared 16-GiB algorithm
+budget is below the observed total/available memory at inspection. The budget is not a process
+hard limit and does not reserve memory for P0, B1, M0, the OS, Docker, or other allocations. The
+remaining disk space has been recorded, not certified as sufficient. Actual peak memory, disk
+consumption, and completion remain unproved until the single approved run.
 
-After these are resolved, parse the JSON, validate its Dataset and parameter references without
-executing stages, compute its SHA-256, and record here:
+### 11.3 Frozen future build and mount layout
+
+The host output directory is:
 
 ```text
-request: experiments/configs/xn-descent-local-build/sift1m-validation.json
-request_sha256: <record only after the final file exists>
-status: frozen, awaiting T039 human approval; not authorized to run
+/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/xn-sift1m-paper-v1-seed42
 ```
 
-Only after T039 records explicit approval may T040 invoke:
+It was created empty during T038. T040 must stop rather than delete, overwrite, or reuse it if it
+contains an earlier result before authorized workspace preparation. The frozen runtime mounts are:
+
+1. repository root to `/workspace`, read-only;
+2. the host output directory above to `/xn-run`, read-write;
+3. the existing host Dataset directory to
+   `/xn-run/workspace/normal/datasets/sift1m`, read-only.
+
+T038 did not create `/xn-run/workspace/normal`, copy the Dataset, or perform the third mount. T040
+must prepare only the required empty nested mount target after approval; it must not change the
+source `artifact.json`, `vectors.bin`, relative payload path, Validator, or confinement rules.
+Validation at the source path is not represented as the future mounted Artifact Validator result.
+
+After both T038 material and the T039 approval record are committed, T040 must start from that
+exact clean commit and reconfigure the existing writable r2 build directory offline:
 
 ```bash
-build/xn-descent-linux/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner \
-  --request experiments/configs/xn-descent-local-build/sift1m-validation.json
+cmake -S . -B build/xn-descent-docker-linux-t023-r2 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TESTING=ON \
+  -DDISKANN_CPP_MAIN_BASELINE=ON \
+  -DDISKANN_XN_DESCENT=ON \
+  -DDISKANN_GP_ANN_OGP=OFF \
+  -DDISKANN_HNSW_MERGER=OFF \
+  -DDISKANN_SEARCH_EVALUATION=OFF \
+  -DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/workspace/build/xn-descent-docker-linux-t023-r2/_deps/nlohmann_json-src
+
+cmake --build build/xn-descent-docker-linux-t023-r2 --parallel \
+  --target xn_descent_experiment_runner
 ```
 
-Missing or failed SIFT1M validation leaves the Feature incomplete. No SIFT100M or larger run is
-authorized.
+The configure/build container additionally bind-mounts the existing host r2 directory at the same
+`/workspace/build/xn-descent-docker-linux-t023-r2` location as writable. Before execution, T040
+must verify the compiled source identity equals the committed review baseline, `dirty=false`, and
+the resulting Manifest omits `dirty_source_checksum`.
+
+The runner path is:
+
+```text
+/workspace/build/xn-descent-docker-linux-t023-r2/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner
+```
+
+The future immutable output locations are:
+
+```text
+runner result: /xn-run/result.json
+runner log: /xn-run/xn-sift1m-run.log
+repository result index: experiments/results/xn-descent-local-build/sift1m-validation.json
+```
+
+The repository result index belongs to T040 and will contain references to external immutable
+results, Artifacts, Manifests, logs, and any failure impact; it does not duplicate those objects.
+None of these result files exists from T038.
+
+### 11.4 Execution and claim policy
+
+T039 must review and explicitly approve the exact request SHA-256, Dataset identities, parameters,
+image/toolchain, memory headroom, disk observation, build identity, mounts, and retention policy.
+Only then may T040 execute the request exactly once in local Docker Linux/amd64. Success and
+controlled failure are retained; there is no automatic retry, parameter-changing retry, best-run
+selection, `R` truncation, relaxed validation, or SIFT100M-or-larger execution.
+
+This validates only SIFT1M P0 → B1×Partition → M0 construction, Artifact/Manifest integrity,
+resource behavior, and termination. It does not execute or claim Search, Recall, QPS, IMF Search,
+BBP, Secondary Index, SSD behavior, end-to-end paper accuracy, or complete XN-Graph reproduction.
+The local six-thread choice does not constrain a later remote Linux run that declares and records
+a different legal thread count.
+
+The required order is now:
+
+```text
+T038 frozen material → T039 approval → T040 local Docker SIFT1M
+                     → T041 local result review → T037 remote Linux rebuild/replay
+                     → T042 final audit
+```
+
+Missing approval or a failed run leaves later gates incomplete. No SIFT1M execution is authorized
+by this frozen document alone.
 
 ## 12. External Linux rebuild and replay handoff
 
-`[PENDING USER EXECUTION: T037]` Docker evidence from T034 is useful regression evidence but is not
-the user-executed external Linux record required here. The user must perform the following on the
-target Linux host; the macOS Codex must not mark this task complete on their behalf.
+`[PENDING AFTER T041: T037]` Docker evidence is useful local regression/scale evidence but is not
+the user-executed external Linux record required here. After T041 selects the final reviewed clean
+commit, the user must perform the following on the target Linux host; the macOS Codex must not mark
+this task complete on their behalf.
 
 ### 12.1 Transfer the exact reviewed source
 
-Record `git rev-parse HEAD`. For this handoff, use the final provenance-fix commit reported with the
-completed local work, check out that exact commit with submodules, and verify the pinned gitlink.
-Do not copy a branch tip that has advanced. If any later reviewed changes are intentionally kept
-uncommitted, migrate both categories below and bind them to the recorded commit:
+Record `git rev-parse HEAD`. For this handoff, use the final clean commit explicitly selected by
+T041, check out that exact commit with submodules, and verify the pinned gitlink. Do not copy an
+older local-scale baseline or a branch tip that has advanced. If any reviewed changes are
+intentionally kept uncommitted, migrate both categories below and bind them to the recorded commit:
 
 ```bash
 # On the reviewed source host; paths are examples outside the repository.

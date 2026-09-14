@@ -1,0 +1,54 @@
+{
+  "request_version": "1.1.0",
+  "operation": "execute",
+  "request_id": "xn-sift1m-paper-v1-seed42",
+  "study_class": "single_paper_reproduction",
+  "reproduction_mode": "faithful_adaptation",
+  "replacement_scope": "local_build_only",
+  "profile": "paper-style",
+  "workspace": {
+    "root": "/xn-run/workspace",
+    "memory_budget_bytes": 17179869184,
+    "thread_budget": 6
+  },
+  "dataset": {
+    "metadata_path": "datasets/sift1m/artifact.json",
+    "artifact_type": "dataset",
+    "format_version": "diskann-float32-dataset/v1",
+    "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+  },
+  "implementations": {
+    "partition": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+    "local_build": "xn_graph_xn_descent_local_build_v1",
+    "merge": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1"
+  },
+  "stage_parameters": {
+    "partition": {
+      "R": 16,
+      "build_DRAM_budget_gib": 0.6,
+      "replication_factor": 2,
+      "sample_probability": 0.256
+    },
+    "local_build": {
+      "schema_version": "xn-descent-parameters/v1",
+      "validation_profile": "paper-style",
+      "omega": 40,
+      "lambda": 64,
+      "alpha": 1.2,
+      "seed": 42,
+      "iteration_cap": 128,
+      "prng_policy": "mt19937_64-splitmix64-per-node-v1",
+      "sampling_policy": "unbiased-rejection-unique-nonself-v1",
+      "tie_break_policy": "squared-distance-then-local-id-v1",
+      "round_model": "deterministic-synchronous-round-v1",
+      "convergence_rule": "full-state-fixed-point-or-three-round-c-g-stability-v1",
+      "entry_point_rule": "local-centroid-nearest-v1",
+      "distance_implementation": "squared-l2/v1",
+      "reproduction_mode": "faithful_adaptation"
+    },
+    "merge": {
+      "R": 64,
+      "use_filters": false
+    }
+  }
+}
