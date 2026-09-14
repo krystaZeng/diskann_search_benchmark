@@ -1,6 +1,7 @@
 #include "xn_descent_test_support.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <set>
 #include <vector>
 
@@ -107,6 +108,42 @@ int main() {
     DP_EXPECT_TRUE(round.state.c[node].size() <= parameters.omega);
     DP_EXPECT_TRUE(round.state.g[node].size() <= parameters.lambda);
   }
+
+  fixture::CountingDistance counted_distance;
+  xn::AlgorithmExecutionOptions counted_options;
+  counted_options.thread_budget = 1;
+  const auto counted_round = xn::execute_round(
+      snapshot, vectors, parameters, counted_distance, counted_options);
+  DP_EXPECT_EQ(counted_round.state, expected_round);
+  DP_EXPECT_EQ(counted_round.proposals.cross_c_submitted,
+               round.proposals.cross_c_submitted);
+  DP_EXPECT_EQ(counted_round.proposals.cross_c.size(),
+               round.proposals.cross_c.size());
+  DP_EXPECT_EQ(counted_round.proposals.reverse_r.size(),
+               round.proposals.reverse_r.size());
+  DP_EXPECT_EQ(counted_round.convergence.changed_c_nodes,
+               round.convergence.changed_c_nodes);
+  DP_EXPECT_EQ(counted_round.convergence.changed_r_nodes,
+               round.convergence.changed_r_nodes);
+  DP_EXPECT_EQ(counted_round.convergence.changed_g_nodes,
+               round.convergence.changed_g_nodes);
+  DP_EXPECT_EQ(counted_round.convergence.changed_c_edges,
+               round.convergence.changed_c_edges);
+  DP_EXPECT_EQ(counted_round.convergence.changed_r_edges,
+               round.convergence.changed_r_edges);
+  DP_EXPECT_EQ(counted_round.convergence.changed_g_edges,
+               round.convergence.changed_g_edges);
+  DP_EXPECT_EQ(counted_round.convergence.fixed_point,
+               round.convergence.fixed_point);
+  DP_EXPECT_EQ(counted_round.convergence.convergence_condition,
+               round.convergence.convergence_condition);
+  DP_EXPECT_EQ(counted_round.convergence.before_state_digest,
+               round.convergence.before_state_digest);
+  DP_EXPECT_EQ(counted_round.convergence.after_state_digest,
+               round.convergence.after_state_digest);
+  std::cout << "XN_PERF_DISTANCE_CALLS optimized_expected=6 actual="
+            << counted_distance.evaluations() << '\n';
+  DP_EXPECT_EQ(counted_distance.evaluations(), std::uint64_t{6});
 
   auto reverse_parameters = parameters;
   reverse_parameters.omega = 2;

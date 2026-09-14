@@ -182,20 +182,32 @@ std::uint64_t round_memory_bytes(std::uint64_t preflight,
 }
 
 void reduce_cross_try_insert(
-    LocalNodeId owner, LocalNodeId candidate, std::uint32_t capacity,
-    const std::vector<std::vector<float>>& vectors,
-    const DistanceFunction& distance, NeighborList& target) {
-  const NeighborRecord proposal{
-      candidate, squared_distance(owner, candidate, vectors, distance)};
+    LocalNodeId owner, NodeCount count, const NeighborRecord& proposal,
+    std::uint32_t capacity, NeighborList& target) {
+  require_node(owner, count, "cross-TryInsert target center");
+  require_node(proposal.id, count, "cross-TryInsert candidate");
+  if (owner == proposal.id) {
+    throw PipelineError(ErrorCategory::kIdRangeInvalid,
+                        "XN-Descent cross-TryInsert rejects self");
+  }
+  if (capacity == 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent cross-TryInsert capacity must be positive");
+  }
+  if (!std::isfinite(proposal.squared_distance_to_owner) ||
+      proposal.squared_distance_to_owner < 0.0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent cross-TryInsert distance is invalid");
+  }
   const auto duplicate = std::find_if(
       target.begin(), target.end(),
-      [&](const auto& current) { return current.id == candidate; });
+      [&](const auto& current) { return current.id == proposal.id; });
   if (duplicate != target.end()) {
     if (proposal.squared_distance_to_owner <
         duplicate->squared_distance_to_owner) {
       *duplicate = proposal;
+      std::sort(target.begin(), target.end(), neighbor_less);
     }
-    std::sort(target.begin(), target.end(), neighbor_less);
     return;
   }
   if (target.size() < capacity) {
@@ -207,6 +219,30 @@ void reduce_cross_try_insert(
     target.back() = proposal;
     std::sort(target.begin(), target.end(), neighbor_less);
   }
+}
+
+void try_insert_record(LocalNodeId owner, NodeCount count,
+                       const NeighborRecord& candidate,
+                       std::uint32_t capacity, NeighborList& target) {
+  require_node(owner, count, "TryInsert target center");
+  require_node(candidate.id, count, "TryInsert candidate");
+  if (owner == candidate.id) {
+    throw PipelineError(ErrorCategory::kIdRangeInvalid,
+                        "XN-Descent TryInsert rejects self");
+  }
+  if (capacity == 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "XN-Descent TryInsert capacity must be positive");
+  }
+  target.push_back(candidate);
+  target = normalize_neighbors(owner, count, std::move(target), capacity);
+}
+
+bool equation_two_occludes_with_distances(double owner_candidate,
+                                           double owner_occluder,
+                                           double between, double alpha) {
+  if (!(owner_occluder < owner_candidate)) return false;
+  return scaled_alpha_squared_strict_less(alpha, between, owner_candidate);
 }
 
 std::uint64_t membership_delta(const NeighborList& lhs,
@@ -235,6 +271,8 @@ std::uint64_t membership_delta(const ReverseList& lhs,
 
 ConvergenceEvidence compare_states(const NormalizedRoundState& before,
                                    const NormalizedRoundState& after,
+                                   const StateDigests& before_digests,
+                                   const StateDigests& after_digests,
                                    std::uint32_t round) {
   if (before.c.size() != after.c.size() || before.r.size() != after.r.size() ||
       before.g.size() != after.g.size()) {
@@ -245,16 +283,27 @@ ConvergenceEvidence compare_states(const NormalizedRoundState& before,
   evidence.round_index = round;
   evidence.direct_equality_checked = true;
   for (std::size_t node = 0; node < before.c.size(); ++node) {
-    if (before.c[node] != after.c[node]) ++evidence.changed_c_nodes;
-    if (before.r[node] != after.r[node]) ++evidence.changed_r_nodes;
-    if (before.g[node] != after.g[node]) ++evidence.changed_g_nodes;
-    evidence.changed_c_edges += membership_delta(before.c[node], after.c[node]);
-    evidence.changed_r_edges += membership_delta(before.r[node], after.r[node]);
-    evidence.changed_g_edges += membership_delta(before.g[node], after.g[node]);
+    if (before.c[node] != after.c[node]) {
+      ++evidence.changed_c_nodes;
+      evidence.changed_c_edges +=
+          membership_delta(before.c[node], after.c[node]);
+    }
+    if (before.r[node] != after.r[node]) {
+      ++evidence.changed_r_nodes;
+      evidence.changed_r_edges +=
+          membership_delta(before.r[node], after.r[node]);
+    }
+    if (before.g[node] != after.g[node]) {
+      ++evidence.changed_g_nodes;
+      evidence.changed_g_edges +=
+          membership_delta(before.g[node], after.g[node]);
+    }
   }
-  evidence.fixed_point = before == after;
-  evidence.before_state_digest = state_digests(before).full;
-  evidence.after_state_digest = state_digests(after).full;
+  evidence.fixed_point = evidence.changed_c_nodes == 0 &&
+                         evidence.changed_r_nodes == 0 &&
+                         evidence.changed_g_nodes == 0;
+  evidence.before_state_digest = before_digests.full;
+  evidence.after_state_digest = after_digests.full;
   return evidence;
 }
 
@@ -525,7 +574,8 @@ bool equation_two_occludes(LocalNodeId owner, LocalNodeId candidate,
       squared_distance(owner, candidate, vectors, distance);
   if (!(owner_occluder < owner_candidate)) return false;
   const auto between = squared_distance(occluder, candidate, vectors, distance);
-  return scaled_alpha_squared_strict_less(alpha, between, owner_candidate);
+  return equation_two_occludes_with_distances(
+      owner_candidate, owner_occluder, between, alpha);
 }
 
 void try_insert(LocalNodeId owner, LocalNodeId candidate,
@@ -542,10 +592,10 @@ void try_insert(LocalNodeId owner, LocalNodeId candidate,
     throw PipelineError(ErrorCategory::kSchemaInvalid,
                         "XN-Descent TryInsert capacity must be positive");
   }
-  target.push_back(
-      {candidate, squared_distance(owner, candidate, vectors, distance)});
-  target = normalize_neighbors(owner, vectors.size(), std::move(target),
-                               capacity);
+  try_insert_record(
+      owner, vectors.size(),
+      {candidate, squared_distance(owner, candidate, vectors, distance)},
+      capacity, target);
 }
 
 NormalizedRoundState initialize_state(
@@ -570,11 +620,18 @@ NormalizedRoundState initialize_state(
   return state;
 }
 
-RoundResult execute_round(const RoundSnapshot& snapshot,
-                          const std::vector<std::vector<float>>& vectors,
-                          const XnDescentParameters& parameters,
-                          const DistanceFunction& distance,
-                          const AlgorithmExecutionOptions& options) {
+namespace {
+
+struct RoundExecutionResult {
+  RoundResult round;
+  StateDigests state_digests;
+};
+
+RoundExecutionResult execute_round_impl(
+    const RoundSnapshot& snapshot, const StateDigests& snapshot_digests,
+    const std::vector<std::vector<float>>& vectors,
+    const XnDescentParameters& parameters, const DistanceFunction& distance,
+    const AlgorithmExecutionOptions& options) {
   const auto count = vectors.size();
   if (count == 0 || snapshot.state.c.size() != count ||
       snapshot.state.r.size() != count || snapshot.state.g.size() != count) {
@@ -632,11 +689,12 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
   std::exception_ptr first_exception;
   std::mutex exception_mutex;
 
-  const auto submit_cross = [&](LocalNodeId target, LocalNodeId proposed) {
+  const auto submit_cross = [&](LocalNodeId target,
+                                const NeighborRecord& proposal) {
     cross_submitted.fetch_add(1, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(cross_mutex[target]);
-    reduce_cross_try_insert(target, proposed, parameters.omega, vectors,
-                            distance, reduced_cross[target]);
+    reduce_cross_try_insert(target, count, proposal, parameters.omega,
+                            reduced_cross[target]);
   };
   const auto worker_body = [&] {
     try {
@@ -656,31 +714,45 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
                squared_distance(owner, candidate, vectors, distance)});
         }
         std::sort(candidates.begin(), candidates.end(), neighbor_less);
+        std::vector<double> pair_distances;
+        pair_distances.reserve(working.nodes[owner].size());
 
         for (const auto& candidate_record : candidates) {
           const auto candidate = candidate_record.id;
+          pair_distances.clear();
           bool not_occluded = true;
           for (const auto& current : working.nodes[owner]) {
-            if (current.id == candidate) continue;
-            submit_cross(current.id, candidate);
-            submit_cross(candidate, current.id);
-            if (equation_two_occludes(owner, candidate, current.id,
-                                      parameters.alpha, vectors, distance)) {
+            if (current.id == candidate) {
+              pair_distances.push_back(0.0);
+              continue;
+            }
+            const auto between =
+                squared_distance(current.id, candidate, vectors, distance);
+            pair_distances.push_back(between);
+            submit_cross(current.id, {candidate, between});
+            submit_cross(candidate, {current.id, between});
+            if (equation_two_occludes_with_distances(
+                    candidate_record.squared_distance_to_owner,
+                    current.squared_distance_to_owner, between,
+                    parameters.alpha)) {
               not_occluded = false;
             }
           }
           if (!not_occluded) continue;
           auto& graph = working.nodes[owner];
+          std::size_t current_index = 0;
           graph.erase(
               std::remove_if(graph.begin(), graph.end(), [&](const auto& current) {
+                const auto between = pair_distances.at(current_index++);
                 if (current.id == candidate) return false;
-                return equation_two_occludes(owner, current.id, candidate,
-                                              parameters.alpha, vectors,
-                                              distance);
+                return equation_two_occludes_with_distances(
+                    current.squared_distance_to_owner,
+                    candidate_record.squared_distance_to_owner,
+                    between, parameters.alpha);
               }),
               graph.end());
-          try_insert(owner, candidate, parameters.lambda, vectors, distance,
-                     graph);
+          try_insert_record(owner, count, candidate_record, parameters.lambda,
+                            graph);
         }
       }
     } catch (...) {
@@ -711,8 +783,8 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
   for (LocalNodeId target = 0; target < count; ++target) {
     for (const auto& proposal : reduced_cross[target]) {
       result.proposals.cross_c.push_back({target, proposal.id});
-      try_insert(target, proposal.id, parameters.omega, vectors, distance,
-                 result.state.c[target]);
+      try_insert_record(target, count, proposal, parameters.omega,
+                        result.state.c[target]);
     }
   }
   for (auto& values : result.state.r) values.clear();
@@ -732,8 +804,10 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
     result.state.g[owner] = normalize_neighbors(
         owner, count, std::move(working.nodes[owner]), parameters.lambda);
   }
-  result.convergence = compare_states(snapshot.state, result.state,
-                                      snapshot.round_index + 1);
+  auto result_state_digests = state_digests(result.state);
+  result.convergence =
+      compare_states(snapshot.state, result.state, snapshot_digests,
+                     result_state_digests, snapshot.round_index + 1);
   const bool c_g_stable = result.convergence.changed_c_nodes == 0 &&
                           result.convergence.changed_g_nodes == 0;
   result.convergence.stable_c_g_rounds =
@@ -749,7 +823,19 @@ RoundResult execute_round(const RoundSnapshot& snapshot,
     result.convergence.convergence_condition =
         ConvergenceCondition::kThreeRoundCgStability;
   }
-  return result;
+  return {std::move(result), std::move(result_state_digests)};
+}
+
+}  // namespace
+
+RoundResult execute_round(const RoundSnapshot& snapshot,
+                          const std::vector<std::vector<float>>& vectors,
+                          const XnDescentParameters& parameters,
+                          const DistanceFunction& distance,
+                          const AlgorithmExecutionOptions& options) {
+  return execute_round_impl(snapshot, state_digests(snapshot.state), vectors,
+                            parameters, distance, options)
+      .round;
 }
 
 AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
@@ -781,10 +867,12 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
       }
       RoundSnapshot snapshot{round - 1, result.state,
                              result.convergence.stable_c_g_rounds};
-      auto next = execute_round(snapshot, vectors, parameters, distance,
-                                options);
+      auto execution = execute_round_impl(
+          snapshot, result.final_state_digests, vectors, parameters, distance,
+          options);
+      auto& next = execution.round;
       result.state = std::move(next.state);
-      result.convergence = next.convergence;
+      result.convergence = std::move(next.convergence);
       result.completed_rounds = round;
       result.resource.peak_estimated_memory_bytes = std::max(
           result.resource.peak_estimated_memory_bytes,
@@ -798,7 +886,7 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
       result.resource.peak_next_r_records = std::max(
           result.resource.peak_next_r_records,
           next.resource.peak_next_r_records);
-      result.final_state_digests = state_digests(result.state);
+      result.final_state_digests = std::move(execution.state_digests);
       if (cancellation != nullptr && cancellation->is_cancelled()) {
         result.termination = TerminationKind::kCancelled;
         result.failure_reason = "cancelled";
@@ -821,14 +909,16 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
     result.resource.next_r_records = error.next_r_records;
     result.resource.peak_current_r_records = error.current_r_records;
     result.resource.peak_next_r_records = error.next_r_records;
-    if (!result.state.c.empty()) {
+    if (!result.state.c.empty() && result.final_state_digests.full.empty()) {
       result.final_state_digests = state_digests(result.state);
     }
     return result;
   } catch (const std::bad_alloc&) {
     result.termination = TerminationKind::kResourceExhausted;
     result.failure_reason = "allocation_failed";
-    if (!result.state.c.empty()) result.final_state_digests = state_digests(result.state);
+    if (!result.state.c.empty() && result.final_state_digests.full.empty()) {
+      result.final_state_digests = state_digests(result.state);
+    }
     return result;
   } catch (const PipelineError& error) {
     if (std::string(error.what()).find("checked_size_overflow") ==
@@ -837,12 +927,16 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
     }
     result.termination = TerminationKind::kResourceExhausted;
     result.failure_reason = "checked_size_overflow";
-    if (!result.state.c.empty()) result.final_state_digests = state_digests(result.state);
+    if (!result.state.c.empty() && result.final_state_digests.full.empty()) {
+      result.final_state_digests = state_digests(result.state);
+    }
     return result;
   } catch (...) {
     result.termination = TerminationKind::kInternalFailure;
     result.failure_reason = "worker_exception";
-    if (!result.state.c.empty()) result.final_state_digests = state_digests(result.state);
+    if (!result.state.c.empty() && result.final_state_digests.full.empty()) {
+      result.final_state_digests = state_digests(result.state);
+    }
     try {
       throw;
     } catch (const std::exception& error) {

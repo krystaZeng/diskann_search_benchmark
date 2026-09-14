@@ -122,6 +122,27 @@ class AllocationFailureDistance final : public DistanceFunction {
   mutable std::atomic<std::uint64_t> evaluations_{0};
 };
 
+class CountingDistance final : public DistanceFunction {
+ public:
+  double evaluate(const std::vector<float>& lhs,
+                  const std::vector<float>& rhs) const override {
+    evaluations_.fetch_add(1, std::memory_order_relaxed);
+    double total = 0.0;
+    for (std::size_t index = 0; index < lhs.size(); ++index) {
+      const auto difference = lhs[index] - rhs[index];
+      total += difference * difference;
+    }
+    return total;
+  }
+
+  std::uint64_t evaluations() const noexcept {
+    return evaluations_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  mutable std::atomic<std::uint64_t> evaluations_{0};
+};
+
 struct SchedulingFixture {
   std::vector<LocalNodeId> owner_order;
   std::uint32_t worker_count{1};
