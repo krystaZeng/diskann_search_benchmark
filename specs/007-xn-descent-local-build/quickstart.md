@@ -269,9 +269,11 @@ been executed.
 
 ## 11. Local Docker SIFT1M freeze and execution gate
 
-`[FROZEN: T038; T039 APPROVED]` The immutable request and this section jointly define the local
-Docker Linux/amd64 construction-scale validation. Freezing the material is not execution approval:
-no runner preflight, P0, B1, M0, search, evaluation, or SIFT1M stage has run.
+`[HISTORICAL FREEZE: T038; FIRST T039 APPROVAL CONSUMED]` The immutable request and this section
+defined the first local Docker Linux/amd64 construction-scale attempt. The freeze itself did not
+run any stage. The one approved T040 attempt later completed P0 and was then stopped with explicit
+user authorization before any B1 termination Manifest or runner result existed; SIFT1M validation
+therefore remains incomplete. Its request, approval, logs, outputs, and diagnostics remain retained.
 
 ### 11.1 Frozen request and Dataset identity
 
@@ -280,13 +282,13 @@ request: experiments/configs/xn-descent-local-build/sift1m-validation.json
 request_sha256: b71453ecad9360f4af9d33c02ff1a05e69f07c6ef3c63599097d104d8a0c1f23
 request_version: 1.1.0
 request_id: xn-sift1m-paper-v1-seed42
-status: frozen; T039 approved one exact run; T040 not yet executed
+status: first one-run approval consumed; attempt user-authorized abort; T040 incomplete
 ```
 
-The request omits `source_config`; the runner will derive the raw-byte and
-`xn-json-compact-v1` hashes only when T040 is authorized. Static review confirmed the runner's
-exact top-level/nested field sets, implementation identities, parameter types and fixed policy
-strings. It did not call `operation=execute` as a fake dry run.
+The request omits `source_config`; the runner derives the raw-byte and `xn-json-compact-v1` hashes
+at invocation. Freeze-time static review confirmed the runner's exact top-level/nested field sets,
+implementation identities, parameter types and fixed policy strings. It did not call
+`operation=execute` as a fake dry run.
 
 The local-only Dataset source is the ignored build directory:
 
@@ -349,7 +351,7 @@ These observations show only that six workers are visible and the declared 16-Gi
 budget is below the observed total/available memory at inspection. The budget is not a process
 hard limit and does not reserve memory for P0, B1, M0, the OS, Docker, or other allocations. The
 remaining disk space has been recorded, not certified as sufficient. Actual peak memory, disk
-consumption, and completion remain unproved until the single approved run.
+consumption, and completion were not proved by the later aborted attempt.
 
 ### 11.3 Frozen future build and mount layout
 
@@ -359,21 +361,23 @@ The host output directory is:
 /Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/xn-sift1m-paper-v1-seed42
 ```
 
-It was created empty during T038. T040 must stop rather than delete, overwrite, or reuse it if it
-contains an earlier result before authorized workspace preparation. The frozen runtime mounts are:
+It was created empty during T038 and now retains the first attempt's incomplete output, logs, and
+diagnostics. They must not be deleted, overwritten, or reused. The frozen runtime mounts were:
 
 1. repository root to `/workspace`, read-only;
 2. the host output directory above to `/xn-run`, read-write;
 3. the existing host Dataset directory to
    `/xn-run/workspace/normal/datasets/sift1m`, read-only.
 
-T038 did not create `/xn-run/workspace/normal`, copy the Dataset, or perform the third mount. T040
-must prepare only the required empty nested mount target after approval; it must not change the
-source `artifact.json`, `vectors.bin`, relative payload path, Validator, or confinement rules.
-Validation at the source path is not represented as the future mounted Artifact Validator result.
+T038 did not create `/xn-run/workspace/normal`, copy the Dataset, or perform the third mount. The
+later authorized first-attempt preparation created only the required nested mount target and used
+the frozen read-only Dataset mount; it did not change the source `artifact.json`, `vectors.bin`,
+relative payload path, Validator, or confinement rules. Freeze-time validation at the source path
+was not represented as the mounted Artifact Validator result.
 
-After both T038 material and the T039 approval record are committed, T040 must start from that
-exact clean commit and reconfigure the existing writable r2 build directory offline:
+For the first attempt, T040 was required to start from the clean commit containing the T038
+material and T039 approval record and reconfigure the existing writable r2 build directory
+offline:
 
 ```bash
 cmake -S . -B build/xn-descent-docker-linux-t023-r2 \
@@ -401,7 +405,7 @@ The runner path is:
 /workspace/build/xn-descent-docker-linux-t023-r2/src/papers/xn_graph/xn_descent/xn_descent_experiment_runner
 ```
 
-The future immutable output locations are:
+The configured first-attempt output locations were:
 
 ```text
 runner result: /xn-run/result.json
@@ -409,17 +413,18 @@ runner log: /xn-run/xn-sift1m-run.log
 repository result index: experiments/results/xn-descent-local-build/sift1m-validation.json
 ```
 
-The repository result index belongs to T040 and will contain references to external immutable
-results, Artifacts, Manifests, logs, and any failure impact; it does not duplicate those objects.
-None of these result files exists from T038.
+The repository result index was reserved to reference external immutable results, Artifacts,
+Manifests, logs, and any failure impact without duplicating those objects. It was not created after
+the aborted attempt. The run log, incomplete workspace, and diagnostics remain under the host
+output directory; no `result.json` exists.
 
-### 11.4 Execution and claim policy
+### 11.4 Historical first-attempt execution and claim policy
 
-T039 must review and explicitly approve the exact request SHA-256, Dataset identities, parameters,
+T039 reviewed and explicitly approved the exact request SHA-256, Dataset identities, parameters,
 image/toolchain, memory headroom, disk observation, build identity, mounts, and retention policy.
-Only then may T040 execute the request exactly once in local Docker Linux/amd64. Success and
-controlled failure are retained; there is no automatic retry, parameter-changing retry, best-run
-selection, `R` truncation, relaxed validation, or SIFT100M-or-larger execution.
+It authorized exactly one local Docker Linux/amd64 attempt. Success and controlled failure were to
+be retained; there was no automatic retry, parameter-changing retry, best-run selection, `R`
+truncation, relaxed validation, or SIFT100M-or-larger execution.
 
 This validates only SIFT1M P0 → B1×Partition → M0 construction, Artifact/Manifest integrity,
 resource behavior, and termination. It does not execute or claim Search, Recall, QPS, IMF Search,
@@ -435,8 +440,104 @@ T038 frozen material → T039 approval → T040 local Docker SIFT1M
                      → T042 final audit
 ```
 
-Missing approval or a failed run leaves later gates incomplete. No SIFT1M execution is authorized
-by this frozen document alone.
+The aborted attempt consumed that approval and leaves later gates incomplete. Neither the original
+freeze nor the original T039 decision authorizes another SIFT1M execution.
+
+### 11.5 Performance-fix second-attempt freeze (separately approved once)
+
+`[FROZEN SUPPLEMENT; SEPARATELY APPROVED FOR ONE ATTEMPT]` The performance-fix source baseline is commit
+`48e9411184a294ed3e687f00a6bcb3b812b7690d`. The final macOS 8/8 and Docker 13/13 regressions
+were run before that commit against HEAD `3fc14732b57a1510b2136752cbf2d94847e63d14` with the exact
+performance-fix code and tests present in a dirty worktree, recorded checksum
+`2cef23beabbf1ebde0dd8af566773b81cc8950e5230d47e17096a71bac738e6a`. Direct review of the
+commit diff and current run-related source/test content confirms that the committed implementation
+matches the validated content; this preparation does not claim that commit `48e9411` was rebuilt.
+The first attempt remains recorded as a user-authorized abort under
+`build/xn-sift1m-paper-v1-seed42/diagnostics/` and is not a successful scale result.
+
+The independent second request is:
+
+```text
+request: experiments/configs/xn-descent-local-build/sift1m-validation-perf-r2.json
+request_sha256: b63805c6392338bd8798c8e950728443b0e75e3e7a56600e2781cfe9bc949dc5
+request_version: 1.1.0
+request_id: xn-sift1m-paper-v1-seed42-perf-r2
+future container: xn-sift1m-paper-v1-seed42-perf-r2-t040
+status: separately approved once; clean-commit rebuild and 13-test gate required before execution
+```
+
+Strict parsing found no duplicate key, placeholder, or caller-supplied `source_config`. A
+structured comparison with the original request found exactly one change: `request_id`. Thus the
+Dataset, implementation tuple, algorithm policies, P0 parameters, B1 `omega=40`, `lambda=64`,
+`alpha=1.2`, `seed=42`, `iteration_cap=128`, M0 `R=64`, six-thread budget, and
+17,179,869,184-byte algorithm memory budget remain unchanged. This attempt tests only the repaired
+implementation; it does not change quality parameters or extend the iteration cap.
+
+Read-only Dataset revalidation used the repository's existing `diskann-artifact-c14n-v1`
+implementation and confirmed 1,000,000 by 128 float32 L2 vectors, a 512,000,008-byte payload with
+native header `(1000000,128)`, raw payload SHA-256
+`8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e`, and Dataset Artifact
+aggregate checksum `4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e`.
+
+The 2026-09-15 offline diagnostic used the same fixed Linux/amd64 image and observed six
+processors (`cpuset.cpus.effective=0-5`; `cpu.max=max 100000`), 20,991,467,520 bytes total memory,
+18,949,177,344 bytes available, and `memory.max=max`. The declared budget was 3,811,598,336 bytes
+below total memory and 1,769,308,160 bytes below the point-in-time available value. CMake 3.22.1
+and GCC 11.4.0 remained available. The new output path's filesystem had 12,443,967,488 bytes free
+and was 98% used. The memory budget is not a whole-process hard limit and does not reserve memory
+for P0, M0, Docker, the OS, or other allocations; current memory and especially disk headroom leave
+material runtime-failure risk and do not prove that the attempt can complete.
+
+The new host output path does not exist during this freeze:
+
+```text
+/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/xn-sift1m-paper-v1-seed42-perf-r2
+```
+
+After a separate approval, execution preparation must create it fresh and stop if it already
+exists. The three mounts for the second attempt are:
+
+1. repository root to `/workspace`, read-only;
+2. the new host output path above to `/xn-run`, read-write;
+3. the retained source Dataset directory
+   `/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/runs/sift1m-structural/attempt-004/normal/datasets/sift1m`
+   to `/xn-run/workspace/normal/datasets/sift1m`, read-only.
+
+The request's relative `dataset.metadata_path=datasets/sift1m/artifact.json` therefore resolves to
+`/xn-run/workspace/normal/datasets/sift1m/artifact.json`; its payload resolves beside it as
+`vectors.bin`. Approval-time preparation, not this freeze, must create the empty nested mount
+target without copying or changing the Dataset. Container-internal result paths remain
+`/xn-run/result.json` and `/xn-run/xn-sift1m-run.log`. The independent repository result index is
+`experiments/results/xn-descent-local-build/sift1m-validation-perf-r2.json`; none of these new
+output or result paths was created in this preparation.
+
+The existing `build/xn-descent-docker-linux-t023-r2` cache and the exact offline Release configure
+flags in Section 11.3 remain the build path. The independent user approval is recorded in
+`specs/007-xn-descent-local-build/validation/sift1m-pre-execution-approval-perf-r2.md`, including
+checksums and durable references for the restored first-attempt Partition validation. After the
+new freeze, approval, and T040 supplement are committed together, call that exact clean commit C.
+Keep C and the worktree unchanged through configure, build, regression, and launch. Rebuild
+`xn_descent_experiment_runner`, `xn_descent_parameters_test`,
+`xn_descent_equation_try_insert_test`, `xn_descent_round_oracle_test`,
+`xn_descent_local_artifact_test`, `xn_descent_determinism_test`, `xn_descent_pipeline_test`,
+`cpp_main_descriptors_preflight`, `cpp_main_m0`, and `cpp_main_pipeline`. List and execute exactly
+the 13 CTests selected by `^(xn_descent_.*|cpp_main_(m0|descriptors_preflight|pipeline))$`.
+Any check/configure/build/test failure stops execution without a code repair or experiment retry.
+Verify compiled project commit C, `dirty=false`, and generated project-source Manifests without
+`dirty_source_checksum`; retain new logs in the ignored build directory, not tracked documents.
+
+The original T039 approval does not authorize this request. One new approval may authorize only
+one new attempt, with no automatic retry, parameter change, best-result selection, deletion of the
+first attempt, or exclusion of the first abort from the audit. The micro-oracle reduction from 34
+to 6 distance calls is not a SIFT1M speedup measurement. P0 and M0 retain random behavior, so equal
+parameters do not require identical Partitions or GlobalGraph edges across attempts and do not make
+the two attempts a strict performance comparison. This material and the independent approval now
+supplement the still-unchecked T040 with the second request, its SHA, approval, and result-index
+paths. T038/T039 retain their first-attempt historical meaning. A vague instruction to
+"continue T040," the old request path, or the checked T039 is not authority for further attempts.
+Only the explicitly approved second request may run once after the clean-C regression gate.
+Retain failures and incomplete output truthfully; exit code 137 alone does not establish OOM.
+Only complete required Artifacts and successful validation may complete T040; stop at T041 review.
 
 ## 12. External Linux rebuild and replay handoff
 
