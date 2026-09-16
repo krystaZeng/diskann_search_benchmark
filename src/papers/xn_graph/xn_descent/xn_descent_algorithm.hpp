@@ -99,12 +99,32 @@ struct AlgorithmResourceEvidence {
   bool r_truncated{false};
 };
 
+// Private, best-effort coordinator diagnostics; never part of graph evidence.
+struct RoundProgress {
+  std::uint32_t round_index{0};
+  bool completed{false};
+  double elapsed_seconds{0.0};
+  std::uint32_t effective_worker_count{0};
+  std::uint64_t current_r_records{0};
+  std::uint64_t next_r_records{0};
+  std::uint64_t cross_c_submitted{0};
+  std::uint64_t changed_c_nodes{0};
+  std::uint64_t changed_g_nodes{0};
+  std::uint64_t changed_c_edges{0};
+  std::uint64_t changed_g_edges{0};
+  std::uint32_t stable_c_g_rounds{0};
+};
+
 struct AlgorithmExecutionOptions {
   std::uint32_t thread_budget{1};
   std::uint64_t memory_budget_bytes{
       std::numeric_limits<std::uint64_t>::max()};
   std::uint64_t preflight_memory_bytes{0};
   std::vector<LocalNodeId> owner_order;
+  // Called synchronously; context must outlive run_algorithm. Exceptions are
+  // ignored so diagnostics cannot change the algorithm's result or exception.
+  void (*progress_callback)(const RoundProgress&, void*){nullptr};
+  void* progress_context{nullptr};
 };
 
 struct RoundResult {

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -19,6 +20,16 @@
 
 namespace diskann_pipeline::xn_descent {
 namespace {
+
+void notify_round_progress(const AlgorithmExecutionOptions& options,
+                           const RoundProgress& progress) noexcept {
+  if (options.progress_callback == nullptr) return;
+  try {
+    options.progress_callback(progress, options.progress_context);
+  } catch (...) {
+    // Diagnostics must not mask a worker failure or fail a successful round.
+  }
+}
 
 void require_node(LocalNodeId node, NodeCount count, const char* role) {
   if (!is_valid_local_node_id(node, count)) {
@@ -414,6 +425,7 @@ std::uint64_t estimate_preflight_memory_bytes(
       checked_multiply(dimension, sizeof(long double)));
   add_records(workers, worker_scratch);
   add_records(workers, sizeof(std::thread));
+  add_records(workers, sizeof(std::uint64_t));
 
   auto native_payload = checked_add(
       24, checked_multiply(
@@ -683,26 +695,27 @@ RoundExecutionResult execute_round_impl(
   WorkingGState working{snapshot.state.g};
   std::vector<NeighborList> reduced_cross(count);
   std::vector<std::mutex> cross_mutex(count);
-  std::atomic<std::uint64_t> cross_submitted{0};
+  std::vector<std::uint64_t> worker_cross_submitted(workers, 0);
   std::atomic<std::size_t> next_owner{0};
   std::atomic<bool> stop{false};
   std::exception_ptr first_exception;
   std::mutex exception_mutex;
 
-  const auto submit_cross = [&](LocalNodeId target,
-                                const NeighborRecord& proposal) {
-    cross_submitted.fetch_add(1, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(cross_mutex[target]);
-    reduce_cross_try_insert(target, count, proposal, parameters.omega,
-                            reduced_cross[target]);
-  };
-  const auto worker_body = [&] {
+  const auto worker_body = [&](std::uint32_t worker_index) {
+    std::uint64_t cross_submitted = 0;
+    const auto submit_cross = [&](LocalNodeId target,
+                                  const NeighborRecord& proposal) {
+      ++cross_submitted;
+      std::lock_guard<std::mutex> lock(cross_mutex[target]);
+      reduce_cross_try_insert(target, count, proposal, parameters.omega,
+                              reduced_cross[target]);
+    };
     try {
       for (;;) {
-        if (stop.load(std::memory_order_relaxed)) return;
+        if (stop.load(std::memory_order_relaxed)) break;
         const auto schedule_index =
             next_owner.fetch_add(1, std::memory_order_relaxed);
-        if (schedule_index >= owner_order.size()) return;
+        if (schedule_index >= owner_order.size()) break;
         const auto owner = owner_order[schedule_index];
         const auto owner_candidates =
             candidate_ids_for(owner, snapshot.state, count);
@@ -755,6 +768,8 @@ RoundExecutionResult execute_round_impl(
                             graph);
         }
       }
+      // One shared write per normally exiting worker, never per proposal.
+      worker_cross_submitted[worker_index] = cross_submitted;
     } catch (...) {
       {
         std::lock_guard<std::mutex> lock(exception_mutex);
@@ -768,7 +783,7 @@ RoundExecutionResult execute_round_impl(
   threads.reserve(workers);
   try {
     for (std::uint32_t worker = 0; worker < workers; ++worker) {
-      threads.emplace_back(worker_body);
+      threads.emplace_back(worker_body, worker);
     }
   } catch (...) {
     stop.store(true, std::memory_order_relaxed);
@@ -778,8 +793,9 @@ RoundExecutionResult execute_round_impl(
   for (auto& thread : threads) thread.join();
   if (first_exception) std::rethrow_exception(first_exception);
 
-  result.proposals.cross_c_submitted =
-      cross_submitted.load(std::memory_order_relaxed);
+  for (const auto submitted : worker_cross_submitted) {
+    result.proposals.cross_c_submitted += submitted;
+  }
   for (LocalNodeId target = 0; target < count; ++target) {
     for (const auto& proposal : reduced_cross[target]) {
       result.proposals.cross_c.push_back({target, proposal.id});
@@ -865,6 +881,13 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
         result.failure_reason = "cancelled";
         return result;
       }
+      RoundProgress progress;
+      progress.round_index = round;
+      progress.effective_worker_count = result.effective_worker_count;
+      notify_round_progress(options, progress);
+      // Full round: snapshot/preparation, workers, reduction, state comparison
+      // and digests, through accepting the completed result. Excludes logging.
+      const auto round_started = std::chrono::steady_clock::now();
       RoundSnapshot snapshot{round - 1, result.state,
                              result.convergence.stable_c_g_rounds};
       auto execution = execute_round_impl(
@@ -887,6 +910,18 @@ AlgorithmResult run_algorithm(const std::vector<std::vector<float>>& vectors,
           result.resource.peak_next_r_records,
           next.resource.peak_next_r_records);
       result.final_state_digests = std::move(execution.state_digests);
+      progress.completed = true;
+      progress.elapsed_seconds = std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - round_started).count();
+      progress.current_r_records = next.resource.current_r_records;
+      progress.next_r_records = next.resource.next_r_records;
+      progress.cross_c_submitted = next.proposals.cross_c_submitted;
+      progress.changed_c_nodes = result.convergence.changed_c_nodes;
+      progress.changed_g_nodes = result.convergence.changed_g_nodes;
+      progress.changed_c_edges = result.convergence.changed_c_edges;
+      progress.changed_g_edges = result.convergence.changed_g_edges;
+      progress.stable_c_g_rounds = result.convergence.stable_c_g_rounds;
+      notify_round_progress(options, progress);
       if (cancellation != nullptr && cancellation->is_cancelled()) {
         result.termination = TerminationKind::kCancelled;
         result.failure_reason = "cancelled";

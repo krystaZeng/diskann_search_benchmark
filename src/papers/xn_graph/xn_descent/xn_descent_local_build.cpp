@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <limits>
 #include <new>
 #include <optional>
@@ -36,6 +37,26 @@ namespace diskann_pipeline::xn_descent {
 namespace {
 
 using Json = nlohmann::json;
+
+void log_round_progress(const RoundProgress& progress, void* context) {
+  const auto partition_id = *static_cast<const PartitionId*>(context);
+  std::cerr << "[xn-descent] partition=" << partition_id
+            << " round=" << progress.round_index
+            << " event=" << (progress.completed ? "end" : "start");
+  if (progress.completed) {
+    std::cerr << " elapsed_seconds=" << progress.elapsed_seconds
+              << " workers=" << progress.effective_worker_count
+              << " current_r_records=" << progress.current_r_records
+              << " next_r_records=" << progress.next_r_records
+              << " cross_c_submitted=" << progress.cross_c_submitted
+              << " changed_c_nodes=" << progress.changed_c_nodes
+              << " changed_g_nodes=" << progress.changed_g_nodes
+              << " changed_c_edges=" << progress.changed_c_edges
+              << " changed_g_edges=" << progress.changed_g_edges
+              << " stable_c_g_rounds=" << progress.stable_c_g_rounds;
+  }
+  std::cerr << '\n' << std::flush;
+}
 
 std::string now_utc() {
   const auto now = std::chrono::system_clock::now();
@@ -576,6 +597,8 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
       algorithm_options.thread_budget = context.thread_budget;
       algorithm_options.memory_budget_bytes = context.memory_budget_bytes;
       algorithm_options.preflight_memory_bytes = required;
+      algorithm_options.progress_callback = &log_round_progress;
+      algorithm_options.progress_context = &partition_id;
       algorithm = run_algorithm(vectors, parameters, *context.distance_function,
                                 context.cancellation_token,
                                 algorithm_options);

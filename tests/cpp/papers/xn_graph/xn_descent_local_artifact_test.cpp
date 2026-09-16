@@ -7,11 +7,47 @@
 #include <algorithm>
 #include <numeric>
 #include <set>
+#include <sstream>
 
 namespace dp = diskann_pipeline;
 namespace xn = diskann_pipeline::xn_descent;
 namespace native = diskann_pipeline::cpp_main;
 namespace fixture = diskann_pipeline::xn_descent::test;
+
+namespace {
+
+class ProgressBuffer final : public std::stringbuf {
+ public:
+  bool fail_flush{false};
+  std::size_t flushes{0};
+  int sync() override {
+    ++flushes;
+    return fail_flush ? -1 : std::stringbuf::sync();
+  }
+};
+
+class ScopedStreamCapture {
+ public:
+  ScopedStreamCapture(std::ostream& stream, std::streambuf& buffer)
+      : stream_(stream), state_(stream.rdstate()), flags_(stream.flags()),
+        previous_(stream.rdbuf(&buffer)) {
+    // Require the production callback to flush explicitly, not via unitbuf.
+    stream_.unsetf(std::ios::unitbuf);
+  }
+  ~ScopedStreamCapture() {
+    stream_.rdbuf(previous_);
+    stream_.flags(flags_);
+    stream_.clear(state_);
+  }
+
+ private:
+  std::ostream& stream_;
+  std::ios::iostate state_;
+  std::ios::fmtflags flags_;
+  std::streambuf* previous_;
+};
+
+}  // namespace
 
 int main() {
   fixture::baseline_fixture::TemporaryDirectory temporary("xn-artifact");
@@ -28,8 +64,15 @@ int main() {
   const auto parameter_path = fixture::baseline_fixture::write_parameters(
       environment.context.temporary_storage,
       fixture::effective_parameters_json("semantic-small", 5, 3, 1.2, 16));
-  const auto result = xn::make_xn_descent_local_build()->build(
-      partition, 0, {parameter_path}, environment.context);
+  ProgressBuffer progress_output;
+  std::stringbuf stdout_output;
+  const auto result = [&] {
+    ScopedStreamCapture capture_error(std::cerr, progress_output);
+    ScopedStreamCapture capture_output(std::cout, stdout_output);
+    return xn::make_xn_descent_local_build()->build(
+        partition, 0, {parameter_path}, environment.context);
+  }();
+  DP_EXPECT_TRUE(stdout_output.str().empty());
   DP_EXPECT_EQ(result.status, dp::StageStatus::kSucceeded);
   DP_EXPECT_TRUE(result.output_candidate.has_value());
   DP_EXPECT_TRUE(std::filesystem::is_regular_file(result.build_manifest_path));
@@ -99,6 +142,28 @@ int main() {
   }
   const auto manifest_parameters =
       fixture::Json::parse(manifest.parameters_json);
+  const auto completed_rounds =
+      manifest_parameters.at("completed_rounds").get<std::uint32_t>();
+  std::istringstream progress_lines(progress_output.str());
+  for (std::uint32_t round = 1; round <= completed_rounds; ++round) {
+    std::string start;
+    std::string end;
+    DP_EXPECT_TRUE(static_cast<bool>(std::getline(progress_lines, start)));
+    DP_EXPECT_TRUE(static_cast<bool>(std::getline(progress_lines, end)));
+    const auto prefix = "[xn-descent] partition=0 round=" + std::to_string(round);
+    DP_EXPECT_EQ(start, prefix + " event=start");
+    DP_EXPECT_TRUE(end.find(prefix + " event=end ") == 0);
+    for (const auto field : {"elapsed_seconds=", "workers=", "current_r_records=",
+                             "next_r_records=", "cross_c_submitted=",
+                             "changed_c_nodes=", "changed_g_nodes=",
+                             "changed_c_edges=", "changed_g_edges=",
+                             "stable_c_g_rounds="}) {
+      DP_EXPECT_TRUE(end.find(field) != std::string::npos);
+    }
+  }
+  std::string extra_line;
+  DP_EXPECT_TRUE(!std::getline(progress_lines, extra_line));
+  DP_EXPECT_TRUE(progress_output.flushes >= 2 * completed_rounds);
   DP_EXPECT_EQ(manifest_parameters.at("termination"), "converged");
   DP_EXPECT_TRUE(manifest_parameters.at("completed_rounds").get<int>() > 0);
   DP_EXPECT_TRUE(
@@ -121,8 +186,14 @@ int main() {
   const auto repeated_parameters = fixture::baseline_fixture::write_parameters(
       repeated.context.temporary_storage,
       fixture::effective_parameters_json("semantic-small", 5, 3, 1.2, 16));
-  const auto repeated_result = xn::make_xn_descent_local_build()->build(
-      partition, 0, {repeated_parameters}, repeated.context);
+  ProgressBuffer failing_output;
+  failing_output.fail_flush = true;
+  const auto repeated_result = [&] {
+    ScopedStreamCapture capture_error(std::cerr, failing_output);
+    return xn::make_xn_descent_local_build()->build(
+        partition, 0, {repeated_parameters}, repeated.context);
+  }();
+  DP_EXPECT_TRUE(failing_output.flushes > 0);
   DP_EXPECT_EQ(repeated_result.status, dp::StageStatus::kSucceeded);
   DP_EXPECT_EQ(
       fixture::read_bytes(graph_path),

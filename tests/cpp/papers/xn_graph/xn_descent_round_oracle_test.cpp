@@ -84,6 +84,7 @@ int main() {
   DP_EXPECT_TRUE(has_c_proposal(round.proposals, 4, 3));
   DP_EXPECT_TRUE(has_c_proposal(round.proposals, 3, 4));
   DP_EXPECT_EQ(round.proposals.cross_c.size(), std::size_t{8});
+  DP_EXPECT_EQ(round.proposals.cross_c_submitted, std::uint64_t{8});
   DP_EXPECT_EQ(round.proposals.reverse_r.size(), std::size_t{2});
 
   auto expected_round = empty_state(vectors.size());
@@ -144,6 +145,25 @@ int main() {
   std::cout << "XN_PERF_DISTANCE_CALLS optimized_expected=6 actual="
             << counted_distance.evaluations() << '\n';
   DP_EXPECT_EQ(counted_distance.evaluations(), std::uint64_t{6});
+
+  // Only owner 0 has work: idle workers must publish zero exactly once, and
+  // the worker processing owner 0 must not lose its count on normal exit.
+  for (const auto threads : {1U, 2U, 8U}) {
+    for (const auto& order : std::vector<std::vector<dp::LocalNodeId>>{
+             {0, 1, 2, 3, 4}, {4, 3, 2, 1, 0}, {0, 2, 4, 1, 3}}) {
+      xn::AlgorithmExecutionOptions options;
+      options.thread_budget = threads;
+      options.owner_order = order;
+      const auto replay = xn::execute_round(
+          snapshot, vectors, parameters, distance, options);
+      DP_EXPECT_EQ(replay.proposals.cross_c_submitted, std::uint64_t{8});
+      DP_EXPECT_EQ(replay.state, expected_round);
+      DP_EXPECT_EQ(xn::state_digests(replay.state),
+                   xn::state_digests(expected_round));
+      DP_EXPECT_EQ(replay.convergence.after_state_digest,
+                   round.convergence.after_state_digest);
+    }
+  }
 
   auto reverse_parameters = parameters;
   reverse_parameters.omega = 2;
