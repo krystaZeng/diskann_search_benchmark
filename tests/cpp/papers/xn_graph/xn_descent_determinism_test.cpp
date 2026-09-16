@@ -4,6 +4,7 @@
 #include "diskann_pipeline/document_codec.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include <numeric>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace dp = diskann_pipeline;
@@ -81,6 +83,171 @@ xn::AlgorithmExecutionOptions execution_options(
   result.thread_budget = threads;
   result.owner_order = std::move(order);
   return result;
+}
+
+struct ProgressCapture {
+  std::thread::id coordinator{std::this_thread::get_id()};
+  bool wrong_thread{false};
+  bool throw_on_output{false};
+  std::vector<xn::RoundProgress> events;
+
+  static void record(const xn::RoundProgress& event, void* context) {
+    auto& self = *static_cast<ProgressCapture*>(context);
+    self.wrong_thread |= std::this_thread::get_id() != self.coordinator;
+    self.events.push_back(event);
+    if (self.throw_on_output) throw std::runtime_error("diagnostic failure");
+  }
+};
+
+void attach_progress(xn::AlgorithmExecutionOptions& options,
+                     ProgressCapture& capture) {
+  options.progress_callback = &ProgressCapture::record;
+  options.progress_context = &capture;
+}
+
+void test_round_progress() {
+  fixture::baseline_fixture::TestDistance distance;
+  const auto vectors = replay_vectors(24);
+  const auto parameters = algorithm_parameters();
+  const auto reference = xn::run_algorithm(
+      vectors, parameters, distance, nullptr, execution_options(1));
+  DP_EXPECT_EQ(reference.termination, xn::TerminationKind::kConverged);
+
+  std::vector<xn::RoundResult> rounds;
+  xn::RoundSnapshot snapshot;
+  snapshot.state = xn::initialize_state(vectors, parameters, distance);
+  for (std::uint32_t round = 0; round < reference.completed_rounds; ++round) {
+    rounds.push_back(xn::execute_round(snapshot, vectors, parameters, distance));
+    snapshot = {round + 1, rounds.back().state,
+                rounds.back().convergence.stable_c_g_rounds};
+  }
+  DP_EXPECT_EQ(snapshot.state, reference.state);
+  for (const auto threads : {1U, 2U, 33U}) {
+    for (const auto& order : {ascending_order(vectors.size()),
+                             reverse_order(vectors.size()),
+                             even_odd_order(vectors.size())}) {
+      auto options = execution_options(threads, order);
+      ProgressCapture capture;
+      attach_progress(options, capture);
+      const auto replay = xn::run_algorithm(
+          vectors, parameters, distance, nullptr, options);
+      DP_EXPECT_EQ(replay.termination, reference.termination);
+      DP_EXPECT_EQ(replay.state, reference.state);
+      DP_EXPECT_EQ(replay.final_state_digests, reference.final_state_digests);
+      DP_EXPECT_EQ(replay.completed_rounds, reference.completed_rounds);
+      DP_EXPECT_EQ(replay.convergence.convergence_condition,
+                   reference.convergence.convergence_condition);
+      DP_EXPECT_TRUE(!capture.wrong_thread);
+      DP_EXPECT_EQ(capture.events.size(), 2 * rounds.size());
+      if (capture.events.size() != 2 * rounds.size()) continue;
+      auto state = xn::initialize_state(vectors, parameters, distance);
+      std::uint32_t stable = 0;
+      for (std::size_t index = 0; index < rounds.size(); ++index) {
+        const auto& expected = rounds[index];
+        const auto round = xn::execute_round(
+            {static_cast<std::uint32_t>(index), state, stable},
+            vectors, parameters, distance, options);
+        DP_EXPECT_EQ(round.proposals.cross_c_submitted,
+                     expected.proposals.cross_c_submitted);
+        DP_EXPECT_EQ(round.state, expected.state);
+        DP_EXPECT_EQ(xn::state_digests(round.state),
+                     xn::state_digests(expected.state));
+        state = round.state;
+        stable = round.convergence.stable_c_g_rounds;
+        const auto& start = capture.events[2 * index];
+        const auto& end = capture.events[2 * index + 1];
+        DP_EXPECT_TRUE(!start.completed);
+        DP_EXPECT_TRUE(end.completed);
+        DP_EXPECT_EQ(start.round_index, index + 1);
+        DP_EXPECT_EQ(end.round_index, index + 1);
+        DP_EXPECT_EQ(end.effective_worker_count,
+                     xn::effective_worker_count(threads, vectors.size()));
+        DP_EXPECT_TRUE(std::isfinite(end.elapsed_seconds));
+        DP_EXPECT_TRUE(end.elapsed_seconds >= 0.0);
+        DP_EXPECT_EQ(end.current_r_records, expected.resource.current_r_records);
+        DP_EXPECT_EQ(end.next_r_records, expected.resource.next_r_records);
+        DP_EXPECT_EQ(end.cross_c_submitted, expected.proposals.cross_c_submitted);
+        DP_EXPECT_EQ(end.changed_c_nodes, expected.convergence.changed_c_nodes);
+        DP_EXPECT_EQ(end.changed_g_nodes, expected.convergence.changed_g_nodes);
+        DP_EXPECT_EQ(end.changed_c_edges, expected.convergence.changed_c_edges);
+        DP_EXPECT_EQ(end.changed_g_edges, expected.convergence.changed_g_edges);
+        DP_EXPECT_EQ(end.stable_c_g_rounds,
+                     expected.convergence.stable_c_g_rounds);
+      }
+    }
+  }
+
+  ProgressCapture failing_sink;
+  failing_sink.throw_on_output = true;
+  auto options = execution_options(2);
+  attach_progress(options, failing_sink);
+  const auto replay = xn::run_algorithm(
+      vectors, parameters, distance, nullptr, options);
+  DP_EXPECT_EQ(failing_sink.events.size(), 2 * rounds.size());
+  DP_EXPECT_EQ(replay.termination, reference.termination);
+  DP_EXPECT_EQ(replay.state, reference.state);
+  DP_EXPECT_EQ(replay.final_state_digests, reference.final_state_digests);
+  DP_EXPECT_EQ(replay.completed_rounds, reference.completed_rounds);
+  DP_EXPECT_EQ(replay.convergence.convergence_condition,
+               reference.convergence.convergence_condition);
+  std::cout << "XN_ROUND_PROGRESS tested_schedules=9"
+            << " rounds=" << reference.completed_rounds << '\n';
+}
+
+void test_progress_failure() {
+  const auto vectors = replay_vectors(24);
+  const auto parameters = algorithm_parameters();
+  auto options = execution_options(1);
+  ProgressCapture capture;
+  capture.throw_on_output = true;
+  attach_progress(options, capture);
+  // Initialization consumes n * omega calls; fail in the real worker path.
+  fixture::AllocationFailureDistance distance(vectors.size() * parameters.omega);
+  const auto failed = xn::run_algorithm(
+      vectors, parameters, distance, nullptr, options);
+  DP_EXPECT_EQ(failed.failure_reason, "allocation_failed");
+  DP_EXPECT_EQ(failed.termination, xn::TerminationKind::kResourceExhausted);
+  DP_EXPECT_EQ(failed.completed_rounds, std::uint32_t{0});
+  DP_EXPECT_EQ(capture.events.size(), std::size_t{1});
+  if (!capture.events.empty()) DP_EXPECT_TRUE(!capture.events.front().completed);
+  DP_EXPECT_TRUE(!capture.wrong_thread);
+
+  // A worker exception that the algorithm normally rethrows must remain the
+  // original exception even when the start diagnostic throws as well.
+  struct WorkerFailureDistance final : dp::DistanceFunction {
+    std::thread::id coordinator{std::this_thread::get_id()};
+    double evaluate(const std::vector<float>& left,
+                    const std::vector<float>& right) const override {
+      if (std::this_thread::get_id() != coordinator) {
+        throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
+                                "original worker exception");
+      }
+      return fixture::baseline_fixture::TestDistance{}.evaluate(left, right);
+    }
+  } worker_failure;
+  capture.events.clear();
+  options.thread_budget = 3;
+  bool original_exception = false;
+  try {
+    (void)xn::run_algorithm(vectors, parameters, worker_failure, nullptr, options);
+  } catch (const dp::PipelineError& error) {
+    original_exception = std::string(error.what()) == "original worker exception";
+  }
+  DP_EXPECT_TRUE(original_exception);
+  DP_EXPECT_EQ(capture.events.size(), std::size_t{1});
+  if (!capture.events.empty()) DP_EXPECT_TRUE(!capture.events.front().completed);
+
+  fixture::baseline_fixture::TestDistance normal_distance;
+  capture.events.clear();
+  fixture::StepCancellation cancellation(1);
+  const auto cancelled = xn::run_algorithm(
+      vectors, parameters, normal_distance, &cancellation, options);
+  DP_EXPECT_EQ(cancelled.termination, xn::TerminationKind::kCancelled);
+  DP_EXPECT_TRUE(!cancellation.worker_poll_observed());
+  DP_EXPECT_EQ(capture.events.size(), 2 * cancelled.completed_rounds);
+  for (std::size_t index = 0; index < capture.events.size(); ++index) {
+    DP_EXPECT_EQ(capture.events[index].completed, index % 2 == 1);
+  }
 }
 
 struct StageObservation {
@@ -510,10 +677,12 @@ int main(int argc, char** argv) {
   }
   const std::string mode = argv[1];
   if (mode == "determinism") {
+    test_round_progress();
     test_determinism();
   } else if (mode == "termination") {
     test_termination();
   } else if (mode == "resource") {
+    test_progress_failure();
     test_resource_and_failure();
   } else {
     throw std::runtime_error("unknown XN-Descent US3 test mode");

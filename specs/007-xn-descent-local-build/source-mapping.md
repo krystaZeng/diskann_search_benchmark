@@ -207,6 +207,19 @@ and historical validation evidence remain distinguishable and are not retroactiv
 
 ## 10. Actual test and CTest mapping
 
+Round diagnostics stay inside the XN implementation: `execute_round_impl` counts all logical
+cross-C submissions in a worker-local scalar, writes each subtotal once on normal worker exit,
+and sums only after every join and the existing exception check. `next_owner`, target locks and
+the bounded reducer are unchanged. `run_algorithm` invokes an optional best-effort callback on
+the coordinator; `XnDescentLocalBuild::build` binds the PartitionId and writes flushed start/end
+lines to stderr, not runner JSON stdout or Artifact/Manifest fields. The monotonic elapsed time
+starts after the start notification, before snapshot creation, and ends after round preparation,
+workers, reduction, direct state comparison/digests and result update, before the end notification.
+Failed partial rounds have no completion notification; callback exceptions do not change algorithm
+results or mask worker exceptions. Existing round-oracle, determinism/resource and local-artifact
+tests cover counts, schedule-independent states/digests, and diagnostic failure isolation. Native
+Linux runner integration and real-data performance remain separate validation requirements.
+
 | Test source | Registered CTest names | Validated responsibility |
 |---|---|---|
 | `tests/cpp/papers/xn_graph/xn_descent_parameters_test.cpp` | `xn_descent_parameters_test` | strict parameters, profiles, descriptor schema revision and schema-copy provenance |
