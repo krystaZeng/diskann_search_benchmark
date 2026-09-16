@@ -556,7 +556,7 @@ T041 now reviews the remote outcome together with separately retained local hist
 
 ## 12. External Linux rebuild and replay handoff
 
-`[PENDING: T037; DOES NOT DEPEND ON LOCAL SIFT1M OR T041]` Docker evidence is not the user-executed
+`[T037 PASSED; see validation/linux-validation.md]` Docker evidence is not the user-executed
 native remote Linux record required here. Transfer the clean preparation commit from
 `codex/xn-remote-linux-prep` (full SHA supplied as `C_remote` in the delivery), then the user must
 perform the following on the target Linux host. The macOS Codex must not mark T037 complete without
@@ -565,64 +565,34 @@ that actual evidence. This preparation commit changes only tasks/quickstart from
 
 ### 12.1 Transfer the exact reviewed source
 
-This handoff uses only a clean commit plus a full, single-branch Git bundle. Create the bundle in
-a new directory outside the repository, referencing `refs/heads/codex/xn-remote-linux-prep` with no
-incremental exclusions/prerequisites, no `--all`, and no bare-SHA replacement for the branch ref.
-Verify it with `git bundle verify` and `git bundle list-heads`, and record its SHA-256 and the full
-branch-tip commit `C_remote` in the delivery. Do not transfer a dirty patch or untracked archive.
-
-The bundle contains the project's complete reachable history and pinned submodule gitlink, not
-the submodule's separate object database. It contains no ignored build output, Dataset, logs,
-dependency cache, or macOS/Docker binary. On remote Linux, the fixed upstream commit and native
-build dependencies must be available separately; if unavailable, stop rather than substitute a
-different version. The submodule command below obtains the recorded commit, not a floating branch.
-
-On the target Linux host, supply the delivered bundle path/SHA, `C_remote`, and a new destination
-directory; these are user environment values, not paths copied from the local Docker request:
-
-```bash
-set -euo pipefail
-: "${XN_REMOTE_BUNDLE:?Set the absolute received bundle path}"
-: "${XN_REMOTE_BUNDLE_SHA256:?Set the delivered bundle SHA-256}"
-: "${XN_REMOTE_COMMIT:?Set the delivered full C_remote SHA}"
-: "${XN_REMOTE_REPO:?Set a new absolute destination path}"
-printf '%s  %s\n' "$XN_REMOTE_BUNDLE_SHA256" "$XN_REMOTE_BUNDLE" | sha256sum --check -
-test ! -e "$XN_REMOTE_REPO"
-git clone --single-branch --branch codex/xn-remote-linux-prep \
-  "$XN_REMOTE_BUNDLE" "$XN_REMOTE_REPO"
-cd "$XN_REMOTE_REPO"
-git bundle verify "$XN_REMOTE_BUNDLE"
-git bundle list-heads "$XN_REMOTE_BUNDLE"
-test "$(git rev-parse HEAD)" = "$XN_REMOTE_COMMIT"
-test "$(git rev-parse refs/heads/codex/xn-remote-linux-prep)" = "$XN_REMOTE_COMMIT"
-git submodule update --init --recursive upstream/diskann-cpp-main
-```
-
-Verify before building:
-
-```bash
-git rev-parse HEAD
-git status --short
-git -C upstream/diskann-cpp-main rev-parse HEAD
-git -C upstream/diskann-cpp-main status --short
-git diff --submodule=short -- upstream/diskann-cpp-main
-git diff --cached --submodule=short -- upstream/diskann-cpp-main
-test -z "$(git status --porcelain)"
-test "$(git -C upstream/diskann-cpp-main rev-parse HEAD)" = \
-  78256bbab4685e1774e78d331e081a153be26823
-test -z "$(git -C upstream/diskann-cpp-main status --porcelain)"
-```
-
-The upstream result must be
-`78256bbab4685e1774e78d331e081a153be26823`, clean, with no gitlink difference.
+The user selected GitHub push/fetch instead of the previously prepared Git bundle.
+Project repository: https://github.com/krystaZeng/diskann_search_benchmark.git
+Branch: codex/xn-remote-linux-prep
+Preparation commit C_remote: 687017cc3cefefea913267f8eb976c572a13d841
+The existing remote repository /ssd1/kk/diskann_search_benchmark was updated.
+The old branch and build outputs were preserved. Do not use the abandoned build/xn-remote clone.
+Upstream remains https://github.com/microsoft/DiskANN.git, branch cpp_main,
+commit 78256bbab4685e1774e78d331e081a153be26823, clean and unchanged.
+The earlier bundle is historical preparation material, not the transfer used for T037.
 
 ### 12.2 Rebuild on Linux
 
-Do not copy macOS or Docker binaries. In a new out-of-tree native Linux directory, use the actual
-registered targets. Record native compiler/CMake, OS/architecture, flags and numerical environment;
-stop on a missing dependency or build failure rather than importing a local cache/binary. Configure
-from the verified clean commit and confirm generated source identity matches `C_remote`,
-`dirty=false`, with no project `dirty_source_checksum` in the resulting Manifests:
+Sections 12.2–12.3 describe the completed T037 native build, 14-test gate and two replays
+at preparation commit C_remote = 687017cc3cefefea913267f8eb976c572a13d841.
+Their commands are historical workflow references; the actual commands, complete flags and
+environment are preserved in validation/linux-validation.md and its referenced evidence.
+Do not repeat these completed gates merely to create the approval record.
+
+For the upcoming T043 execution, reuse the existing out-of-tree directory
+build/xn-descent-linux. After committing the frozen request and approval materials,
+reconfigure/rebuild using the same verified native toolchain, environment and complete
+configuration parameters, but bind generated source identity to the resulting exact clean
+execution commit C_run, not the earlier C_remote. Record C_run explicitly.
+Verify dirty=false and, when generated, matching Manifest source identity with no
+dirty_source_checksum. Do not relabel the earlier T037 tests as tests of C_run.
+Do not create another build directory or copy a macOS/Docker binary.
+
+Historical T037 reference commands:
 
 ```bash
 cmake -S . -B build/xn-descent-linux \
@@ -681,11 +651,9 @@ timestamps, and absolute paths. Compare replay only for the same Partition input
 not require a random P0/M0 full pipeline or final GlobalGraph to be byte-identical, and report any
 macOS/Linux checksum difference for disclosure rather than failure.
 
-Return `linux-validation.md` content or raw evidence containing the clean project commit and bundle
-SHA-256, exact commands and exit results, complete selected test
+Return `linux-validation.md` content or raw evidence containing the clean project commit and actual Git transfer identity, exact commands and exit results, complete selected test
 list, compiler/version, CMake/generator/build flags, architecture, OS/kernel, CPU/RAM and numerical
-environment, Dataset/Partition identities used by replay, and the Linux-internal hashes above. T037
-remains unchecked until this real evidence is received and reviewed.
+environment, Dataset/Partition identities used by replay, and the Linux-internal hashes above. T037 evidence has been received: 14 tests and both Linux-internal replays passed.
 
 The JSON provenance patch is exercised by the two `xn_descent_pipeline_*` entries already selected
 above. The returned evidence must state that `request_version: 1.1.0` completed the real small
@@ -694,7 +662,7 @@ this remains a Linux-host observation and is not inferred from the local Docker 
 
 ### 12.4 Independent remote SIFT1M gate (T043), then T041/T042
 
-`[PENDING; NO REMOTE APPROVAL OR EXECUTION]` Only after T037's native rebuild, 14 tests, and two
+`[REMOTE APPROVAL RECORDED; FINAL CLEAN-COMMIT REBUILD AND EXECUTION PENDING]` Only after T037's native rebuild, 14 tests, and two
 replays pass, prepare `experiments/configs/xn-descent-local-build/sift1m-validation-remote-linux.json`
 as a new JSON-only `request_version=1.1.0` request. Independently freeze its exact SHA-256, real
 remote Dataset/metadata/payload paths and both checksum identities, implementation tuple and
@@ -729,7 +697,34 @@ T041 reviews the actual remote result (including failure), its independent appro
 evidence, alongside separately retained histories of both local attempts. T042 audits required
 remote gates and records each local/remote status truthfully. Neither gate relabels a local
 unfinished T040 attempt as successful, and an incomplete remote result cannot establish completed
-validation. This handoff creates none of the future request, approval, result or validation files.
+validation. The request, validation record and independent approval are now recorded; no remote scale result is claimed.
+
+
+### 12.5 Recorded remote freeze
+
+- Request: experiments/configs/xn-descent-local-build/sift1m-validation-remote-linux.json
+- SHA-256: 1312b7c260fdbcd790830339186d28e1e2470fb0ca092cd2c3ee97c49b8f66cc
+- Request ID: xn-sift1m-paper-v1-seed42-remote-linux
+- Threads: 16; algorithm memory budget: 68719476736 bytes (64 GiB), not an RSS limit.
+- All implementation identities and algorithm parameters remain exactly as in the frozen JSON.
+- Existing Dataset: /ssd1/kk/diskann_search_benchmark/build/cpp-main-baseline/runs/sift1m-unified/normal/datasets/sift1m
+- Payload SHA-256: 8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e
+- Aggregate checksum: 4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e
+- Prior inspection verified payload checksum and metadata identity; full runner admission still applies.
+- Resource sample at 2026-09-15T17:55:07+08:00: 32 logical CPUs, 215 GiB available RAM,
+  approximately 1.6 TiB free on /ssd1. Historical readings, not current guarantees.
+- Native toolchain and existing validation evidence: specs/007-xn-descent-local-build/validation/linux-validation.md
+- Independent user approval: specs/007-xn-descent-local-build/validation/sift1m-pre-execution-approval-remote-linux.md
+- New output: /ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux
+- Workspace: /ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux/workspace
+- Preserve the existing Dataset; stage a byte-identical copy under workspace/normal/datasets/sift1m.
+- Future result and log: result.json and runner.log under the new output.
+- Future result index: experiments/results/xn-descent-local-build/sift1m-validation-remote-linux.json
+- Commit these materials, then reconfigure/rebuild in build/xn-descent-linux from that exact clean commit.
+  Record the actual execution commit; do not relabel the earlier tests as tests of the later commit.
+- Keep the execution commit/tree unchanged through configuration, building and launch.
+- Do not reuse an existing run output, retry automatically, push, or operate the Mac experiment.
+- T043 remains unchecked; remote SIFT1M has not been executed by this preparation.
 
 ## 13. Completion report template
 
