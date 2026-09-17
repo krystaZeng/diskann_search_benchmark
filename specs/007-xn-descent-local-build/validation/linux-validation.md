@@ -82,3 +82,25 @@ future reconfiguration must not overwrite this snapshot.
 - build/xn-descent-linux/diagnostics/t037-before-remote-approval/src/papers/xn_graph/xn_descent/CMakeFiles/diskann_xn_descent.dir/flags.make: 1e355d46a1d0026627f1adbef948646fe3ec649c721af337151ff3c3467504b5
 - build/xn-descent-linux/diagnostics/t037-before-remote-approval/src/papers/xn_graph/xn_descent/CMakeFiles/xn_descent_experiment_runner.dir/link.txt: a015684cc34d0f39ed61ea8f6c61ff43e19210630f6b5b53ad7be1a90d10220d
 - build/xn-descent-linux/diagnostics/t037-before-remote-approval/CMakeFiles/3.22.1/CMakeCXXCompiler.cmake: 2b45b213952e8ff33366da3750a3a8ccdc914d32dde4b4cbb2051e959ab192ee
+
+## Counter-fix regression and successful remote construction
+
+The original T037 record above remains historical evidence for 687017cc3cefefea913267f8eb976c572a13d841.
+The subsequently reported clean Linux regression checkout was 5438bdd755f563267a02ddfa10286d04ce59b262.
+Its 14 selected tests and two additional deterministic replays passed; actual log references follow.
+The later SIFT1M execution commit was 57c27cbc967bd9b6998b587bab4b27ccd5766c6b; only request/approval files changed from its parent.
+These logs are not relabeled as a full 14-test rerun at the execution commit.
+SIFT1M construction succeeded: P0=1, B1=3, M0=1; all five published validation records are VALID.
+Result index: experiments/results/xn-descent-local-build/sift1m-validation-remote-linux-counter-fix.json.
+T041 human acceptance and T042 final audit remain pending. No tests or experiments were rerun for this supplement.
+
+- /ssd1/kk/diskann_search_benchmark/build/xn-cross-counter-linux/diagnostics/ctest-14.log: SHA-256 c8cc35aaf630c0c4a5a2a73b204277679c3d4698131d99a325c5bca1279aae80
+- /ssd1/kk/diskann_search_benchmark/build/xn-cross-counter-linux/diagnostics/replay-1.log: SHA-256 9f324fa2648b41b5e1db5a47be63112e1fcf4aab90476d55e5426b6e34c1f2fa
+- /ssd1/kk/diskann_search_benchmark/build/xn-cross-counter-linux/diagnostics/replay-2.log: SHA-256 15103432a72934cd5d572f4d039d6f8576f2ae558432b910c783a836e4950cbb
+
+Deterministic replay summary:
+
+    XN_US3_DETERMINISM full_state_sha256=3827ea96b8c7d6bdc262ee7041f28b0be0b7c5bac93bf6492169bf55822b89d5 native_payload_sha256=46e4c8d3ca83254ca869a487d2722806dd8f4478fefb61179bbe05863cfb1386 completed_rounds=8 convergence_condition=three_round_c_g_stability effective_workers=1,2,24 source_dirty=0
+
+Final closeout update: T041 acceptance is recorded in specs/007-xn-descent-local-build/validation/sift1m-post-run-review.md; T042 audit is recorded in specs/007-xn-descent-local-build/validation/completion-report.md.
+Earlier pending statements above describe their recording-time status. No additional test or experiment was executed for this update.

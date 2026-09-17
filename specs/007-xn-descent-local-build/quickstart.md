@@ -738,3 +738,11 @@ The later implementation report must list separately:
 - unchanged upstream commit/worktree status;
 - explicit confirmation that BBP, Secondary Index, IMF Search, SSD behavior, and end-to-end paper
   performance were not reproduced.
+
+## Remote counter-fix final closeout
+
+Current remote outcome: the independently approved counter-fix attempt at 57c27cbc967bd9b6998b587bab4b27ccd5766c6b succeeded.
+Result index: experiments/results/xn-descent-local-build/sift1m-validation-remote-linux-counter-fix.json.
+T041 decision: specs/007-xn-descent-local-build/validation/sift1m-post-run-review.md. T042 audit: specs/007-xn-descent-local-build/validation/completion-report.md.
+Earlier remote pending/approval statements describe their historical preparation stage; they are not the current status of this successful counter-fix attempt.
+All local T040 histories remain unchanged. This closure is not full-paper-system reproduction or formal search-performance certification.

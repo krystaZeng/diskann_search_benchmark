@@ -1,0 +1,167 @@
+{
+  "feature": "007-xn-descent-local-build",
+  "request_id": "xn-sift1m-paper-v1-seed42-remote-linux-counter-fix",
+  "execution_commit": "57c27cbc967bd9b6998b587bab4b27ccd5766c6b",
+  "outcome": "SUCCEEDED",
+  "claim_scope": "component-level_faithful_adaptation",
+  "request": {
+    "path": "/ssd1/kk/diskann_search_benchmark/experiments/configs/xn-descent-local-build/sift1m-validation-remote-linux-counter-fix.json",
+    "sha256": "3580b9644a26fccb5258f8cc36b24568b525b3b40ba13cde7e3dd79e163609e9"
+  },
+  "execution_approval": {
+    "path": "/ssd1/kk/diskann_search_benchmark/specs/007-xn-descent-local-build/validation/sift1m-pre-execution-approval-remote-linux-counter-fix.md",
+    "sha256": "2c33dbd640780bb878d6d3b50e0f481e40f97f9aab1245e26ea14b74ae3f11fd"
+  },
+  "pipeline_result": {
+    "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/result.json",
+    "sha256": "fc763e63817ae623e9c1cd3867e2226292642ddcf7018bfc80f1e79e7b3c64bb"
+  },
+  "artifacts": [
+    {
+      "aggregate_checksum": "2e3675c77617edd7709a65f9a0e36fbacb7c395d31f4f304a11d346ce83fc15d",
+      "artifact_type": "partition",
+      "format_version": "partition-artifact/v1",
+      "metadata_path": "xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/partition/artifact.json"
+    },
+    {
+      "aggregate_checksum": "0efe80b5da1d49cd1f0bdecb44ceb65cf52c138c82b154409f153772702cfdc0",
+      "artifact_type": "local_graph",
+      "format_version": "local-graph-artifact/v1",
+      "metadata_path": "xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/local-0/artifact.json"
+    },
+    {
+      "aggregate_checksum": "b19d1d41ae78f8ec4bec764cdf0423ccce2a63d71df78f6f279a90ef7cf61de3",
+      "artifact_type": "local_graph",
+      "format_version": "local-graph-artifact/v1",
+      "metadata_path": "xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/local-1/artifact.json"
+    },
+    {
+      "aggregate_checksum": "16952c7620058756f766e5511926053c5295321efe2f58b12fdacfe218a762ea",
+      "artifact_type": "local_graph",
+      "format_version": "local-graph-artifact/v1",
+      "metadata_path": "xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/local-2/artifact.json"
+    },
+    {
+      "aggregate_checksum": "4f88359bfc88734814ce912aad3041d1b9bfef8eafd23b1e61302b55283376ee",
+      "artifact_type": "global_graph",
+      "format_version": "global-graph-artifact/v1",
+      "metadata_path": "xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/merge/artifact.json"
+    }
+  ],
+  "build_manifests": [
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/stages/partition.json",
+      "sha256": "86b16e77b8d01c3840dbf21d8366e83801941c0264d094e482244e9f8c0f23ee"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/stages/local-0.json",
+      "sha256": "36581f9d1538fb1d646cd05bbd0e00fbccd3a2d5dce9dfd5a4a8f4c304dcdc96"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/stages/local-1.json",
+      "sha256": "e03c3196adcd76e50e3ec85f3cbb0f9f705547357e3e652389083e95d8067804"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/stages/local-2.json",
+      "sha256": "ed119d63c8f25499089ab930ef5f2eb0b40726b24bd271e6dd219bd5e5dafb83"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/stages/merge.json",
+      "sha256": "45a75b1c031a232708a08b719660c033af33099c9a9ef12b23dca3df3243eeef"
+    }
+  ],
+  "validation_evidence": [
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/evidence/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix-partition-valid.json",
+      "sha256": "aad9b8c54135e7eb4d5ac62a14aa4723ab2dd421c96b81a8da4cac84bef589e4"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/evidence/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix-local-0-valid.json",
+      "sha256": "12152f4b81a15ff59d16502cee9f6eb7a36238d5500a8d8897ca58810849550e"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/evidence/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix-local-1-valid.json",
+      "sha256": "9ef9ba2a6f71f740489303279ec97c98b7ada69643478e8061fad22e7f8d23ff"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/evidence/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix-local-2-valid.json",
+      "sha256": "1721103ea953d6c933c640c8b79e3e91c97c3974d5e74425cf33dd227c9d5653"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/manifests/evidence/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix-merge-valid.json",
+      "sha256": "39b085911ec1b31bd6ad9cc1e9e2896cfecd666c4d83c4ba97a3a1f4fa4e3247"
+    }
+  ],
+  "construction_evaluation_report": {
+    "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/workspace/reports/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix-evaluation.json",
+    "sha256": "58ef1c2b573a2e065113c74036887b60311a41e96716eb02795b886fca35f4da"
+  },
+  "execution_records": [
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/diagnostics/exit-code.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/diagnostics/ended-at.txt",
+      "sha256": "8f6173f4a5bbebbfd79911e586ac13c55eddfbaa5dcc51ddbd3163c670958d7b"
+    },
+    {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/diagnostics/time.txt",
+      "sha256": "f05fcf8ed0f0dcce8daf8366fc894dd0b9679841a6abdd57dcc16cda7dd93821"
+    }
+  ],
+  "runner_log": {
+    "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/runner.log",
+    "sha256": "2c2f453374df0888acbe1ebfa4b4ca02fcc53f666ecdc0d306490946f7b2fe0e"
+  },
+  "counter_fix_regression": {
+    "previously_reported_test_commit": "5438bdd755f563267a02ddfa10286d04ce59b262",
+    "evidence": [
+      {
+        "path": "/ssd1/kk/diskann_search_benchmark/build/xn-cross-counter-linux/diagnostics/ctest-14.log",
+        "sha256": "c8cc35aaf630c0c4a5a2a73b204277679c3d4698131d99a325c5bca1279aae80"
+      },
+      {
+        "path": "/ssd1/kk/diskann_search_benchmark/build/xn-cross-counter-linux/diagnostics/replay-1.log",
+        "sha256": "9f324fa2648b41b5e1db5a47be63112e1fcf4aab90476d55e5426b6e34c1f2fa"
+      },
+      {
+        "path": "/ssd1/kk/diskann_search_benchmark/build/xn-cross-counter-linux/diagnostics/replay-2.log",
+        "sha256": "15103432a72934cd5d572f4d039d6f8576f2ae558432b910c783a836e4950cbb"
+      }
+    ],
+    "not_a_full_test_rerun_at_execution_commit": true
+  },
+  "additional_search_evaluation": {
+    "summary": {
+      "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux-counter-fix/diagnostics/search-metrics-57c27cb/summary.json",
+      "sha256": "ee9c99fb11390ba62476fb9d651fe0bbc0712874b8d28a5a9cc0baf7985b212f"
+    },
+    "performance_classification": "informational_non_formal",
+    "evaluation_manifest_source_corrected": false
+  },
+  "previous_remote_attempt": {
+    "output_directory": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux",
+    "outcome": "user_authorized_abort_validation_incomplete",
+    "exit_code": 143,
+    "evidence": [
+      {
+        "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux/diagnostics/exit-code.txt",
+        "sha256": "9d9b18720961e9b4689fd763b85e7b6f36160ccd3a8a1c9ddc5103bb0f66c396"
+      },
+      {
+        "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux/diagnostics/ended-at.txt",
+        "sha256": "3d1f0bfe2ec09dcc19da8b7526bdcafa69cc201ea233328e3f753c8a17915a46"
+      },
+      {
+        "path": "/ssd1/kk/diskann_search_benchmark/build/xn-sift1m-paper-v1-seed42-remote-linux/diagnostics/time.txt",
+        "sha256": "589355fb71438eed1bd7323dba83ea849baa12499d156c939bbe407e90f00aaa"
+      }
+    ]
+  },
+  "local_attempt_history": {
+    "document": "specs/007-xn-descent-local-build/quickstart.md",
+    "document_commit": "57c27cbc967bd9b6998b587bab4b27ccd5766c6b",
+    "status": "unchanged; remote success does not complete local T040"
+  }
+}
