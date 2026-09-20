@@ -444,9 +444,14 @@ std::optional<ValidatedArtifact> validate_from_catalog(
         sources.push_back(*found);
       }
       if (!ready) continue;
-      auto validation = validator.validate(references[index], sources);
+      const bool is_target =
+          references[index].metadata_path == target.metadata_path;
+      // Keep the caller's target identity authoritative, even when the
+      // catalog already contains valid metadata at the same path.
+      auto validation = validator.validate(
+          is_target ? target : references[index], sources);
       if (!validation.valid()) {
-        if (references[index].metadata_path == target.metadata_path) {
+        if (is_target) {
           *final_evidence = validation.evidence;
         }
         resolved[index] = true;
@@ -456,7 +461,7 @@ std::optional<ValidatedArtifact> validate_from_catalog(
       grants.push_back(*validation.validated_artifact);
       resolved[index] = true;
       progress = true;
-      if (references[index].metadata_path == target.metadata_path) {
+      if (is_target) {
         *final_evidence = validation.evidence;
         return validation.validated_artifact;
       }

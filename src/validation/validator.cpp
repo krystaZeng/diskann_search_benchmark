@@ -207,10 +207,15 @@ ArtifactValidationResult Validator::validate_with_lineage(
       if (!ready) {
         continue;
       }
-      auto result = validate(entries[index].reference, sources);
+      const bool is_target =
+          entries[index].reference.metadata_path == reference.metadata_path;
+      // Catalog metadata discovers dependencies; it must not replace the
+      // caller's claimed identity when validating the requested target.
+      auto result = validate(is_target ? reference : entries[index].reference,
+                             sources);
       resolved[index] = true;
       progress = true;
-      if (entries[index].reference.metadata_path == reference.metadata_path) {
+      if (is_target) {
         if (result.valid()) {
           return result;
         }

@@ -6,6 +6,7 @@
 #include "support/test_assert.hpp"
 
 #include <functional>
+#include <map>
 
 namespace dp = diskann_pipeline;
 
@@ -34,9 +35,91 @@ dp::ArtifactValidationResult validate_direct_v2(
   return validator.validate(graph, {*validated_dataset.validated_artifact});
 }
 
+auto normal_checksums(const dp::WorkspaceRef& workspace) {
+  std::map<std::filesystem::path, std::string> checksums;
+  for (const auto& entry :
+       std::filesystem::recursive_directory_iterator(workspace.normal_root)) {
+    if (entry.is_regular_file()) {
+      checksums.emplace(entry.path(), dp::sha256_file(entry.path()));
+    }
+  }
+  return checksums;
+}
+
+void expect_requested_identity(const dp::ArtifactValidationResult& result,
+                               const dp::ArtifactRef& requested) {
+  const auto& candidate = result.evidence.artifact_candidate;
+  DP_EXPECT_EQ(candidate.metadata_path, requested.metadata_path);
+  DP_EXPECT_EQ(candidate.artifact_type, requested.artifact_type);
+  DP_EXPECT_EQ(candidate.format_version, requested.format_version);
+  DP_EXPECT_EQ(candidate.claimed_aggregate_checksum,
+               std::optional<std::string>{requested.aggregate_checksum});
+}
+
+void lineage_target_identity() {
+  for (const bool catalogued : {true, false}) {
+    for (const bool global : {false, true}) {
+      dp::test::ContractArtifactFixture fixture;
+      auto target = global ? fixture.global : fixture.dataset;
+      if (!catalogued) {
+        const auto original = dp::test::metadata_path(fixture.workspace, target);
+        target.metadata_path.replace_filename("uncatalogued.json");
+        std::filesystem::rename(
+            original, dp::test::metadata_path(fixture.workspace, target));
+      }
+      const auto before = normal_checksums(fixture.workspace);
+      dp::Validator validator(fixture.workspace);
+      if (global) {
+        // This graph cannot pass without resolving its Partition and both
+        // LocalGraphs (which in turn require the Dataset and Partition).
+        const auto without_sources = validator.validate(target);
+        DP_EXPECT_TRUE(!without_sources.valid());
+        DP_EXPECT_EQ(without_sources.evidence.failure_category,
+                     std::optional{dp::ErrorCategory::kSourceMismatch});
+      }
+      const auto valid = validator.validate_with_lineage(target);
+      DP_EXPECT_TRUE(valid.valid());
+      expect_requested_identity(valid, target);
+      if (valid.validated_artifact) {
+        const auto& granted = valid.validated_artifact->reference();
+        DP_EXPECT_EQ(granted.metadata_path, target.metadata_path);
+        DP_EXPECT_EQ(granted.artifact_type, target.artifact_type);
+        DP_EXPECT_EQ(granted.format_version, target.format_version);
+        DP_EXPECT_EQ(granted.aggregate_checksum, target.aggregate_checksum);
+        DP_EXPECT_EQ(valid.validated_artifact->source_artifacts().size(),
+                     global ? std::size_t{3} : std::size_t{0});
+      }
+      for (const auto category : {dp::ErrorCategory::kChecksumMismatch,
+                                  dp::ErrorCategory::kSchemaInvalid,
+                                  dp::ErrorCategory::kUnsupportedVersion}) {
+        auto requested = target;
+        if (category == dp::ErrorCategory::kChecksumMismatch) {
+          requested.aggregate_checksum = std::string(64, '0');
+        } else if (category == dp::ErrorCategory::kSchemaInvalid) {
+          requested.artifact_type = dp::ArtifactType::kPartition;
+        } else {
+          requested.format_version = global ? "global-graph-artifact/v2"
+                                            : "fake-dataset-json/v2";
+        }
+        std::cerr << "ArtifactRef identity: " << (global ? "global" : "dataset")
+                  << " catalogued=" << catalogued
+                  << " expected=" << dp::to_string(category) << '\n';
+        const auto rejected = validator.validate_with_lineage(requested);
+        DP_EXPECT_TRUE(!rejected.valid());
+        DP_EXPECT_TRUE(!rejected.validated_artifact.has_value());
+        DP_EXPECT_EQ(rejected.evidence.result, dp::ValidationResult::kInvalid);
+        DP_EXPECT_EQ(rejected.evidence.failure_category, std::optional{category});
+        expect_requested_identity(rejected, requested);
+      }
+      DP_EXPECT_EQ(normal_checksums(fixture.workspace), before);
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
+  lineage_target_identity();
   {
     dp::test::ContractArtifactFixture fixture;
     std::filesystem::remove(dp::test::metadata_path(fixture.workspace,
