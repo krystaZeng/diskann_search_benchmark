@@ -5,6 +5,7 @@
 #include "diskann_pipeline/validation.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <numeric>
 #include <set>
 
@@ -13,14 +14,139 @@ namespace xn = diskann_pipeline::xn_descent;
 namespace native = diskann_pipeline::cpp_main;
 namespace fixture = diskann_pipeline::xn_descent::test;
 
+namespace {
+
+constexpr const char* kAscending = "partition.local_to_global_ascending/v1";
+
+// This XN fixture deliberately preserves local IDs in non-ascending global
+// order. Do not change the shared Baseline fixture or infer/repair capabilities
+// in the validator: only this positive fixture omits the ascending promise.
+dp::ArtifactRef materialize_unordered_partition(
+    const dp::WorkspaceRef& workspace,
+    const fixture::baseline_fixture::NativeDatasetFixture& dataset,
+    const std::vector<dp::GlobalNodeId>& map) {
+  auto reference = fixture::baseline_fixture::materialize_partition(
+      workspace, dataset, {map});
+  const auto path = workspace.normal_root / reference.metadata_path;
+  auto metadata = fixture::baseline_fixture::read_json(path);
+  auto capabilities =
+      metadata.at("capabilities").get<std::vector<std::string>>();
+  capabilities.erase(
+      std::remove(capabilities.begin(), capabilities.end(), kAscending),
+      capabilities.end());
+  metadata["capabilities"] = capabilities;
+  reference.aggregate_checksum =
+      fixture::baseline_fixture::aggregate_for(metadata);
+  metadata["aggregate_checksum"] = reference.aggregate_checksum;
+  fixture::baseline_fixture::write_text(path, metadata.dump());
+  return reference;
+}
+
+void test_false_ascending_claim() {
+  fixture::baseline_fixture::TemporaryDirectory temporary("xn-false-ascending");
+  const auto workspace = dp::create_workspace(temporary.path / "workspace");
+  const fixture::baseline_fixture::NativeDatasetFixture dataset(workspace, 3, 1);
+  const std::vector<dp::GlobalNodeId> map{2, 1, 0};
+  // Independent negative fixture: retain the shared fixture's false claim.
+  const auto partition = fixture::baseline_fixture::materialize_partition(
+      workspace, dataset, {map});
+  const auto metadata_path = workspace.normal_root / partition.metadata_path;
+  const auto metadata = fixture::baseline_fixture::read_json(metadata_path);
+  const auto capabilities =
+      metadata.at("capabilities").get<std::vector<std::string>>();
+  DP_EXPECT_TRUE(std::find(capabilities.begin(), capabilities.end(), kAscending) !=
+                 capabilities.end());
+  DP_EXPECT_EQ(partition.aggregate_checksum,
+               fixture::baseline_fixture::aggregate_for(metadata));
+  const auto map_path = workspace.normal_root / "partition/map-0.bin";
+  DP_EXPECT_EQ(native::validate_partition_id_map(map_path, 3, 3), map);
+  const auto metadata_before = dp::sha256_file(metadata_path);
+  const auto map_before = fixture::read_bytes(map_path);
+
+  const auto dataset_validation =
+      dp::Validator(workspace).validate(dataset.reference);
+  DP_EXPECT_TRUE(dataset_validation.valid());
+  if (!dataset_validation.valid()) return;
+  const auto validation = dp::Validator(workspace).validate(
+      partition, {*dataset_validation.validated_artifact});
+  DP_EXPECT_TRUE(!validation.valid());
+  DP_EXPECT_TRUE(!validation.validated_artifact.has_value());
+  DP_EXPECT_EQ(validation.evidence.result, dp::ValidationResult::kInvalid);
+  DP_EXPECT_TRUE(validation.evidence.failure_category.has_value());
+  if (validation.evidence.failure_category) {
+    DP_EXPECT_EQ(*validation.evidence.failure_category,
+                 dp::ErrorCategory::kMappingIncomplete);
+  }
+  DP_EXPECT_TRUE(std::any_of(
+      validation.evidence.checks.begin(), validation.evidence.checks.end(),
+      [](const auto& check) {
+        return !check.passed &&
+               check.message.find("ascending capability") != std::string::npos;
+      }));
+
+  native::CppMainVectorAccessor vectors(workspace, dataset.reference);
+  fixture::baseline_fixture::TestContext environment(workspace,
+                                                     "xn-false-ascending");
+  environment.context.vector_accessor = &vectors;
+  const auto parameters = fixture::baseline_fixture::write_parameters(
+      environment.context.temporary_storage,
+      fixture::effective_parameters_json("semantic-small", 5, 3, 1.2, 16));
+  const auto result = xn::make_xn_descent_local_build()->build(
+      partition, 0, {parameters}, environment.context);
+  DP_EXPECT_EQ(result.status, dp::StageStatus::kFailed);
+  DP_EXPECT_TRUE(!result.output_candidate.has_value());
+  DP_EXPECT_TRUE(!environment.metrics.saw("xn_descent.initialized"));
+  DP_EXPECT_TRUE(!std::filesystem::exists(
+      environment.context.temporary_storage.stage_root /
+      "candidate/artifact.json"));
+  DP_EXPECT_TRUE(std::filesystem::is_regular_file(result.build_manifest_path));
+  if (!std::filesystem::is_regular_file(result.build_manifest_path)) return;
+  const auto manifest = dp::parse_build_manifest(
+      fixture::baseline_fixture::read_json(result.build_manifest_path).dump());
+  DP_EXPECT_EQ(manifest.status, dp::StageStatus::kFailed);
+  DP_EXPECT_TRUE(manifest.output_artifacts.empty());
+  DP_EXPECT_TRUE(manifest.failure.has_value());
+  if (manifest.failure) {
+    DP_EXPECT_EQ(manifest.failure->category, dp::ErrorCategory::kSourceMismatch);
+    DP_EXPECT_TRUE(
+        manifest.failure->reason.find("PartitionArtifact failed validation") !=
+        std::string::npos);
+  }
+  DP_EXPECT_EQ(dp::sha256_file(metadata_path), metadata_before);
+  DP_EXPECT_EQ(fixture::read_bytes(map_path), map_before);
+  std::cout << "XN_MAP_FALSE_ASCENDING validator_valid=" << validation.valid()
+            << " b1=" << dp::to_string(result.status)
+            << " candidate=" << result.output_candidate.has_value() << '\n';
+}
+
+}  // namespace
+
 int main() {
+  test_false_ascending_claim();
   fixture::baseline_fixture::TemporaryDirectory temporary("xn-artifact");
   const auto workspace = dp::create_workspace(temporary.path / "workspace");
   const fixture::baseline_fixture::NativeDatasetFixture dataset(workspace, 3,
                                                                  1);
   const std::vector<dp::GlobalNodeId> map{2, 1, 0};
-  const auto partition = fixture::baseline_fixture::materialize_partition(
-      workspace, dataset, {map});
+  const auto partition = materialize_unordered_partition(workspace, dataset, map);
+  const auto dataset_validation = dp::Validator(workspace).validate(
+      dataset.reference);
+  DP_EXPECT_TRUE(dataset_validation.valid());
+  if (!dataset_validation.valid()) return dp::test::finish();
+  const auto partition_validation = dp::Validator(workspace).validate(
+      partition, {*dataset_validation.validated_artifact});
+  DP_EXPECT_TRUE(partition_validation.valid());
+  if (!partition_validation.valid()) return dp::test::finish();
+  DP_EXPECT_TRUE(
+      !partition_validation.validated_artifact->has_capability(kAscending));
+  DP_EXPECT_TRUE(partition_validation.validated_artifact->has_capability(
+      "partition.complete_local_to_global_map/v1"));
+  const auto partition_metadata = fixture::baseline_fixture::read_json(
+      workspace.normal_root / partition.metadata_path);
+  DP_EXPECT_EQ(partition.aggregate_checksum,
+               fixture::baseline_fixture::aggregate_for(partition_metadata));
+  DP_EXPECT_EQ(partition_metadata.at("aggregate_checksum"),
+               partition.aggregate_checksum);
   native::CppMainVectorAccessor vectors(workspace, dataset.reference);
   fixture::baseline_fixture::TestContext environment(workspace,
                                                       "xn-direct-us1");
@@ -33,18 +159,16 @@ int main() {
   DP_EXPECT_EQ(result.status, dp::StageStatus::kSucceeded);
   DP_EXPECT_TRUE(result.output_candidate.has_value());
   DP_EXPECT_TRUE(std::filesystem::is_regular_file(result.build_manifest_path));
-
-  const auto dataset_validation = dp::Validator(workspace).validate(
-      dataset.reference);
-  DP_EXPECT_TRUE(dataset_validation.valid());
-  const auto partition_validation = dp::Validator(workspace).validate(
-      partition, {*dataset_validation.validated_artifact});
-  DP_EXPECT_TRUE(partition_validation.valid());
+  if (result.status != dp::StageStatus::kSucceeded || !result.output_candidate ||
+      !std::filesystem::is_regular_file(result.build_manifest_path)) {
+    return dp::test::finish();
+  }
   const auto candidate_workspace =
       fixture::baseline_fixture::candidate_workspace(environment.context);
   const auto validation = dp::Validator(candidate_workspace).validate(
       *result.output_candidate, {*partition_validation.validated_artifact});
   DP_EXPECT_TRUE(validation.valid());
+  if (!validation.valid()) return dp::test::finish();
 
   const auto candidate = environment.context.temporary_storage.stage_root /
                          "candidate";
@@ -57,6 +181,8 @@ int main() {
                partition.aggregate_checksum);
 
   const auto partition_map = workspace.normal_root / "partition/map-0.bin";
+  DP_EXPECT_EQ(native::validate_partition_id_map(partition_map, 3, 3), map);
+  DP_EXPECT_EQ(native::validate_partition_id_map(candidate / "map.bin", 3, 3), map);
   DP_EXPECT_EQ(dp::sha256_file(partition_map),
                dp::sha256_file(candidate / "map.bin"));
   DP_EXPECT_EQ(fixture::read_bytes(partition_map),
@@ -124,6 +250,9 @@ int main() {
   const auto repeated_result = xn::make_xn_descent_local_build()->build(
       partition, 0, {repeated_parameters}, repeated.context);
   DP_EXPECT_EQ(repeated_result.status, dp::StageStatus::kSucceeded);
+  DP_EXPECT_TRUE(repeated_result.output_candidate.has_value());
+  if (repeated_result.status != dp::StageStatus::kSucceeded ||
+      !repeated_result.output_candidate) return dp::test::finish();
   DP_EXPECT_EQ(
       fixture::read_bytes(graph_path),
       fixture::read_bytes(repeated.context.temporary_storage.stage_root /
@@ -157,10 +286,14 @@ int main() {
       std::filesystem::is_regular_file(capped_result.build_manifest_path));
   DP_EXPECT_TRUE(!std::filesystem::exists(
       capped.context.temporary_storage.stage_root / "candidate/artifact.json"));
+  if (!std::filesystem::is_regular_file(capped_result.build_manifest_path)) {
+    return dp::test::finish();
+  }
   const auto capped_manifest = dp::parse_build_manifest(
       fixture::baseline_fixture::read_json(capped_result.build_manifest_path)
           .dump());
   DP_EXPECT_TRUE(capped_manifest.failure.has_value());
+  if (!capped_manifest.failure) return dp::test::finish();
   DP_EXPECT_TRUE(capped_manifest.failure->reason.find(
                      "iteration_cap_nonconverged") != std::string::npos);
   DP_EXPECT_TRUE(capped_manifest.output_artifacts.empty());
@@ -186,11 +319,17 @@ int main() {
       partition, 0, {constrained_parameters}, constrained.context);
   DP_EXPECT_EQ(constrained_result.status, dp::StageStatus::kFailed);
   DP_EXPECT_TRUE(!constrained_result.output_candidate.has_value());
+  DP_EXPECT_TRUE(
+      std::filesystem::is_regular_file(constrained_result.build_manifest_path));
+  if (!std::filesystem::is_regular_file(constrained_result.build_manifest_path)) {
+    return dp::test::finish();
+  }
   const auto constrained_manifest = dp::parse_build_manifest(
       fixture::baseline_fixture::read_json(
           constrained_result.build_manifest_path)
           .dump());
   DP_EXPECT_TRUE(constrained_manifest.failure.has_value());
+  if (!constrained_manifest.failure) return dp::test::finish();
   DP_EXPECT_TRUE(constrained_manifest.failure->reason.find("memory budget") !=
                  std::string::npos);
   DP_EXPECT_TRUE(constrained_manifest.output_artifacts.empty());
@@ -226,6 +365,17 @@ int main() {
   const auto cycle_partition =
       fixture::baseline_fixture::materialize_partition(
           cycle_workspace, cycle_dataset, {{0, 1, 2, 15}});
+  const auto cycle_dataset_validation = dp::Validator(cycle_workspace).validate(
+      cycle_dataset.reference);
+  DP_EXPECT_TRUE(cycle_dataset_validation.valid());
+  if (!cycle_dataset_validation.valid()) return dp::test::finish();
+  const auto cycle_partition_validation =
+      dp::Validator(cycle_workspace).validate(
+          cycle_partition, {*cycle_dataset_validation.validated_artifact});
+  DP_EXPECT_TRUE(cycle_partition_validation.valid());
+  if (!cycle_partition_validation.valid()) return dp::test::finish();
+  DP_EXPECT_TRUE(
+      cycle_partition_validation.validated_artifact->has_capability(kAscending));
   native::CppMainVectorAccessor cycle_vectors(cycle_workspace,
                                                cycle_dataset.reference);
 
@@ -241,6 +391,14 @@ int main() {
       cycle_partition, 0, {cycle_success_parameters}, cycle_success.context);
   DP_EXPECT_EQ(cycle_success_result.status, dp::StageStatus::kSucceeded);
   DP_EXPECT_TRUE(cycle_success_result.output_candidate.has_value());
+  DP_EXPECT_TRUE(std::filesystem::is_regular_file(
+      cycle_success_result.build_manifest_path));
+  if (cycle_success_result.status != dp::StageStatus::kSucceeded ||
+      !cycle_success_result.output_candidate ||
+      !std::filesystem::is_regular_file(
+          cycle_success_result.build_manifest_path)) {
+    return dp::test::finish();
+  }
   const auto cycle_success_manifest = dp::parse_build_manifest(
       fixture::baseline_fixture::read_json(
           cycle_success_result.build_manifest_path)
@@ -273,6 +431,11 @@ int main() {
   DP_EXPECT_TRUE(!std::filesystem::exists(
       cycle_capped.context.temporary_storage.stage_root /
       "candidate/artifact.json"));
+  DP_EXPECT_TRUE(
+      std::filesystem::is_regular_file(cycle_capped_result.build_manifest_path));
+  if (!std::filesystem::is_regular_file(cycle_capped_result.build_manifest_path)) {
+    return dp::test::finish();
+  }
   const auto cycle_capped_manifest = dp::parse_build_manifest(
       fixture::baseline_fixture::read_json(
           cycle_capped_result.build_manifest_path)
@@ -288,5 +451,13 @@ int main() {
   DP_EXPECT_EQ(cycle_capped_evidence.at("convergence")
                    .at("convergence_condition"),
                "none");
+  std::cout << "XN_MAP_UNORDERED map=2,1,0 ascending=false partition_valid="
+            << partition_validation.valid()
+            << " b1=" << dp::to_string(result.status)
+            << " bytes_preserved="
+            << (fixture::read_bytes(partition_map) ==
+                fixture::read_bytes(candidate / "map.bin"))
+            << " ascending_control="
+            << dp::to_string(cycle_success_result.status) << '\n';
   return dp::test::finish();
 }
