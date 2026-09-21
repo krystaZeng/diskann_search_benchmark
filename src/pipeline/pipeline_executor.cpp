@@ -648,12 +648,14 @@ PipelineExecutionResult PipelineExecutor::execute(
     const auto& merge_descriptor = registry_.resolve_descriptor(
         request.merge_implementation_id, request.merge_implementation_version,
         StageKind::kMerge);
-    const auto compatibility = preflight(partition_descriptor, local_descriptor,
-                                         merge_descriptor, dataset);
-    if (!compatibility.compatible) {
-      return terminal_failure(std::move(result), StageStatus::kFailed,
-                              compatibility.failure->category,
-                              compatibility.failure->reason);
+    if (!request.reused_partition) {
+      const auto compatibility = preflight(partition_descriptor, local_descriptor,
+                                           merge_descriptor, dataset);
+      if (!compatibility.compatible) {
+        return terminal_failure(std::move(result), StageStatus::kFailed,
+                                compatibility.failure->category,
+                                compatibility.failure->reason);
+      }
     }
     detail::validate_implementation_parameters(
         partition_descriptor, request.partition_parameters_json,
@@ -671,9 +673,28 @@ PipelineExecutionResult PipelineExecutor::execute(
       const ArtifactReuseService reuse(validator);
       const ArtifactRequirement requirement{
           ArtifactType::kPartition, {"partition-artifact/v1"}, IdSpace::kLocal};
-      const auto reused = reuse.resolve(
+      auto reused = reuse.resolve(
           *request.reused_partition, requirement,
           {"partition.complete_local_to_global_map/v1"}, {dataset});
+      if (reused.status == StageStatus::kReused) {
+        // The skipped producer's promises do not describe this cached input.
+        // Only the future LocalGraph uses provides; its actual output is still
+        // validated at publication before Merge can consume it.
+        const auto compatibility = CompatibilityChecker{}.check_chain(
+            {local_descriptor, merge_descriptor},
+            {available_contract(dataset),
+             available_contract(*reused.validated_artifact)},
+            executor_services());
+        if (!compatibility.compatible) {
+          reused.status = StageStatus::kFailed;
+          reused.failure = compatibility.failure;
+          reused.provenance = {false, compatibility.failure->reason,
+                               *request.reused_partition};
+          reused.validated_artifact.reset();
+          // Preserve the independent VALID evidence: this is admission failure,
+          // not a corrupt Artifact or an invalid newly produced output.
+        }
+      }
       const auto evidence_path = persist_validation_evidence(
           workspace_, request.run_id + "-partition-reuse",
           reused.validation_evidence);
@@ -685,6 +706,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                     {request.dataset}, stage_started_at);
       manifest.validation_evidence_path =
           relative_to(evidence_path, workspace_.root);
+      manifest.reuse = reused.provenance;
       if (reused.status != StageStatus::kReused) {
         manifest.status = StageStatus::kFailed;
         manifest.failure = reused.failure;
@@ -699,7 +721,6 @@ PipelineExecutionResult PipelineExecutor::execute(
       result.partition_artifact = request.reused_partition;
       manifest.status = StageStatus::kReused;
       manifest.output_artifacts = {*request.reused_partition};
-      manifest.reuse = reused.provenance;
       result.build_manifest_paths.push_back(persist_stage_manifest(
           workspace_, request.run_id, "partition-reused", manifest));
     } else {
