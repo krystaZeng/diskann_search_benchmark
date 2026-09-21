@@ -1,8 +1,11 @@
 #include "baseline/cpp_main/stage_bindings.hpp"
 
 #include "baseline/cpp_main_stage_test_support.hpp"
+#include "diskann_pipeline/compatibility.hpp"
+#include "support/contract_artifact_fixture.hpp"
 #include "support/test_assert.hpp"
 
+#include <algorithm>
 #include <array>
 #include <numeric>
 
@@ -10,7 +13,134 @@ namespace dp = diskann_pipeline;
 namespace native = diskann_pipeline::cpp_main;
 namespace fixture = diskann_pipeline::cpp_main::test;
 
+namespace {
+
+void check_ascending_input(bool ascending, bool declared) {
+  fixture::TemporaryDirectory temporary("m0-ascending");
+  const auto workspace = dp::create_workspace(temporary.path / "workspace");
+  const fixture::NativeDatasetFixture dataset(workspace, 3, 2);
+  const std::vector<std::vector<std::uint32_t>> global_graph{{1}, {2}, {0}};
+  const std::vector<dp::GlobalNodeId> map = ascending
+      ? std::vector<dp::GlobalNodeId>{0, 1, 2}
+      : std::vector<dp::GlobalNodeId>{1, 2, 0};
+  std::vector<dp::LocalNodeId> inverse(3);
+  for (dp::LocalNodeId local = 0; local < 3; ++local) inverse[map[local]] = local;
+  std::vector<std::vector<std::uint32_t>> local_graph(3), round_trip(3);
+  for (dp::LocalNodeId local = 0; local < 3; ++local) {
+    for (const auto neighbor : global_graph[map[local]]) {
+      local_graph[local].push_back(inverse[neighbor]);
+      round_trip[map[local]].push_back(map[local_graph[local].back()]);
+    }
+  }
+  DP_EXPECT_EQ(round_trip, global_graph);
+  const auto local_medoid = inverse[0];
+  DP_EXPECT_EQ(map[local_medoid], dp::GlobalNodeId{0});
+
+  auto partition = fixture::materialize_partition(workspace, dataset, {map});
+  if (!declared) {
+    dp::test::mutate_metadata(workspace, partition, [](auto& metadata) {
+      auto& caps = metadata.at("capabilities");
+      caps.erase(std::remove(caps.begin(), caps.end(),
+                              "partition.local_to_global_ascending/v1"),
+                 caps.end());
+    });
+  }
+  auto local = fixture::materialize_local(
+      workspace, dataset, partition, 0, map, local_graph);
+  const auto local_directory =
+      (workspace.normal_root / local.metadata_path).parent_path();
+  fixture::write_bytes(local_directory / "graph.index",
+                        fixture::native_graph(local_medoid, local_graph));
+  dp::test::mutate_metadata(workspace, local, [&](auto& metadata) {
+    metadata["payloads"][1] = fixture::payload(
+        "local_graph", "graph.index", native::kLocalGraphMediaType,
+        local_directory / "graph.index");
+  });
+  const auto local_facts = native::validate_local_graph(
+      local_directory / "graph.index", 3, 1);
+  DP_EXPECT_EQ(map[local_facts.entry_point], dp::GlobalNodeId{0});
+  const auto input_map_sha = dp::sha256_file(local_directory / "map.bin");
+  const auto input_graph_sha = dp::sha256_file(local_directory / "graph.index");
+
+  dp::Validator validator(workspace);
+  const auto dataset_result = validator.validate(dataset.reference);
+  DP_EXPECT_TRUE(dataset_result.valid());
+  if (!dataset_result.valid()) return;
+  const auto partition_result = validator.validate(
+      partition, {*dataset_result.validated_artifact});
+  DP_EXPECT_EQ(partition_result.valid(), ascending || !declared);
+  std::optional<dp::ValidatedArtifact> validated_local;
+  if (partition_result.valid()) {
+    const auto local_result = validator.validate(
+        local, {*partition_result.validated_artifact});
+    DP_EXPECT_TRUE(local_result.valid());
+    DP_EXPECT_TRUE(validator.validate_with_lineage(local).valid());
+    validated_local = local_result.validated_artifact;
+    if (!validated_local) return;
+    const auto& validated_partition = *partition_result.validated_artifact;
+    const auto compatible = dp::CompatibilityChecker().check(
+        native::m0_descriptor(),
+        {{dp::ArtifactType::kPartition, "partition-artifact/v1",
+          dp::IdSpace::kLocal, validated_partition.capabilities()},
+         {dp::ArtifactType::kLocalGraph, "local-graph-artifact/v1",
+          dp::IdSpace::kLocal, validated_local->capabilities()}},
+        {{"cancellation_token/v1", "metrics_sink/v1"}, false});
+    DP_EXPECT_EQ(compatible.compatible, declared);
+  }
+
+  // Call the real wrapper even when validation/preflight would reject the input.
+  // One edge per node and R=1 remove shuffle/truncation ambiguity.
+  fixture::TestContext context(workspace, "m0-ascending-input");
+  const auto parameters = fixture::write_parameters(
+      context.context.temporary_storage, R"({"R":1,"use_filters":false})");
+  const auto result = native::make_m0_merge()->merge(
+      partition, {local}, parameters, context.context);
+  const bool expected_success = ascending && declared;
+  const bool native_called = context.metrics.saw("cpp_main.m0.merge_shards");
+  std::cout << "m0-ascending ascending=" << ascending << " declared=" << declared
+            << " status=" << dp::to_string(result.status)
+            << " native_called=" << native_called << '\n';
+  DP_EXPECT_EQ(native_called, expected_success);
+  DP_EXPECT_EQ(dp::sha256_file(local_directory / "map.bin"), input_map_sha);
+  DP_EXPECT_EQ(dp::sha256_file(local_directory / "graph.index"), input_graph_sha);
+  DP_EXPECT_EQ(dp::sha256_file(workspace.normal_root / "partition/map-0.bin"),
+               input_map_sha);
+  if (!expected_success) {
+    DP_EXPECT_EQ(result.status, dp::StageStatus::kFailed);
+    DP_EXPECT_TRUE(!result.output_candidate.has_value());
+    DP_EXPECT_TRUE(!std::filesystem::exists(
+        context.context.temporary_storage.stage_root / "native"));
+    DP_EXPECT_TRUE(!std::filesystem::exists(
+        context.context.temporary_storage.stage_root / "candidate"));
+    return;
+  }
+  DP_EXPECT_EQ(result.status, dp::StageStatus::kSucceeded);
+  DP_EXPECT_TRUE(result.output_candidate.has_value());
+  if (!result.output_candidate || !partition_result.valid() || !validated_local) return;
+  const auto output_validation =
+      dp::Validator(fixture::candidate_workspace(context.context)).validate(
+          *result.output_candidate,
+          {*partition_result.validated_artifact, *validated_local});
+  DP_EXPECT_TRUE(output_validation.valid());
+  const auto metadata_path = context.context.temporary_storage.stage_root /
+                             result.output_candidate->metadata_path;
+  const auto metadata = fixture::read_json(metadata_path);
+  const auto expected_bytes = fixture::native_graph(0, global_graph);
+  DP_EXPECT_EQ(dp::sha256_file(metadata_path.parent_path() /
+                   metadata["payloads"][0]["path"].get<std::string>()),
+               dp::sha256_bytes(std::string(expected_bytes.begin(), expected_bytes.end())));
+  const auto medoids = native::validate_medoids(
+      metadata_path.parent_path() / metadata["payloads"][1]["path"].get<std::string>(),
+      1, 3);
+  DP_EXPECT_EQ(medoids, std::vector<dp::GlobalNodeId>{0});
+}
+
+}  // namespace
+
 int main() {
+  for (bool ascending : {false, true}) {
+    for (bool declared : {false, true}) check_ascending_input(ascending, declared);
+  }
   fixture::TemporaryDirectory temporary("m0");
   const auto workspace = dp::create_workspace(temporary.path / "workspace");
   const fixture::NativeDatasetFixture dataset(workspace, 20, 4);

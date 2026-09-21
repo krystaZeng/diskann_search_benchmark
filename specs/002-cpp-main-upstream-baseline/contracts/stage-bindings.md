@@ -135,6 +135,7 @@ requires:
       input_id_space: local
   capabilities:
     - partition.complete_local_to_global_map/v1
+    - partition.local_to_global_ascending/v1
     - graph.local_adjacency/v1
   runtime_services:
     - cancellation_token/v1
@@ -198,12 +199,22 @@ with a graph created inside the top-level native composite is required.
 Required sequence:
 
 1. validate one aggregate PartitionArtifact and every LocalGraphArtifact independently;
-2. verify exactly one local graph for every PartitionId and exact Dataset/source/map lineage;
+2. require `partition.local_to_global_ascending/v1` and verify every actual map is in ascending
+   GlobalNodeId order; verify exactly one local graph for every PartitionId and exact
+   Dataset/source/map lineage;
 3. stage maps and local graphs byte-for-byte under stage-temporary filenames accepted by the pinned
    callable;
 4. call pinned merge_shards with complete inputs, Partition count, and explicit Merge R;
 5. validate merged global graph and medoids using native-formats.md;
 6. publish one GlobalGraphArtifact containing both required payloads.
+
+The pinned merge traverses sorted `(GlobalNodeId, shard)` pairs while reading each shard's graph
+rows sequentially (SM-025/SM-027). Therefore M0 requires both the ascending capability and its
+truthfulness, including when the wrapper is invoked directly; rejection precedes native staging
+and the `merge_shards` call. The public Artifact validator checks actual order for native and JSON
+maps only when ascending is declared. Generic Partitions need not be ascending, and M0 still
+accepts only its reviewed native encoding. No map sorting, node renumbering, or graph rewriting is
+performed to adapt an incompatible input.
 
 Physical staging is not an Adapter: it preserves bytes, logical record order, adjacency order,
 checksums, and provenance. Any needed logical conversion beyond the native callable's own

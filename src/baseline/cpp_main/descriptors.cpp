@@ -56,6 +56,7 @@ ImplementationDescriptor m0_descriptor() {
             {ArtifactType::kLocalGraph, {"local-graph-artifact/v1"},
              IdSpace::kLocal}},
            {"partition.complete_local_to_global_map/v1",
+            "partition.local_to_global_ascending/v1",
             "graph.local_adjacency/v1"},
            {"cancellation_token/v1", "metrics_sink/v1"}},
           {ArtifactType::kGlobalGraph,

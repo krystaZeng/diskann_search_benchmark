@@ -113,18 +113,27 @@ bool is_native_media(const PayloadRef& payload, const char* expected) {
 
 void validate_map_payload(const AdmittedArtifact& artifact,
                           const PayloadRef& payload, NodeCount local_count) {
+  std::vector<GlobalNodeId> map;
   if (is_native_media(payload, cpp_main::kPartitionIdMapMediaType)) {
-    cpp_main::validate_partition_id_map(payload_path(artifact, payload),
-                                        local_count,
-                                        artifact.dataset.global_node_count);
-    return;
-  }
-  if (payload.media_type != "application/json") {
+    map = cpp_main::validate_partition_id_map(
+        payload_path(artifact, payload), local_count,
+        artifact.dataset.global_node_count);
+  } else if (payload.media_type == "application/json") {
+    map = validate_local_to_global_map(payload_path(artifact, payload),
+                                       local_count,
+                                       artifact.dataset.global_node_count);
+  } else {
     throw PipelineError(ErrorCategory::kSchemaInvalid,
                         "unsupported LocalToGlobal map media type");
   }
-  validate_local_to_global_map(payload_path(artifact, payload), local_count,
-                               artifact.dataset.global_node_count);
+  const bool ascending_declared =
+      std::find(artifact.capabilities.begin(), artifact.capabilities.end(),
+                "partition.local_to_global_ascending/v1") !=
+      artifact.capabilities.end();
+  if (ascending_declared && !std::is_sorted(map.begin(), map.end())) {
+    throw PipelineError(ErrorCategory::kMappingIncomplete,
+                        "LocalToGlobal map does not satisfy ascending capability");
+  }
 }
 
 void validate_graph_payload(const AdmittedArtifact& artifact,

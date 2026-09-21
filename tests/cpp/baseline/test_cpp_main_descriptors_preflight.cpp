@@ -124,6 +124,27 @@ int main() {
                        {"graph.local_adjacency/v1"}});
   DP_EXPECT_TRUE(checker.check(m0, available, services()).compatible);
 
+  // Even an actually ascending map needs the explicit M0 capability claim.
+  // Other Artifact capabilities and runtime services remain valid.
+  auto missing_ascending = available;
+  auto& partition_capabilities = missing_ascending[1].capabilities;
+  partition_capabilities.erase(
+      std::remove(partition_capabilities.begin(), partition_capabilities.end(),
+                  "partition.local_to_global_ascending/v1"),
+      partition_capabilities.end());
+  const auto m0_missing_ascending =
+      checker.check(m0, missing_ascending, services());
+  DP_EXPECT_TRUE(!m0_missing_ascending.compatible);
+  DP_EXPECT_TRUE(m0_missing_ascending.failure.has_value());
+  if (m0_missing_ascending.failure) {
+    DP_EXPECT_EQ(m0_missing_ascending.failure->category,
+                 dp::ErrorCategory::kCapabilityUnsatisfied);
+  }
+  DP_EXPECT_TRUE(std::find(m0.requires.required_capabilities.begin(),
+                          m0.requires.required_capabilities.end(),
+                          "partition.local_to_global_ascending/v1") !=
+                 m0.requires.required_capabilities.end());
+
   auto missing = available;
   missing.erase(missing.begin());
   DP_EXPECT_TRUE(!checker.check(b0, missing, services()).compatible);

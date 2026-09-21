@@ -211,6 +211,12 @@ PartitionInput load_partition(const WorkspaceRef& workspace,
     throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
                         "M0 Partition map capability is missing");
   }
+  if (std::find(capabilities.begin(), capabilities.end(),
+                "partition.local_to_global_ascending/v1") ==
+      capabilities.end()) {
+    throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
+                        "M0 Partition ascending map capability is missing");
+  }
   PartitionInput result;
   result.metadata = metadata;
   result.dataset = parse_dataset(metadata.at("dataset"));
@@ -238,6 +244,10 @@ PartitionInput load_partition(const WorkspaceRef& workspace,
     const auto rows = record.at("local_node_count").get<NodeCount>();
     result.maps.push_back(validate_partition_id_map(
         path, rows, result.dataset.global_node_count));
+    if (!std::is_sorted(result.maps.back().begin(), result.maps.back().end())) {
+      throw PipelineError(ErrorCategory::kMappingIncomplete,
+                          "M0 map must retain ascending Dataset order");
+    }
     result.map_paths.push_back(path);
     result.map_checksums.push_back(payload.at("sha256").get<std::string>());
   }
