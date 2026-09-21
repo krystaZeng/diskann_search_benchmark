@@ -37,6 +37,14 @@ Linux-host and SIFT1M gates remain explicitly unexecuted.
 
 ## 2. Equation (2)
 
+Runtime-service admission: `descriptor.cpp` declares `distance_function/squared-l2-v1`;
+`XnDescentLocalBuild::build` uses the common consumer-scoped service check before initialization.
+`SquaredL2Distance` in the Feature runner explicitly declares that semantic; its existing
+`evaluate()` computation is unchanged and is exercised through the runner's injected test
+factory. This is an assembly-contract correction, not an Algorithm 1 change or new implementation
+identity. The extended service vtables require a coordinated rebuild; historical artifacts and
+experiment records are not rewritten.
+
 Section 2.2 defines candidate `u` as occluded by `v` for center `i` only when both strict ordinary-
 distance comparisons hold:
 

@@ -88,10 +88,26 @@ void select_json_only_request(Json& document) {
   document.erase("source_config");
 }
 
+class CheckedRunnerPartition final : public dp::PartitionStrategy {
+ public:
+  dp::StageResult run(const dp::ArtifactRef& dataset,
+                      const std::filesystem::path& parameters,
+                      dp::StageContext& context) override {
+    // Exercise the actual anonymous distance implementation constructed by the
+    // XN runner, not a test class with the same claimed semantics.
+    DP_EXPECT_EQ(context.distance_function->semantics(), dp::DistanceSemantics::kSquaredL2);
+    DP_EXPECT_EQ(context.distance_function->evaluate({0, 0}, {3, 4}), 25.0);
+    const auto* bound = context.vector_accessor->bound_dataset();
+    DP_EXPECT_TRUE(bound != nullptr);
+    if (bound) DP_EXPECT_EQ(bound->reference().aggregate_checksum, dataset.aggregate_checksum);
+    return native::make_p0_partition()->run(dataset, parameters, context);
+  }
+};
+
 xn::ExperimentStageFactories counting_factories(FactoryCounts& counts) {
   return {[&counts] {
             ++counts.partition;
-            return native::make_p0_partition();
+            return std::make_unique<CheckedRunnerPartition>();
           },
           [&counts] {
             ++counts.local_build;
@@ -144,7 +160,7 @@ void test_descriptor_and_composition() {
   DP_EXPECT_EQ(
       descriptor.requires.required_services,
       (std::vector<std::string>{"vector_accessor/v1",
-                                "distance_function/l2-v1",
+                                "distance_function/squared-l2-v1",
                                 "cancellation_token/v1",
                                 "metrics_sink/v1"}));
   DP_EXPECT_EQ(descriptor.provides.artifact_type,

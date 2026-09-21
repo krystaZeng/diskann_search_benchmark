@@ -8,6 +8,8 @@
 #include <iostream>
 #include <numeric>
 #include <set>
+#include <atomic>
+#include <cmath>
 
 namespace dp = diskann_pipeline;
 namespace xn = diskann_pipeline::xn_descent;
@@ -17,6 +19,24 @@ namespace fixture = diskann_pipeline::xn_descent::test;
 namespace {
 
 constexpr const char* kAscending = "partition.local_to_global_ascending/v1";
+
+class EuclideanDistance final : public dp::DistanceFunction {
+ public:
+  explicit EuclideanDistance(bool known = true) : known_(known) {}
+  dp::DistanceSemantics semantics() const noexcept override {
+    return known_ ? dp::DistanceSemantics::kEuclideanL2
+                  : dp::DistanceSemantics::kUnknown;
+  }
+  double evaluate(const std::vector<float>& a,
+                  const std::vector<float>& b) const override {
+    ++calls;
+    return std::sqrt(squared_.evaluate(a, b));
+  }
+  mutable std::atomic<std::size_t> calls{0};
+ private:
+  fixture::baseline_fixture::TestDistance squared_;
+  bool known_;
+};
 
 // This XN fixture deliberately preserves local IDs in non-ascending global
 // order. Do not change the shared Baseline fixture or infer/repair capabilities
@@ -150,6 +170,36 @@ int main() {
   native::CppMainVectorAccessor vectors(workspace, dataset.reference);
   fixture::baseline_fixture::TestContext environment(workspace,
                                                       "xn-direct-us1");
+  for (const bool known : {true, false}) {
+    const std::string label = known ? "euclidean" : "unknown";
+    fixture::baseline_fixture::TestContext rejected_environment(
+        workspace, "xn-service-" + label);
+    EuclideanDistance distance(known);
+    rejected_environment.context.vector_accessor = &vectors;
+    rejected_environment.context.distance_function = &distance;
+    const auto parameters = fixture::baseline_fixture::write_parameters(
+        rejected_environment.context.temporary_storage,
+        fixture::effective_parameters_json("semantic-small", 5, 3, 1.2, 16));
+    const auto rejected = xn::make_xn_descent_local_build()->build(
+        partition, 0, {parameters}, rejected_environment.context);
+    std::cout << "XN_SERVICE " << label << " stage=1 status="
+              << dp::to_string(rejected.status)
+              << " distance_calls=" << distance.calls.load() << '\n';
+    DP_EXPECT_EQ(rejected.status, dp::StageStatus::kFailed);
+    DP_EXPECT_TRUE(!rejected.output_candidate.has_value());
+    DP_EXPECT_EQ(distance.calls.load(), std::size_t{0});
+    DP_EXPECT_TRUE(!rejected_environment.metrics.saw("xn_descent.initialized"));
+    const auto rejected_manifest = dp::parse_build_manifest(
+        fixture::baseline_fixture::read_json(rejected.build_manifest_path).dump());
+    DP_EXPECT_TRUE(rejected_manifest.output_artifacts.empty());
+    DP_EXPECT_TRUE(rejected_manifest.failure.has_value());
+    if (rejected_manifest.failure) {
+      DP_EXPECT_EQ(rejected_manifest.failure->category,
+                   dp::ErrorCategory::kCapabilityUnsatisfied);
+      DP_EXPECT_TRUE(rejected_manifest.failure->reason.find("squared-l2-v1") !=
+                     std::string::npos);
+    }
+  }
   environment.context.vector_accessor = &vectors;
   const auto parameter_path = fixture::baseline_fixture::write_parameters(
       environment.context.temporary_storage,

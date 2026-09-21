@@ -33,6 +33,9 @@ class CppMainVectorAccessor final : public VectorAccessor {
 
   std::size_t dimension() const noexcept override;
   void read(GlobalNodeId id, std::vector<float>& destination) const override;
+  const ValidatedArtifact* bound_dataset() const noexcept override {
+    return validated_dataset_ ? &*validated_dataset_ : nullptr;
+  }
 
   const ArtifactRef& dataset_reference() const noexcept;
   const DatasetIdentity& dataset_identity() const noexcept;

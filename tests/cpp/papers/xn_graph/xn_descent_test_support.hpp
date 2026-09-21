@@ -100,6 +100,10 @@ class AllocationFailureDistance final : public DistanceFunction {
   explicit AllocationFailureDistance(std::uint64_t fail_on_evaluation)
       : fail_on_evaluation_(fail_on_evaluation) {}
 
+  DistanceSemantics semantics() const noexcept override {
+    return DistanceSemantics::kSquaredL2;
+  }
+
   double evaluate(const std::vector<float>& lhs,
                   const std::vector<float>& rhs) const override {
     const auto evaluation =

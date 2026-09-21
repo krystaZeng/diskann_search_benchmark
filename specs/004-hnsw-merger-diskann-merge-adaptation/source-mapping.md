@@ -81,6 +81,15 @@ Line numbers refer to those exact commits.
 
 ## Explicit source limits
 
+Runtime-service admission correction: `descriptors.cpp` declares Dataset-bound vector access and
+explicit squared L2. `m1_merge.cpp` checks the actual generic services against the verified Dataset
+from `load_merge_inputs` before `merge_large_first`; common Executor admission checks before
+factory creation. `CppMainVectorAccessor::bound_dataset()` exposes its retained validated input,
+while truthful generic accessors remain supported. The Runner's original `L2Distance` class is
+kept in private `runner_distance.hpp` for direct behavior testing; its `evaluate()` body is unchanged.
+No algorithm identity/version, input Artifact or historical result is changed. This public virtual
+interface extension requires rebuilding all components rather than mixing binary ABIs.
+
 - The pinned repository does not supply a DiskANN/Vamana implementation, DiskANN native parser or
   compatible callable library.
 - The source swaps on HNSW max level as well as count; max-level behavior is inapplicable to a

@@ -65,18 +65,24 @@ normal ArtifactRef.
 The public service interfaces use C++17 containers and pointers only. Representative signatures:
 
 ```cpp
+class ValidatedArtifact;
+
 class VectorAccessor {
  public:
   virtual ~VectorAccessor() = default;
   virtual std::size_t dimension() const noexcept = 0;
   virtual void read(GlobalNodeId id, std::vector<float>& destination) const = 0;
+  virtual const ValidatedArtifact* bound_dataset() const noexcept { return nullptr; }
 };
+
+enum class DistanceSemantics { kUnknown, kSquaredL2, kEuclideanL2 };
 
 class DistanceFunction {
  public:
   virtual ~DistanceFunction() = default;
   virtual double evaluate(const std::vector<float>& lhs,
                           const std::vector<float>& rhs) const = 0;
+  virtual DistanceSemantics semantics() const noexcept { return DistanceSemantics::kUnknown; }
 };
 
 class MetricsSink {
@@ -115,6 +121,40 @@ struct StageContext {
 All pointers are non-owning and non-null for a running stage. The unavailable CheckpointStore object
 is real, reports `false`, and throws/reports a stable unavailable-service error on use. The Registry
 does not advertise its capability.
+
+### Consumer-scoped runtime admission
+
+`vector_accessor/dataset-bound-v1` requires a Dataset `ValidatedArtifact` retained by the
+accessor from the actual validated input used to construct its storage. The borrowed pointer
+must remain valid for the accessor's lifetime (which covers its StageContext use). Forwarding
+wrappers forward that real binding. The shared `check_runtime_services` checks all existing
+`DatasetIdentity` fields: ID, payload checksum, node count, dimension, scalar type and metric,
+plus accessor dimension. It does not require matching paths, rescan vectors, or invent a second
+identity. A correct in-memory accessor remains supported. Missing binding is
+`capability_unsatisfied`; a known mismatching binding is `source_mismatch`.
+
+`distance_function/squared-l2-v1` and `distance_function/euclidean-l2-v1` distinguish squared
+and ordinary L2. Only an explicit `semantics()` declaration supplies either capability. The
+legacy `distance_function/l2-v1` denotes the known L2 family, never proof of squared L2; a
+non-null pointer with unknown semantics supplies none of these distance capabilities.
+
+Executor and CLI execution/preflight derive capabilities from actual StageContext services and
+reuse the common check, enabled only by each consumer's `requires.required_services`. Generated
+chains check all selected consumers before Partition factory creation; Partition reuse checks
+remaining Local/Merge against validated inputs; merge-only checks Merge before its factory.
+Services are rechecked at handoffs before downstream factories. Service incompatibility is a
+run failure, not Artifact corruption: already validated/published inputs retain VALID evidence
+and successful producer manifests, without quarantine. Other output and handoff checks remain
+unchanged. CLI validate/evaluate and generic `validate_stage_context` do not acquire these new
+semantic requirements. Direct consumers also defend their own algorithm entry.
+
+The two default virtual methods preserve source compatibility, not binary ABI compatibility:
+recompile the core, service implementations, stages, runners and tests together; mixing old and
+new binaries is unsupported. Consumers opting into these capabilities intentionally reject old
+implementations that provide no evidence. No Artifact/schema/request/parameter format or
+algorithm implementation version changes. Implementers are responsible for truthful binding
+and behavior; targeted tests check the known distance implementations. Runtime admission
+prevents mismatched assembly, not dishonesty by arbitrary third-party implementations.
 
 ## 3. Stage Interfaces
 

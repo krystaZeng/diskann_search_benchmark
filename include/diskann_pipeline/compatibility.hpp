@@ -26,6 +26,14 @@ struct CompatibilityResult {
   std::optional<FailureInfo> failure;
 };
 
+// Derive capabilities from the actual services, relative to a validated input
+// Dataset. No vector scan or distance evaluation is performed here.
+RuntimeServiceCapabilities runtime_service_capabilities(
+    const StageContext& context, const DatasetIdentity& dataset);
+CompatibilityResult check_runtime_services(
+    const ContractRequirement& consumer, const StageContext& context,
+    const DatasetIdentity& dataset);
+
 class CompatibilityChecker {
  public:
   CompatibilityResult check(

@@ -230,10 +230,24 @@ AvailableArtifactContract available_contract(const ValidatedArtifact& artifact) 
           artifact.capabilities()};
 }
 
-RuntimeServiceCapabilities executor_services() {
-  return {{"vector_accessor/v1", "distance_function/l2-v1",
-           "metrics_sink/v1", "cancellation_token/v1"},
-          false};
+CompatibilityResult preflight(
+    const std::vector<ImplementationDescriptor>& chain,
+    const std::vector<AvailableArtifactContract>& inputs,
+    const DatasetIdentity& dataset, const StageContext& context) {
+  for (const auto& consumer : chain) {
+    const auto services = check_runtime_services(consumer.requires, context, dataset);
+    if (!services.compatible) return services;
+  }
+  return CompatibilityChecker{}.check_chain(
+      chain, inputs, runtime_service_capabilities(context, dataset));
+}
+
+void require_runtime_services(const ImplementationDescriptor& consumer,
+                              const DatasetIdentity& dataset,
+                              const StageContext& context) {
+  const auto services = check_runtime_services(consumer.requires, context, dataset);
+  if (!services.compatible)
+    throw PipelineError(services.failure->category, services.failure->reason);
 }
 
 std::optional<FailureInfo> producer_contract_mismatch(
@@ -301,8 +315,13 @@ std::variant<PublishedArtifact, PublicationFailure> validate_and_publish(
       available.push_back(available_contract(source));
     }
     available.push_back(available_contract(validated_candidate));
+    // Service assembly is not a property of this Artifact. Recheck it before
+    // downstream factory creation, after recording this valid publication.
+    // All existing Artifact/producer handoff rules remain in this gate.
+    auto artifact_consumer = *next_consumer;
+    artifact_consumer.requires.required_services.clear();
     const auto compatibility = CompatibilityChecker{}.check(
-        *next_consumer, available, executor_services());
+        artifact_consumer, available, {});
     if (!compatibility.compatible) handoff_failure = compatibility.failure;
   }
   if (handoff_failure) {
@@ -349,20 +368,6 @@ std::variant<PublishedArtifact, PublicationFailure> validate_and_publish(
       normal_validation.evidence);
   return PublishedArtifact{published, *normal_validation.validated_artifact,
                            evidence};
-}
-
-CompatibilityResult preflight(
-    const ImplementationDescriptor& partition,
-    const ImplementationDescriptor& local,
-    const ImplementationDescriptor& merge,
-    const ValidatedArtifact& dataset) {
-  return CompatibilityChecker{}.check_chain(
-      {partition, local, merge},
-      {{dataset.reference().artifact_type, dataset.reference().format_version,
-        dataset.id_space(), dataset.capabilities()}},
-      {{"vector_accessor/v1", "distance_function/l2-v1", "metrics_sink/v1",
-        "cancellation_token/v1"},
-       false});
 }
 
 PipelineExecutionResult terminal_failure(
@@ -531,8 +536,8 @@ PipelineExecutionResult PipelineExecutor::execute(
       for (const auto& local : validated_locals) {
         available.push_back(available_contract(local));
       }
-      const auto compatibility = CompatibilityChecker{}.check(
-          merge_descriptor, available, executor_services());
+      const auto compatibility = preflight(
+          {merge_descriptor}, available, dataset.dataset(), context);
       if (!compatibility.compatible) {
         return terminal_failure(std::move(result), StageStatus::kFailed,
                                 compatibility.failure->category,
@@ -649,8 +654,9 @@ PipelineExecutionResult PipelineExecutor::execute(
         request.merge_implementation_id, request.merge_implementation_version,
         StageKind::kMerge);
     if (!request.reused_partition) {
-      const auto compatibility = preflight(partition_descriptor, local_descriptor,
-                                           merge_descriptor, dataset);
+      const auto compatibility = preflight(
+          {partition_descriptor, local_descriptor, merge_descriptor},
+          {available_contract(dataset)}, dataset.dataset(), context);
       if (!compatibility.compatible) {
         return terminal_failure(std::move(result), StageStatus::kFailed,
                                 compatibility.failure->category,
@@ -680,11 +686,11 @@ PipelineExecutionResult PipelineExecutor::execute(
         // The skipped producer's promises do not describe this cached input.
         // Only the future LocalGraph uses provides; its actual output is still
         // validated at publication before Merge can consume it.
-        const auto compatibility = CompatibilityChecker{}.check_chain(
+        const auto compatibility = preflight(
             {local_descriptor, merge_descriptor},
             {available_contract(dataset),
              available_contract(*reused.validated_artifact)},
-            executor_services());
+            dataset.dataset(), context);
         if (!compatibility.compatible) {
           reused.status = StageStatus::kFailed;
           reused.failure = compatibility.failure;
@@ -812,6 +818,10 @@ PipelineExecutionResult PipelineExecutor::execute(
     const auto ids = partition_ids(*validated_partition);
     std::vector<ValidatedArtifact> validated_locals;
     for (const auto id : ids) {
+      // A stage may have changed the service assembly. Reject any remaining
+      // known incompatibility before another expensive Local factory is made.
+      require_runtime_services(local_descriptor, dataset.dataset(), context);
+      require_runtime_services(merge_descriptor, dataset.dataset(), context);
       const auto stage_started_at = now_utc();
       result.local_partition_ids.push_back(id);
       const auto identity = "local-" + std::to_string(id);
@@ -912,6 +922,7 @@ PipelineExecutionResult PipelineExecutor::execute(
           workspace_, request.run_id, identity, manifest));
     }
 
+    require_runtime_services(merge_descriptor, dataset.dataset(), context);
     const auto merge_started_at = now_utc();
     const auto merge_parameters = write_parameters(
         workspace_, request.run_id, "merge", request.merge_parameters_json);

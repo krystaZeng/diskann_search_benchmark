@@ -47,6 +47,19 @@ If present, the executor MUST:
 
 Any admission failure occurs before factory creation and returns no normal GlobalGraph.
 
+M1 additionally requires `vector_accessor/dataset-bound-v1` and
+`distance_function/squared-l2-v1`. Shared runtime admission compares the actual accessor's retained
+Dataset validation grant with the full validated input Dataset identity and requires explicit
+squared-L2 semantics. M1's direct stage also checks against `load_merge_inputs().dataset` before
+vector cache creation or distance evaluation. Correctly bound generic/in-memory accessors remain
+supported; no CppMain accessor cast is added. Missing evidence, another Dataset, ordinary L2 and
+unknown distance semantics are rejected without conversion. Valid input evidence is retained;
+service failures do not imply invalid Artifacts or quarantine. M0 acquires neither requirement.
+
+The service virtual-query extension requires recompiling all linked components; old/new binaries
+must not be mixed. M1 implementation identity/version, numerical computations, Artifact, parameter
+and request formats are unchanged. These are admission corrections, not new algorithm semantics.
+
 ## Evidence
 
 - each individual `PipelineExecutor` result MUST report `partition=0`, `local_build=0`, `merge=1`

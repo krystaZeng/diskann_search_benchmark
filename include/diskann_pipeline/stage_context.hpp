@@ -10,6 +10,8 @@
 
 namespace diskann_pipeline {
 
+class ValidatedArtifact;
+
 struct WorkspaceRef {
   std::filesystem::path root;
   std::filesystem::path normal_root;
@@ -29,13 +31,23 @@ class VectorAccessor {
   virtual std::size_t dimension() const noexcept = 0;
   virtual void read(GlobalNodeId id,
                     std::vector<float>& destination) const = 0;
+  // Borrowed Dataset grant from the input actually used to construct this
+  // service. It must remain valid for the service lifetime; null means unknown.
+  virtual const ValidatedArtifact* bound_dataset() const noexcept {
+    return nullptr;
+  }
 };
+
+enum class DistanceSemantics { kUnknown, kSquaredL2, kEuclideanL2 };
 
 class DistanceFunction {
  public:
   virtual ~DistanceFunction() = default;
   virtual double evaluate(const std::vector<float>& lhs,
                           const std::vector<float>& rhs) const = 0;
+  virtual DistanceSemantics semantics() const noexcept {
+    return DistanceSemantics::kUnknown;
+  }
 };
 
 class MetricsSink {
@@ -83,4 +95,3 @@ struct StageContext {
 void validate_stage_context(const StageContext& context);
 
 }  // namespace diskann_pipeline
-

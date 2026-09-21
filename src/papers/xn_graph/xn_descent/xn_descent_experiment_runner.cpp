@@ -315,6 +315,9 @@ SourceIdentity project_source() {
 
 class SquaredL2Distance final : public DistanceFunction {
  public:
+  DistanceSemantics semantics() const noexcept override {
+    return DistanceSemantics::kSquaredL2;
+  }
   double evaluate(const std::vector<float>& lhs,
                   const std::vector<float>& rhs) const override {
     if (lhs.size() != rhs.size()) {

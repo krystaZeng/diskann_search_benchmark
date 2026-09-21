@@ -8,6 +8,7 @@
 #include "core/json_codec.hpp"
 #include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/document_codec.hpp"
+#include "diskann_pipeline/compatibility.hpp"
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/provenance.hpp"
 #include "diskann_pipeline/validation.hpp"
@@ -495,6 +496,12 @@ class XnDescentLocalBuild final : public LocalGraphBuilder {
           *partition_validation.validated_artifact;
       require_partition_vector_source(validated_partition, partition_id,
                                       context.vector_accessor);
+
+      const auto services = check_runtime_services(
+          descriptor().requires, context, validated_partition.dataset());
+      if (!services.compatible) {
+        throw PipelineError(services.failure->category, services.failure->reason);
+      }
 
       const auto parameter_json = read_json(config.stage_manifest_path);
       parameters = parse_parameters(parameter_json.dump());

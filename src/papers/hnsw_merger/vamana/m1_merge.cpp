@@ -6,6 +6,7 @@
 #include "core/json_codec.hpp"
 #include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/document_codec.hpp"
+#include "diskann_pipeline/compatibility.hpp"
 #include "diskann_pipeline/errors.hpp"
 #include "diskann_pipeline/workspace.hpp"
 
@@ -287,6 +288,11 @@ class HnswMergerVamanaMerge final : public GraphMerger {
                                            std::move(manifest))};
       }
       auto loaded = load_merge_inputs(context.workspace, partition, locals);
+      const auto services = check_runtime_services(
+          descriptor().requires, context, loaded.dataset);
+      if (!services.compatible) {
+        throw PipelineError(services.failure->category, services.failure->reason);
+      }
       if (context.cancellation_token->is_cancelled()) {
         manifest.status = StageStatus::kCancelled;
         manifest.parameters_json =

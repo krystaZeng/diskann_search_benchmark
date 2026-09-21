@@ -30,7 +30,7 @@ requires:
     - partition.complete_local_to_global_map/v1
   runtime_services:
     - vector_accessor/v1
-    - distance_function/l2-v1
+    - distance_function/squared-l2-v1
     - cancellation_token/v1
     - metrics_sink/v1
 provides:
@@ -57,6 +57,15 @@ evidence remain preserved as the pre-relaxation baseline.
 The stage accepts an aggregate PartitionArtifact plus one explicit PartitionId. It resolves vectors
 by applying the selected LocalToGlobal map before calling `VectorAccessor`. It does not require a
 P0 centroid or ascending-map capability.
+
+Runtime admission now requires explicit squared-L2 service semantics, both in Executor
+preflight/handoff and in direct B1 calls before algorithm initialization. Unknown and ordinary
+Euclidean services are rejected, not converted. The existing native accessor and validated
+Dataset/Partition source checks remain. B1 continues to accept legal non-ascending maps,
+including `[2,1,0]`, without sorting or renumbering. This admission correction preserves the
+algorithm implementation identity/version, parameters, distance accumulation and pruning rules.
+The public service virtual-interface extension requires rebuilding all linked components;
+old/new binaries must not be mixed. Artifact and request formats remain unchanged.
 
 ### 2.1 XN runner request wire versions and source provenance
 

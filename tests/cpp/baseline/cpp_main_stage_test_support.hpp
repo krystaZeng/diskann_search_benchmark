@@ -455,6 +455,9 @@ class TestCancellation final : public CancellationToken {
 
 class TestDistance final : public DistanceFunction {
  public:
+  DistanceSemantics semantics() const noexcept override {
+    return DistanceSemantics::kSquaredL2;
+  }
   double evaluate(const std::vector<float>& lhs,
                   const std::vector<float>& rhs) const override {
     double total = 0.0;

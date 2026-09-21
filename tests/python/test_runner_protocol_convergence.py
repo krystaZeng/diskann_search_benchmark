@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -8,8 +9,9 @@ from diskann_harness.config import load_yaml_file, normalize_run_request
 
 
 ROOT = Path(__file__).resolve().parents[2]
-FAKE_RUNNER = ROOT / "build/feature-001/tests/cpp/fakes/diskann_pipeline_fake_runner"
-PRODUCTION_RUNNER = ROOT / "build/feature-001/src/cli/diskann_pipeline_runner"
+BUILD_DIR = Path(os.environ.get("DISKANN_TEST_BUILD_DIR", ROOT / "build/feature-001"))
+FAKE_RUNNER = BUILD_DIR / "tests/cpp/fakes/diskann_pipeline_fake_runner"
+PRODUCTION_RUNNER = BUILD_DIR / "src/cli/diskann_pipeline_runner"
 
 
 def _normalized_request(workspace: Path) -> dict[str, object]:

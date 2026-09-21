@@ -1,4 +1,5 @@
 #include "papers/hnsw_merger/vamana/stage_binding.hpp"
+#include "papers/hnsw_merger/vamana/runner_distance.hpp"
 
 #include "baseline/cpp_main/source_build_identity.hpp"
 #include "baseline/cpp_main/stage_bindings.hpp"
@@ -212,23 +213,6 @@ Json artifact_json(const dp::ArtifactRef& value) {
   return Json::parse(dp::serialize_artifact_ref(value));
 }
 
-class L2Distance final : public dp::DistanceFunction {
- public:
-  double evaluate(const std::vector<float>& lhs,
-                  const std::vector<float>& rhs) const override {
-    if (lhs.size() != rhs.size()) {
-      throw dp::PipelineError(dp::ErrorCategory::kSchemaInvalid,
-                              "distance dimensions differ");
-    }
-    double total = 0.0;
-    for (std::size_t index = 0; index < lhs.size(); ++index) {
-      const auto delta = lhs[index] - rhs[index];
-      total += delta * delta;
-    }
-    return total;
-  }
-};
-
 class Metrics final : public dp::MetricsSink {
  public:
   void event(const std::string&) override {}
@@ -393,7 +377,7 @@ int main(int argc, char** argv) {
     }
 
     native::CppMainVectorAccessor vectors(workspace, dataset);
-    L2Distance distance;
+    m1::runner_detail::L2Distance distance;
     Metrics metrics;
     NeverCancelled cancellation;
     dp::UnavailableCheckpointStore checkpoints;

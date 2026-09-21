@@ -317,19 +317,6 @@ ToolchainIdentity configured_toolchain() {
           {}, {}};
 }
 
-RuntimeServiceCapabilities services(const StageContext& context) {
-  std::vector<std::string> values;
-  if (context.vector_accessor) values.push_back("vector_accessor/v1");
-  if (context.distance_function) values.push_back("distance_function/l2-v1");
-  if (context.metrics_sink) values.push_back("metrics_sink/v1");
-  if (context.cancellation_token) values.push_back("cancellation_token/v1");
-  if (context.checkpoint_store && context.checkpoint_store->available()) {
-    values.push_back("checkpoint_store/v1");
-  }
-  return {values, context.checkpoint_store &&
-                      context.checkpoint_store->available()};
-}
-
 CompatibilityResult request_preflight(const Json& request,
                                       ImplementationRegistry& registry,
                                       const ValidatedArtifact& dataset,
@@ -343,11 +330,22 @@ CompatibilityResult request_preflight(const Json& request,
       StageKind::kLocalBuild);
   const auto& merge = registry.resolve_descriptor(
       ids.at("merge").get<std::string>(), "1.0.0", StageKind::kMerge);
+  for (const auto* consumer : {&partition, &local, &merge}) {
+    // A reused Partition does not execute its selected producer's services.
+    if (consumer == &partition && request.contains("reuse_artifact")) continue;
+    const auto services = check_runtime_services(
+        consumer->requires, context, dataset.dataset());
+    if (!services.compatible) return services;
+  }
+  auto partition_contract = partition;
+  if (request.contains("reuse_artifact")) {
+    partition_contract.requires.required_services.clear();
+  }
   return CompatibilityChecker{}.check_chain(
-      {partition, local, merge},
+      {partition_contract, local, merge},
       {{dataset.reference().artifact_type, dataset.reference().format_version,
         dataset.id_space(), dataset.capabilities()}},
-      services(context));
+      runtime_service_capabilities(context, dataset.dataset()));
 }
 
 void validate_request_parameters(const Json& request,

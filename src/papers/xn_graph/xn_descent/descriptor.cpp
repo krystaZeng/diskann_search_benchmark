@@ -12,7 +12,7 @@ ImplementationDescriptor descriptor() {
              IdSpace::kLocal}},
            {"dataset.diskann_float32_bin/v1",
             "partition.complete_local_to_global_map/v1"},
-           {"vector_accessor/v1", "distance_function/l2-v1",
+           {"vector_accessor/v1", "distance_function/squared-l2-v1",
             "cancellation_token/v1", "metrics_sink/v1"}},
           {ArtifactType::kLocalGraph,
            "local-graph-artifact/v1",
