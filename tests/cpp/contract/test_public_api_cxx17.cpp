@@ -87,6 +87,18 @@ int main() {
   DP_EXPECT_EQ(dp::to_string(dp::ArtifactType::kDiskLayout),
                std::string_view("disk_layout"));
 
+  static_assert(std::is_same_v<
+      std::invoke_result_t<dp::InputAdmissionCheck,
+                           const std::vector<dp::ValidatedArtifact>&,
+                           const dp::StageContext&>, dp::CompatibilityResult>);
+  dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kTest);
+  // Compile both old and callback overloads without relying on an optional library.
+  using LocalAdmissionRegistration = void (dp::ImplementationRegistry::*)(
+      dp::ImplementationDescriptor, dp::LocalBuildFactory, dp::InputAdmissionCheck);
+  using MergeAdmissionRegistration = void (dp::ImplementationRegistry::*)(
+      dp::ImplementationDescriptor, dp::MergeFactory, dp::InputAdmissionCheck);
+  static_cast<void>(static_cast<LocalAdmissionRegistration>(&dp::ImplementationRegistry::register_local_build));
+  static_cast<void>(static_cast<MergeAdmissionRegistration>(&dp::ImplementationRegistry::register_merge));
   ContractMerger merger;
   ContractLocalBuilder builder;
   static_cast<void>(merger);

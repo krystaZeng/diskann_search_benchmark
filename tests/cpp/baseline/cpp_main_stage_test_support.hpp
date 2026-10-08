@@ -2,6 +2,7 @@
 
 #include "baseline/cpp_main/native_formats.hpp"
 #include "diskann_pipeline/checksum.hpp"
+#include "diskann_pipeline/stage_interfaces.hpp"
 #include "diskann_pipeline/validation.hpp"
 #include "diskann_pipeline/workspace.hpp"
 
@@ -500,5 +501,68 @@ inline WorkspaceRef candidate_workspace(const StageContext& context) {
   workspace.normal_root = context.temporary_storage.stage_root;
   return workspace;
 }
+
+// Test-only recoding: update every byte identity so consumer incompatibility is
+// never confused with an invalid fixture. No production Artifact is rewritten.
+inline ArtifactRef json_payload(const WorkspaceRef& workspace,
+                                ArtifactRef reference, const std::string& role,
+                                const Json& value) {
+  const auto metadata_path = workspace.normal_root / reference.metadata_path;
+  auto metadata = read_json(metadata_path);
+  for (auto& item : metadata["payloads"]) {
+    if (item["role"] != role) continue;
+    const auto path = metadata_path.parent_path() / item["path"].get<std::string>();
+    write_text(path, value.dump());
+    item = payload(role, item["path"].get<std::string>(), "application/json", path);
+  }
+  metadata["aggregate_checksum"] = aggregate_for(metadata);
+  write_text(metadata_path, metadata.dump());
+  reference.aggregate_checksum = metadata["aggregate_checksum"].get<std::string>();
+  return reference;
+}
+
+class DelegatingVectors final : public VectorAccessor {
+ public:
+  explicit DelegatingVectors(const VectorAccessor& source) : source_(source) {}
+  std::size_t dimension() const noexcept override { return source_.dimension(); }
+  const ValidatedArtifact* bound_dataset() const noexcept override {
+    return source_.bound_dataset();
+  }
+  void read(GlobalNodeId id, std::vector<float>& output) const override {
+    ++reads;
+    source_.read(id, output);
+  }
+  mutable std::size_t reads{0};
+ private:
+  const VectorAccessor& source_;
+};
+
+class ObservedLocal final : public LocalGraphBuilder {
+ public:
+  ObservedLocal(std::unique_ptr<LocalGraphBuilder> stage, std::size_t& calls)
+      : stage_(std::move(stage)), calls_(calls) {}
+  StageResult build(const ArtifactRef& partition, PartitionId id,
+                    const LocalBuildConfig& config, StageContext& context) override {
+    ++calls_;
+    return stage_->build(partition, id, config, context);
+  }
+ private:
+  std::unique_ptr<LocalGraphBuilder> stage_;
+  std::size_t& calls_;
+};
+
+class ObservedMerge final : public GraphMerger {
+ public:
+  ObservedMerge(std::unique_ptr<GraphMerger> stage, std::size_t& calls)
+      : stage_(std::move(stage)), calls_(calls) {}
+  StageResult merge(const ArtifactRef& partition, const std::vector<ArtifactRef>& locals,
+                    const std::filesystem::path& parameters, StageContext& context) override {
+    ++calls_;
+    return stage_->merge(partition, locals, parameters, context);
+  }
+ private:
+  std::unique_ptr<GraphMerger> stage_;
+  std::size_t& calls_;
+};
 
 }  // namespace diskann_pipeline::cpp_main::test

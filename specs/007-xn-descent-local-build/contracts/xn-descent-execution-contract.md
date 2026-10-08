@@ -263,3 +263,13 @@ behavior, platform, architecture, compiler/flags, and declared numerical environ
 graph and termination evidence are exact-replay outputs. Any valid thread count and scheduling are
 result-invariant. macOS and Linux each satisfy this guarantee independently; equality between their
 graph payloads is recorded when observed but is not required.
+
+## Registry admission boundary
+
+The experiment runner binds `input_admission` even for injected/counting XN factories, and
+binds M0's callback for its merge factory. XN checks the actual `CppMainVectorAccessor` type and
+all known Partition maps' validated native uint32 encoding. Dataset-only input checks defer
+future maps; they never treat a producer promise as verified bytes. No ascending-map constraint
+is added to B1/XN: valid non-ascending native maps retain their original IDs and support.
+Direct stage checks, cancellation, budget and convergence behavior remain unchanged. Existing
+Artifact formats/checksums/tags, algorithm parameters and reproduction identity do not change.

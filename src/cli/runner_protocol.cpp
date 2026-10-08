@@ -1,4 +1,5 @@
 #include "diskann_pipeline/runner_protocol.hpp"
+#include "diskann_pipeline/reuse.hpp"
 
 #include "diskann_pipeline/compatibility.hpp"
 #include "diskann_pipeline/document_codec.hpp"
@@ -320,7 +321,8 @@ ToolchainIdentity configured_toolchain() {
 CompatibilityResult request_preflight(const Json& request,
                                       ImplementationRegistry& registry,
                                       const ValidatedArtifact& dataset,
-                                      const StageContext& context) {
+                                      const StageContext& context,
+                                      Json& result) {
   const auto& ids = request.at("implementations");
   const auto& partition = registry.resolve_descriptor(
       ids.at("partition").get<std::string>(), "1.0.0",
@@ -337,14 +339,42 @@ CompatibilityResult request_preflight(const Json& request,
         consumer->requires, context, dataset.dataset());
     if (!services.compatible) return services;
   }
-  auto partition_contract = partition;
-  if (request.contains("reuse_artifact")) {
-    partition_contract.requires.required_services.clear();
+  std::vector<ValidatedArtifact> known_inputs{dataset};
+  std::vector<AvailableArtifactContract> available{
+      {dataset.reference().artifact_type, dataset.reference().format_version,
+       dataset.id_space(), dataset.capabilities()}};
+  for (const auto* consumer : {&local, &merge}) {
+    const auto admission = registry.check_known_inputs(*consumer, known_inputs, context);
+    if (!admission.compatible) return admission;
   }
-  return CompatibilityChecker{}.check_chain(
-      {partition_contract, local, merge},
-      {{dataset.reference().artifact_type, dataset.reference().format_version,
-        dataset.id_space(), dataset.capabilities()}},
+  if (request.contains("reuse_artifact")) {
+    // execute delegates fresh Partition validation and all actual-input checks
+    // to Executor. The skipped producer's provides cannot describe a cache hit.
+    if (request.at("operation") == "execute") return {true, std::nullopt};
+    const Validator validator(context.workspace);
+    const auto reused = ArtifactReuseService(validator).resolve(
+        parse_artifact_ref(request.at("reuse_artifact").dump()),
+        {ArtifactType::kPartition, {"partition-artifact/v1"}, IdSpace::kLocal},
+        {"partition.complete_local_to_global_map/v1"}, {dataset});
+    const auto evidence_path = persist_validation_evidence(
+        context.workspace,
+        request.at("request_id").get<std::string>() + "-preflight-partition-reuse",
+        reused.validation_evidence);
+    result["validation_evidence_path"] =
+        relative_to(evidence_path, context.workspace.root).generic_string();
+    if (reused.status != StageStatus::kReused) return {false, reused.failure};
+    const auto& actual = *reused.validated_artifact;
+    known_inputs.push_back(actual);
+    available.push_back({actual.reference().artifact_type, actual.reference().format_version,
+                         actual.id_space(), actual.capabilities()});
+    for (const auto* consumer : {&local, &merge}) {
+      const auto admission = registry.check_known_inputs(*consumer, known_inputs, context);
+      if (!admission.compatible) return admission;
+    }
+    return CompatibilityChecker{}.check_chain({local, merge}, available,
+        runtime_service_capabilities(context, dataset.dataset()));
+  }
+  return CompatibilityChecker{}.check_chain({partition, local, merge}, available,
       runtime_service_capabilities(context, dataset.dataset()));
 }
 
@@ -632,7 +662,7 @@ RunnerDispatchResult dispatch_runner_request(
       return encoded(std::move(result), RunnerExitCode::kRejected);
     }
     const auto compatibility = request_preflight(
-        request, registry, *dataset_validation.validated_artifact, context);
+        request, registry, *dataset_validation.validated_artifact, context, result);
     if (!compatibility.compatible) {
       result["outcome"] = "REJECTED";
       result["failure"] = failure_json(*compatibility.failure);

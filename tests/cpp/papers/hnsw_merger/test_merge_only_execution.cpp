@@ -11,6 +11,8 @@
 #include <nlohmann/json.hpp>
 
 #include <fstream>
+#include <iostream>
+#include <cstdlib>
 #include <filesystem>
 
 namespace dp = diskann_pipeline;
@@ -56,9 +58,92 @@ dp::PipelineExecutionRequest request(
   return value;
 }
 
+
+void test_input_admission() {
+  for (const bool paper : {false, true}) for (const std::string kind : {"native", "json-map", "json-graph-first", "json-graph-last"}) {
+    fixture::TemporaryDirectory temporary("merge-admission-" + kind + (paper ? "m1" : "m0"));
+    auto workspace = dp::create_workspace(temporary.path / "workspace");
+    fixture::NativeDatasetFixture dataset(workspace, 12, 4);
+    const std::vector<std::vector<dp::GlobalNodeId>> maps{{0,1,2,3,4,5,6,7},{4,5,6,7,8,9,10,11}};
+    auto partition = fixture::materialize_partition(workspace, dataset, maps);
+    if (kind == "json-map") partition = fixture::json_payload(workspace, partition,
+        "partition/1/local_to_global_map", {{"local_to_global", maps[1]}});
+    auto vd = dp::Validator(workspace).validate(dataset.reference);
+    auto vp = dp::Validator(workspace).validate(partition, {*vd.validated_artifact});
+    DP_EXPECT_TRUE(vp.valid());
+    if (!vp.valid()) throw std::runtime_error("invalid admission partition");
+    std::vector<dp::ArtifactRef> locals;
+    std::vector<dp::ValidatedArtifact> known{*vd.validated_artifact, *vp.validated_artifact};
+    for (unsigned id = 0; id < 2; ++id) {
+      auto local = fixture::materialize_local(workspace, dataset, partition, id, maps[id], ring(8));
+      if (kind == "json-map" && id == 1) local = fixture::json_payload(workspace, local,
+          "local_to_global_map", {{"local_to_global", maps[id]}});
+      if ((kind == "json-graph-first" && id == 0) || (kind == "json-graph-last" && id == 1))
+        local = fixture::json_payload(workspace, local, "local_graph", {{"adjacency", ring(8)}});
+      auto vl = dp::Validator(workspace).validate(local, {*vp.validated_artifact});
+      DP_EXPECT_TRUE(vl.valid());
+      if (!vl.valid()) throw std::runtime_error("invalid admission local");
+      known.push_back(*vl.validated_artifact);
+      locals.push_back(local);
+    }
+    native::CppMainVectorAccessor vectors(workspace, dataset.reference);
+    fixture::DelegatingVectors generic(vectors);
+    fixture::TestContext environment(workspace, "merge-admission");
+    environment.context.vector_accessor = &generic; // M1 must keep generic bound support.
+    std::size_t factories = 0, stages = 0;
+    dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
+    const auto descriptor = paper ? m1::descriptor() : native::m0_descriptor();
+    registry.register_merge(descriptor, [&] {
+      ++factories;
+      return std::make_unique<fixture::ObservedMerge>(paper ? m1::make_m1_merge() : native::make_m0_merge(), stages);
+    }, paper ? m1::input_admission : native::m0_input_admission);
+    DP_EXPECT_TRUE(registry.check_known_inputs(descriptor, {known[0]}, environment.context).compatible);
+    DP_EXPECT_EQ(registry.check_known_inputs(descriptor, {known[0], known[1]}, environment.context).compatible,
+                 kind != "json-map");
+    DP_EXPECT_EQ(registry.check_known_inputs(descriptor, {known[0], known[1], known[2]}, environment.context).compatible,
+                 kind != "json-map" && kind != "json-graph-first");
+    DP_EXPECT_EQ(registry.check_known_inputs(descriptor, known, environment.context).compatible, kind == "native");
+    DP_EXPECT_EQ(factories, std::size_t{0});
+    DP_EXPECT_EQ(generic.reads, std::size_t{0});
+    auto execution = request("admission-" + kind, dataset.reference, partition, locals,
+        descriptor.implementation_id, paper ? kM1Parameters : R"({"R":16,"use_filters":false})");
+    auto result = dp::PipelineExecutor(registry, workspace).execute(execution, environment.context);
+    std::cout << "ADMISSION " << (paper ? "M1" : "M0") << ' ' << kind
+              << " valid=1 factories=" << factories << " stages=" << stages
+              << " vector_reads=" << generic.reads << " merge_shards=" << environment.metrics.saw("cpp_main.m0.merge_shards")
+              << " status=" << dp::to_string(result.status) << std::endl;
+    DP_EXPECT_EQ(result.status, kind == "native" ? dp::StageStatus::kSucceeded : dp::StageStatus::kFailed);
+    DP_EXPECT_EQ(factories, kind == "native" ? std::size_t{1} : std::size_t{0});
+    DP_EXPECT_EQ(stages, factories);
+    DP_EXPECT_TRUE(!result.quarantine_id);
+    for (const auto& evidence : result.validation_evidence_paths) {
+      const auto document = fixture::read_json(evidence);
+      DP_EXPECT_EQ(document.at("result"), "VALID");
+    }
+    if (kind != "native") {
+      DP_EXPECT_TRUE(result.build_manifest_paths.empty());
+      // Calling the implementation directly must retain its own format defense.
+      fixture::TestContext direct(workspace, "direct-admission-defense");
+      direct.context.vector_accessor = &generic;
+      const auto parameters = workspace.manifest_root /
+          "direct-admission-defense/parameters/merge.json";
+      dp::write_immutable_text(parameters,
+          paper ? kM1Parameters : R"({"R":16,"use_filters":false})");
+      const auto defended = (paper ? m1::make_m1_merge() : native::make_m0_merge())->merge(
+          partition, locals, parameters, direct.context);
+      DP_EXPECT_EQ(defended.status, dp::StageStatus::kFailed);
+      DP_EXPECT_EQ(generic.reads, std::size_t{0});
+      DP_EXPECT_TRUE(!direct.metrics.saw("cpp_main.m0.merge_shards"));
+    }
+    for (const auto& local : locals) DP_EXPECT_TRUE(dp::Validator(workspace).validate(local, {*vp.validated_artifact}).valid());
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+  if (argc == 1) test_input_admission();
+  if (std::getenv("DISKANN_ADMISSION_ONLY")) return dp::test::finish();
   fixture::TemporaryDirectory temporary("hnsw-merger-merge-only");
   const auto workspace = dp::create_workspace(temporary.path / "workspace");
   fixture::NativeDatasetFixture dataset(workspace, 12, 4);
@@ -80,11 +165,11 @@ int main(int argc, char** argv) {
   registry.register_merge(native::m0_descriptor(), [&] {
     ++m0_factories;
     return native::make_m0_merge();
-  });
+  }, native::m0_input_admission);
   registry.register_merge(m1::descriptor(), [&] {
     ++m1_factories;
     return m1::make_m1_merge();
-  });
+  }, m1::input_admission);
   registry.seal();
   dp::PipelineExecutor executor(registry, workspace);
 

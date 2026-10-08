@@ -261,11 +261,26 @@ enum class RegistryAdmissionPolicy {
   kTest,
 };
 
+using InputAdmissionCheck = std::function<CompatibilityResult(
+    const std::vector<ValidatedArtifact>& known_inputs,
+    const StageContext& context)>;
+
 class ImplementationRegistry {
  public:
   explicit ImplementationRegistry(
       RegistryAdmissionPolicy admission_policy);
   ImplementationRegistry() = delete;
+  void register_partition(ImplementationDescriptor, PartitionFactory);
+  void register_local_build(ImplementationDescriptor, LocalBuildFactory);
+  void register_merge(ImplementationDescriptor, MergeFactory);
+  void register_local_build(ImplementationDescriptor, LocalBuildFactory,
+                            InputAdmissionCheck);
+  void register_merge(ImplementationDescriptor, MergeFactory,
+                      InputAdmissionCheck);
+  CompatibilityResult check_known_inputs(
+      const ImplementationDescriptor& consumer,
+      const std::vector<ValidatedArtifact>& known_inputs,
+      const StageContext& context) const;
 };
 ```
 
@@ -296,7 +311,50 @@ test assembly calls:
 void register_fake_implementations(ImplementationRegistry& registry);
 ```
 
-### 4.1 Adapter declaration and evidence boundary
+### 4.1 Limited input admission
+
+The optional registration callback describes a consumer's existing physical payload and actual
+service restrictions. `check_known_inputs` resolves the registered identity, version and stage;
+it does not trust a caller's descriptor copy as a substitute for the registered callback.
+The old two-argument overloads remain supported and install no additional check. No serialized
+descriptor, capability, Artifact tag, format version, checksum rule or service vtable changes.
+Affected C++ components must be rebuilt together.
+
+Callbacks inspect only `ValidatedArtifact` metadata and the actual `StageContext` services.
+They do not reopen payloads, calculate checksums, create factories or call algorithms. The
+Validator has already verified the media type against the bytes; a raw self-reported media type
+or producer `provides` is never a validation grant. A callback returns `CompatibilityResult`;
+consumer incompatibility uses `capability_unsatisfied` and does not invalidate the input Artifact.
+
+`known_inputs` is incremental:
+
+| Known inputs | Meaning |
+|---|---|
+| Dataset only | Check actual services; future Partition/maps/graphs remain unverified. |
+| Dataset + Partition | Check every map referenced by the Partition records that this pipeline will consume; do not require absent LocalGraphs. |
+| Dataset + Partition + some LocalGraphs | Also check every present LocalGraph's map and graph; success does not certify remaining future graphs. |
+
+Absence of a future input is neither a physical-format rejection nor proof of compatibility.
+Existing full dispatch/lineage/cardinality checks still apply. Each payload is checked separately;
+one matching map or graph cannot satisfy the requirement for another input.
+
+Executor checks known service constraints before generating Partition, rechecks after reuse or
+Partition publication before Local factories, and checks the growing LocalGraph set before the
+next Local/Merge factory. Fresh merge-only validation supplies the complete known set before
+Merge creation. Each generated Artifact's VALID evidence and successful producer manifest are
+persisted before downstream physical admission. Failure to admit a legal Artifact means FAILED
+execution with no quarantine, not INVALID_OUTPUT. Direct stage defenses remain in place.
+
+Assemblers must bind the callback when registering a constrained implementation, including
+counted/injected factories that wrap it. This guarantee covers correctly bound registration paths
+and callers using the pre-factory check; there is no new universal registration governance or
+auto-binding mechanism. Production bindings are in cpp_main `register_cpp_main_stage_bindings`,
+XN experiment runner (including injected factories), and M0/M1 comparison runner. Baseline and
+OGP runners inherit the shared binding. Native test wrappers in cpp_main pipeline/preflight and
+M1 pipeline/native-output/merge-only tests bind the same callbacks. Descriptor-only/null-factory
+tests and unrestricted Fake registrations retain the legacy API.
+
+### 4.2 Adapter declaration and evidence boundary
 
 Feature 001 registers no production Adapter and adds no Adapter factory. For policy validation only,
 an Adapter declaration uses the same ImplementationDescriptor contracts: source Artifact types,

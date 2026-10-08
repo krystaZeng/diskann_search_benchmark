@@ -3,6 +3,8 @@
 #include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/errors.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -12,6 +14,52 @@
 #include <string>
 
 namespace diskann_pipeline::cpp_main {
+namespace {
+
+CompatibilityResult require_encoding(const ValidatedArtifact& artifact,
+                                     const std::string& role,
+                                     const char* media_type) {
+  const auto found = std::find_if(artifact.payloads().begin(), artifact.payloads().end(),
+      [&](const auto& payload) { return payload.role == role; });
+  if (found != artifact.payloads().end() && found->media_type == media_type)
+    return {true, std::nullopt};
+  return {false, FailureInfo{ErrorCategory::kCapabilityUnsatisfied,
+      "consumer requires " + std::string(media_type) + " for " +
+          artifact.reference().metadata_path.generic_string() + " role " + role,
+      std::nullopt}};
+}
+
+}  // namespace
+
+CompatibilityResult check_native_partition_maps(
+    const std::vector<ValidatedArtifact>& known_inputs) {
+  for (const auto& artifact : known_inputs) {
+    if (artifact.reference().artifact_type != ArtifactType::kPartition) continue;
+    const auto structural = nlohmann::json::parse(artifact.structural_json());
+    for (const auto& partition : structural.at("partitions")) {
+      const auto result = require_encoding(artifact,
+          partition.at("local_to_global_map_role").get<std::string>(),
+          kPartitionIdMapMediaType);
+      if (!result.compatible) return result;
+    }
+  }
+  return {true, std::nullopt};
+}
+
+CompatibilityResult check_native_merge_inputs(
+    const std::vector<ValidatedArtifact>& known_inputs) {
+  const auto maps = check_native_partition_maps(known_inputs);
+  if (!maps.compatible) return maps;
+  for (const auto& artifact : known_inputs) {
+    if (artifact.reference().artifact_type != ArtifactType::kLocalGraph) continue;
+    const auto map = require_encoding(artifact, "local_to_global_map", kPartitionIdMapMediaType);
+    if (!map.compatible) return map;
+    const auto graph = require_encoding(artifact, "local_graph", kLocalGraphMediaType);
+    if (!graph.compatible) return graph;
+  }
+  return {true, std::nullopt};
+}
+
 namespace {
 
 std::uint64_t exact_file_size(const std::filesystem::path& path) {

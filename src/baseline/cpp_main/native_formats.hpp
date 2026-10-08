@@ -1,6 +1,8 @@
 #pragma once
 
 #include "diskann_pipeline/identifiers.hpp"
+#include "diskann_pipeline/compatibility.hpp"
+#include "diskann_pipeline/validation.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -21,6 +23,13 @@ inline constexpr const char* kGlobalGraphMediaType =
     "application/vnd.diskann.cpp-main.global-graph;version=1";
 inline constexpr const char* kMedoidsMediaType =
     "application/vnd.diskann.cpp-main.uint32-medoids;version=1";
+
+// Only inspect facts already checked by Validator. Missing future inputs are
+// deferred; each map/graph actually present is checked independently.
+CompatibilityResult check_native_partition_maps(
+    const std::vector<ValidatedArtifact>& known_inputs);
+CompatibilityResult check_native_merge_inputs(
+    const std::vector<ValidatedArtifact>& known_inputs);
 
 struct MatrixFacts {
   NodeCount row_count;

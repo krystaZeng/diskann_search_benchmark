@@ -240,7 +240,7 @@ int main() {
     registry.register_merge(m1::descriptor(), [&] {
       ++factories;
       return std::make_unique<CountedMerge>(stages);
-    });
+    }, m1::input_admission);
     dp::PipelineExecutionRequest request;
     request.run_id = "m1-executor-" + label;
     request.dataset = dataset.reference;

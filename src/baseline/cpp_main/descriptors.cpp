@@ -1,4 +1,5 @@
 #include "baseline/cpp_main/stage_bindings.hpp"
+#include "baseline/cpp_main/native_formats.hpp"
 
 namespace diskann_pipeline::cpp_main {
 namespace {
@@ -68,10 +69,24 @@ ImplementationDescriptor m0_descriptor() {
           false};
 }
 
+CompatibilityResult b0_input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext& context) {
+  if (!dynamic_cast<const CppMainVectorAccessor*>(context.vector_accessor)) {
+    return {false, FailureInfo{ErrorCategory::kCapabilityUnsatisfied,
+        "B0 requires the CppMainVectorAccessor runtime service", std::nullopt}};
+  }
+  return check_native_partition_maps(known_inputs);
+}
+
+CompatibilityResult m0_input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext&) {
+  return check_native_merge_inputs(known_inputs);
+}
+
 void register_cpp_main_stage_bindings(ImplementationRegistry& registry) {
   registry.register_partition(p0_descriptor(), make_p0_partition);
-  registry.register_local_build(b0_descriptor(), make_b0_local_build);
-  registry.register_merge(m0_descriptor(), make_m0_merge);
+  registry.register_local_build(b0_descriptor(), make_b0_local_build, b0_input_admission);
+  registry.register_merge(m0_descriptor(), make_m0_merge, m0_input_admission);
 }
 
 }  // namespace diskann_pipeline::cpp_main

@@ -166,7 +166,7 @@ int main() {
   counted.register_local_build(b0, [&] {
     ++factory_invocations;
     return native::make_b0_local_build();
-  });
+  }, native::b0_input_admission);
   if (checker.check(b0, missing, services()).compatible) {
     counted.resolve_local_build_factory(native::kB0ImplementationId,
                                         "1.0.0")();

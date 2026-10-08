@@ -84,5 +84,35 @@ int main() {
   DP_EXPECT_TRUE(static_cast<bool>(tests.resolve_partition_factory(
       "test.partition", "1.0.0")));
 
+  // The legacy API remains valid, and callbacks are resolved by exact identity.
+  dp::StageContext context{};
+  DP_EXPECT_TRUE(production.check_known_inputs(production_entries.front(), {}, context).compatible);
+  std::size_t checks = 0, factories = 0;
+  const auto local = descriptor("checked.local", dp::StageKind::kLocalBuild, false);
+  tests.register_local_build(local, [&] {
+    ++factories; return std::unique_ptr<dp::LocalGraphBuilder>{};
+  }, [&](const std::vector<dp::ValidatedArtifact>& inputs, const dp::StageContext& actual) {
+    ++checks;
+    DP_EXPECT_TRUE(inputs.empty());
+    DP_EXPECT_TRUE(&actual == &context);
+    return dp::CompatibilityResult{false, dp::FailureInfo{
+        dp::ErrorCategory::kCapabilityUnsatisfied, "test admission", std::nullopt}};
+  });
+  const auto rejected = tests.check_known_inputs(local, {}, context);
+  DP_EXPECT_TRUE(!rejected.compatible);
+  DP_EXPECT_EQ(checks, std::size_t{1});
+  DP_EXPECT_EQ(factories, std::size_t{0});
+  auto wrong = local;
+  wrong.implementation_version = "2.0.0";
+  DP_EXPECT_THROW(tests.check_known_inputs(wrong, {}, context));
+  wrong = local;
+  wrong.stage = dp::StageKind::kMerge;
+  DP_EXPECT_THROW(tests.check_known_inputs(wrong, {}, context));
+  DP_EXPECT_EQ(checks, std::size_t{1});
+  tests.seal();
+  DP_EXPECT_THROW(tests.register_local_build(local, [] {
+    return std::unique_ptr<dp::LocalGraphBuilder>{};
+  }, {}));
+
   return dp::test::finish();
 }

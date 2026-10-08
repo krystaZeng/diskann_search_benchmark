@@ -101,3 +101,6 @@ interface extension requires rebuilding all components rather than mixing binary
   DiskANN shards is a faithful adaptation whose compatibility rules must remain explicit.
 - No Query/Search or performance result in the paper is validation evidence for this structural
   Feature.
+
+Registry physical admission is framework integration only; the mapped algorithm is unchanged.
+See [contracts/merge-only-execution.md](contracts/merge-only-execution.md) for validated encoding and actual-service checks before consumer factories.

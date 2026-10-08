@@ -250,6 +250,15 @@ void require_runtime_services(const ImplementationDescriptor& consumer,
     throw PipelineError(services.failure->category, services.failure->reason);
 }
 
+void require_known_inputs(const ImplementationRegistry& registry,
+                          const ImplementationDescriptor& consumer,
+                          const std::vector<ValidatedArtifact>& known_inputs,
+                          const StageContext& context) {
+  const auto admission = registry.check_known_inputs(consumer, known_inputs, context);
+  if (!admission.compatible)
+    throw PipelineError(admission.failure->category, admission.failure->reason);
+}
+
 std::optional<FailureInfo> producer_contract_mismatch(
     const ValidatedArtifact& artifact,
     const ImplementationDescriptor& producer) {
@@ -544,6 +553,9 @@ PipelineExecutionResult PipelineExecutor::execute(
                                 compatibility.failure->reason);
       }
 
+      std::vector<ValidatedArtifact> known_inputs{dataset, partition};
+      known_inputs.insert(known_inputs.end(), validated_locals.begin(), validated_locals.end());
+      require_known_inputs(registry_, merge_descriptor, known_inputs, context);
       const auto merge_started_at = now_utc();
       const auto merge_parameters = write_parameters(
           workspace_, request.run_id, "merge", request.merge_parameters_json);
@@ -673,6 +685,10 @@ PipelineExecutionResult PipelineExecutor::execute(
         merge_descriptor, request.merge_parameters_json,
         DISKANN_PIPELINE_PROJECT_ROOT);
 
+    // Dataset-only checks can reject actual service mismatches before Partition
+    // creation; absent future payloads remain unverified.
+    require_known_inputs(registry_, local_descriptor, {dataset}, context);
+    require_known_inputs(registry_, merge_descriptor, {dataset}, context);
     std::optional<ValidatedArtifact> validated_partition;
     if (request.reused_partition) {
       const auto stage_started_at = now_utc();
@@ -815,6 +831,7 @@ PipelineExecutionResult PipelineExecutor::execute(
           workspace_, request.run_id, "partition", manifest));
     }
 
+    std::vector<ValidatedArtifact> known_inputs{dataset, *validated_partition};
     const auto ids = partition_ids(*validated_partition);
     std::vector<ValidatedArtifact> validated_locals;
     for (const auto id : ids) {
@@ -822,6 +839,8 @@ PipelineExecutionResult PipelineExecutor::execute(
       // known incompatibility before another expensive Local factory is made.
       require_runtime_services(local_descriptor, dataset.dataset(), context);
       require_runtime_services(merge_descriptor, dataset.dataset(), context);
+      require_known_inputs(registry_, local_descriptor, known_inputs, context);
+      require_known_inputs(registry_, merge_descriptor, known_inputs, context);
       const auto stage_started_at = now_utc();
       result.local_partition_ids.push_back(id);
       const auto identity = "local-" + std::to_string(id);
@@ -912,6 +931,7 @@ PipelineExecutionResult PipelineExecutor::execute(
       }
       auto published = std::get<PublishedArtifact>(std::move(publication));
       validated_locals.push_back(published.validated);
+      known_inputs.push_back(published.validated);
       result.local_artifacts.push_back(published.reference);
       result.validation_evidence_paths.push_back(published.evidence_path);
       manifest.status = StageStatus::kSucceeded;
@@ -923,6 +943,7 @@ PipelineExecutionResult PipelineExecutor::execute(
     }
 
     require_runtime_services(merge_descriptor, dataset.dataset(), context);
+    require_known_inputs(registry_, merge_descriptor, known_inputs, context);
     const auto merge_started_at = now_utc();
     const auto merge_parameters = write_parameters(
         workspace_, request.run_id, "merge", request.merge_parameters_json);

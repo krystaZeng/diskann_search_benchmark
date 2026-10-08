@@ -20,6 +20,10 @@ inline constexpr const char* kM0ImplementationId =
 ImplementationDescriptor p0_descriptor();
 ImplementationDescriptor b0_descriptor();
 ImplementationDescriptor m0_descriptor();
+CompatibilityResult b0_input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext& context);
+CompatibilityResult m0_input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext& context);
 
 std::unique_ptr<PartitionStrategy> make_p0_partition();
 std::unique_ptr<LocalGraphBuilder> make_b0_local_build();

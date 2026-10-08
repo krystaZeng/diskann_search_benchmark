@@ -185,3 +185,12 @@ The B0 gate does not require or imply:
 - repeated runs, determinism statistics, Graph Parity, Recall, QPS, or latency;
 - proof that P0/M0 executed successfully, formal Graph Parity, or
   `validated_graph_baseline` registration.
+
+## Registry admission boundary
+
+B0's registered factory is paired with `b0_input_admission`: the actual accessor must be a
+`CppMainVectorAccessor`, and each known Partition map must have the already validated native
+uint32 encoding. Generic accessors may satisfy the public vector service contract but do not
+satisfy this implementation's concrete dependency. No new accessor capability or Artifact tag
+is added. Dataset binding and the existing direct B0 defenses remain unchanged; legacy native
+artifacts and parameters remain usable after affected components are rebuilt.

@@ -184,8 +184,8 @@ dp::ImplementationRegistry registry_with(
     dp::MergeFactory merge = native::make_m0_merge) {
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
   registry.register_partition(native::p0_descriptor(), std::move(partition));
-  registry.register_local_build(native::b0_descriptor(), std::move(local));
-  registry.register_merge(native::m0_descriptor(), std::move(merge));
+  registry.register_local_build(native::b0_descriptor(), std::move(local), native::b0_input_admission);
+  registry.register_merge(native::m0_descriptor(), std::move(merge), native::m0_input_admission);
   registry.seal();
   return registry;
 }
@@ -293,9 +293,216 @@ void test_frozen_baseline_runner_parameters() {
   }
 }
 
+
+// New-API scheduling cases: re-encode a real successful producer's candidate
+// without changing its map values, graph edges or declared logical contract.
+class JsonMapPartition final : public dp::PartitionStrategy {
+ public:
+  dp::StageResult run(const dp::ArtifactRef& input, const std::filesystem::path& parameters,
+                      dp::StageContext& context) override {
+    auto result = native::make_p0_partition()->run(input, parameters, context);
+    if (!result.output_candidate) return result;
+    auto staging = context.workspace;
+    staging.normal_root = context.temporary_storage.stage_root;
+    const auto metadata_path = staging.normal_root / result.output_candidate->metadata_path;
+    const auto metadata = fixture::read_json(metadata_path);
+    const auto& record = metadata.at("structural").at("partitions").back();
+    const auto role = record.at("local_to_global_map_role").get<std::string>();
+    for (const auto& payload : metadata.at("payloads")) {
+      if (payload.at("role") != role) continue;
+      const auto map = native::validate_partition_id_map(
+          metadata_path.parent_path() / payload.at("path").get<std::string>(),
+          record.at("local_node_count").get<dp::NodeCount>(),
+          metadata.at("dataset").at("global_node_count").get<dp::NodeCount>());
+      result.output_candidate = fixture::json_payload(staging, *result.output_candidate,
+                                                     role, {{"local_to_global", map}});
+      break;
+    }
+    return result;
+  }
+};
+
+class JsonGraphLocal final : public dp::LocalGraphBuilder {
+ public:
+  dp::StageResult build(const dp::ArtifactRef& partition, dp::PartitionId id,
+                        const dp::LocalBuildConfig& config, dp::StageContext& context) override {
+    auto result = native::make_b0_local_build()->build(partition, id, config, context);
+    if (!result.output_candidate) return result;
+    auto staging = context.workspace;
+    staging.normal_root = context.temporary_storage.stage_root;
+    const auto metadata_path = staging.normal_root / result.output_candidate->metadata_path;
+    const auto metadata = fixture::read_json(metadata_path);
+    const auto count = metadata.at("structural").at("local_node_count").get<std::size_t>();
+    Json adjacency = Json::array();
+    for (const auto& payload : metadata.at("payloads")) {
+      if (payload.at("role") != "local_graph") continue;
+      std::ifstream input(metadata_path.parent_path() / payload.at("path").get<std::string>(), std::ios::binary);
+      input.seekg(24);  // Frozen cpp_main graph header, followed by degree/IDs.
+      for (std::size_t node = 0; node < count; ++node) {
+        std::uint32_t degree = 0;
+        input.read(reinterpret_cast<char*>(&degree), sizeof(degree));
+        std::vector<std::uint32_t> neighbors(degree);
+        input.read(reinterpret_cast<char*>(neighbors.data()), degree * sizeof(std::uint32_t));
+        if (!input) throw std::runtime_error("truncated native test graph");
+        adjacency.push_back(neighbors);
+      }
+    }
+    result.output_candidate = fixture::json_payload(staging, *result.output_candidate,
+                                                    "local_graph", {{"adjacency", adjacency}});
+    return result;
+  }
+};
+
+void test_published_input_admission() {
+  for (bool map : {true, false}) {
+    PipelineFixture data(map ? "published-json-map" : "published-json-graph");
+    std::size_t partition_factories = 0, local_factories = 0, merge_factories = 0;
+    auto registry = registry_with([&]() -> std::unique_ptr<dp::PartitionStrategy> {
+      ++partition_factories;
+      if (map) return std::make_unique<JsonMapPartition>();
+      return native::make_p0_partition();
+    }, [&]() -> std::unique_ptr<dp::LocalGraphBuilder> {
+      ++local_factories;
+      if (!map) return std::make_unique<JsonGraphLocal>();
+      return native::make_b0_local_build();
+    }, [&] { ++merge_factories; return native::make_m0_merge(); });
+    const auto result = dp::PipelineExecutor(registry, data.workspace).execute(
+        request("published-format", data.dataset.reference), data.environment.context);
+    DP_EXPECT_EQ(result.status, dp::StageStatus::kFailed);
+    DP_EXPECT_EQ(partition_factories, std::size_t{1});
+    DP_EXPECT_EQ(local_factories, map ? std::size_t{0} : std::size_t{1});
+    DP_EXPECT_EQ(merge_factories, std::size_t{0});
+    DP_EXPECT_EQ(result.invocations.partition, partition_factories);
+    DP_EXPECT_EQ(result.invocations.local_build, local_factories);
+    DP_EXPECT_EQ(result.invocations.merge, merge_factories);
+    DP_EXPECT_TRUE(!result.quarantine_id);
+    DP_EXPECT_EQ(result.build_manifest_paths.size(), partition_factories + local_factories);
+    for (const auto& path : result.build_manifest_paths) {
+      const auto manifest = fixture::read_json(path);
+      DP_EXPECT_EQ(manifest.at("status"), "SUCCEEDED");
+    }
+    for (const auto& path : result.validation_evidence_paths) {
+      const auto evidence = fixture::read_json(path);
+      DP_EXPECT_EQ(evidence.at("result"), "VALID");
+    }
+    DP_EXPECT_TRUE(result.partition_artifact.has_value());
+    DP_EXPECT_TRUE(dp::Validator(data.workspace).validate_with_lineage(*result.partition_artifact).valid());
+    for (const auto& local : result.local_artifacts)
+      DP_EXPECT_TRUE(dp::Validator(data.workspace).validate_with_lineage(local).valid());
+    std::cout << "PUBLISHED_ADMISSION " << (map ? "map" : "graph")
+              << " factories/stages=" << partition_factories << ',' << local_factories
+              << ',' << merge_factories << " evidence=VALID producer=SUCCEEDED quarantine=0\n";
+  }
+}
+
+void test_input_admission() {
+  for (const std::string kind : {"native", "accessor", "accessor-full", "json-first", "json-last"}) {
+    fixture::TemporaryDirectory temporary("b0-admission-" + kind);
+    auto workspace = dp::create_workspace(temporary.path / "workspace");
+    fixture::NativeDatasetFixture dataset(workspace);
+    std::vector<std::vector<dp::GlobalNodeId>> maps(2);
+    for (unsigned i = 0; i < 64; ++i) { maps[0].push_back(i); maps[1].push_back(i + 32); }
+    auto partition = fixture::materialize_partition(workspace, dataset, maps);
+    if (kind == "json-first" || kind == "json-last") {
+      const unsigned id = kind == "json-first" ? 0 : 1;
+      partition = fixture::json_payload(workspace, partition,
+          "partition/" + std::to_string(id) + "/local_to_global_map",
+          Json{{"local_to_global", maps[id]}});
+    }
+    auto valid_dataset = dp::Validator(workspace).validate(dataset.reference);
+    auto valid_partition = dp::Validator(workspace).validate(partition, {*valid_dataset.validated_artifact});
+    DP_EXPECT_TRUE(valid_partition.valid());
+    if (!valid_partition.valid()) throw std::runtime_error("invalid admission fixture");
+    native::CppMainVectorAccessor vectors(workspace, dataset.reference);
+    fixture::DelegatingVectors generic(vectors);
+    fixture::TestContext environment(workspace, "b0-admission");
+    environment.context.vector_accessor = kind.find("accessor") == 0 ? static_cast<dp::VectorAccessor*>(&generic) : &vectors;
+    std::size_t factories = 0, stages = 0;
+    auto registry = registry_with(native::make_p0_partition, [&] {
+      ++factories;
+      return std::make_unique<fixture::ObservedLocal>(native::make_b0_local_build(), stages);
+    });
+    auto execution = request("admission-" + kind, dataset.reference);
+    if (kind != "accessor-full") execution.reused_partition = partition;
+    auto result = dp::PipelineExecutor(registry, workspace).execute(execution, environment.context);
+    std::cout << "ADMISSION B0 " << kind << " valid=" << valid_partition.valid()
+              << " factories=" << factories << " stages=" << stages
+              << " partition_stages=" << result.invocations.partition
+              << " build=" << std::count(environment.metrics.events.begin(), environment.metrics.events.end(), "cpp_main.b0.index_build")
+              << " status=" << dp::to_string(result.status) << std::endl;
+    DP_EXPECT_EQ(result.status, kind == "native" ? dp::StageStatus::kSucceeded : dp::StageStatus::kFailed);
+    DP_EXPECT_EQ(factories, kind == "native" ? std::size_t{2} : std::size_t{0});
+    DP_EXPECT_EQ(stages, factories);
+    DP_EXPECT_EQ(result.invocations.partition, std::size_t{0});
+    DP_EXPECT_TRUE(!result.quarantine_id);
+    DP_EXPECT_TRUE(dp::Validator(workspace).validate(partition, {*valid_dataset.validated_artifact}).valid());
+    for (const auto& evidence : result.validation_evidence_paths) {
+      const auto document = fixture::read_json(evidence);
+      DP_EXPECT_EQ(document.at("result"), "VALID");
+    }
+    if (kind != "native") {
+      fixture::TestContext direct(workspace, "direct-admission-defense");
+      direct.context.vector_accessor = environment.context.vector_accessor;
+      const auto parameters = fixture::write_parameters(direct.context.temporary_storage,
+                                                        execution.local_parameters_json);
+      const auto defended = native::make_b0_local_build()->build(
+          partition, kind == "json-last" ? 1u : 0u, {parameters}, direct.context);
+      DP_EXPECT_EQ(defended.status, dp::StageStatus::kFailed);
+      DP_EXPECT_TRUE(!direct.metrics.saw("cpp_main.b0.index_build"));
+    }
+    if (kind == "native" && result.status == dp::StageStatus::kSucceeded) {
+      if (const auto* export_root = std::getenv("DISKANN_ADMISSION_EXPORT")) {
+        const auto target = std::filesystem::path(export_root);
+        if (std::filesystem::exists(target))
+          throw std::runtime_error("admission export target already exists");
+        std::filesystem::copy(workspace.root, target,
+                              std::filesystem::copy_options::recursive);
+        auto runner_request = baseline_runner_request(
+            workspace_layout(target), dataset.reference, "old-full", 16, false);
+        fixture::write_text(target / "full-request.json", runner_request.dump());
+        runner_request["request_id"] = "old-reuse";
+        runner_request["reuse_artifact"] = Json::parse(dp::serialize_artifact_ref(partition));
+        fixture::write_text(target / "reuse-request.json", runner_request.dump());
+      }
+    }
+  }
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc == 3 && std::string(argv[1]) == "--reuse-existing") {
+    const auto workspace = dp::create_workspace(argv[2]);
+    const auto document = fixture::read_json(workspace.root / "reuse-request.json");
+    const auto dataset = dp::parse_artifact_ref(document.at("dataset").dump());
+    auto execution = request("frozen-reuse", dataset);
+    execution.reused_partition = dp::parse_artifact_ref(document.at("reuse_artifact").dump());
+    native::CppMainVectorAccessor vectors(workspace, dataset);
+    fixture::TestContext environment(workspace, "frozen-reuse-bootstrap");
+    environment.context.vector_accessor = &vectors;
+    auto registry = registry_with();
+    const auto result = dp::PipelineExecutor(registry, workspace).execute(execution, environment.context);
+    DP_EXPECT_EQ(result.status, dp::StageStatus::kSucceeded);
+    DP_EXPECT_EQ(result.invocations.partition, std::size_t{0});
+    const auto old_partition = fixture::read_json(
+        workspace.normal_root / execution.reused_partition->metadata_path);
+    DP_EXPECT_EQ(result.invocations.local_build,
+                 old_partition.at("structural").at("partition_count").get<std::size_t>());
+    DP_EXPECT_EQ(result.invocations.merge, std::size_t{1});
+    DP_EXPECT_TRUE(!result.quarantine_id);
+    for (const auto& evidence : result.validation_evidence_paths) {
+      const auto value = fixture::read_json(evidence);
+      DP_EXPECT_EQ(value.at("result"), "VALID");
+    }
+    std::cout << "FROZEN_REUSE status=" << dp::to_string(result.status)
+              << " stages=" << result.invocations.partition << ','
+              << result.invocations.local_build << ',' << result.invocations.merge << '\n';
+    return dp::test::finish();
+  }
+  if (argc != 1) throw std::runtime_error("usage: test [--reuse-existing WORKSPACE]");
+  test_published_input_admission();
+  test_input_admission();
+  if (std::getenv("DISKANN_ADMISSION_ONLY")) return dp::test::finish();
   {
     PipelineFixture data("pipeline-success");
     auto registry = registry_with();

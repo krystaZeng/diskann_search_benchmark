@@ -176,3 +176,17 @@ The predeclared identical-configuration infrastructure-failure rule is not an au
 main-path execution. If it is triggered after a terminal infrastructure failure, the failed attempt
 is retained and any retry is a separately reviewed attempt over the identical immutable request;
 changed inputs or parameters and best-result selection remain prohibited.
+
+## Physical input admission
+
+The comparison runner binds M0's `m0_input_admission` and M1's `input_admission`. After existing
+fresh validation of Dataset, Partition and every ordered LocalGraph, Executor checks every
+Partition map and each LocalGraph's map/graph media type before creating the Merge factory.
+Mixed native/JSON inputs cannot pass because one input has a supported encoding. Partial known
+sets used during generation only check present inputs; full merge-only completeness checks remain.
+
+M1 retains any correctly Dataset-bound generic VectorAccessor and the existing squared-L2
+service check; it does not require `CppMainVectorAccessor`. A structurally valid but unsupported
+encoding yields consumer admission failure, retaining VALID evidence without quarantine. Direct
+M1 load/service checks remain. No format/tag migration, graph rebuild or parameter change is
+required for existing supported artifacts; affected code must be recompiled.

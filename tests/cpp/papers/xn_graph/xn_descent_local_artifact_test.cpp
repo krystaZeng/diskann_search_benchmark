@@ -4,6 +4,8 @@
 #include "diskann_pipeline/document_codec.hpp"
 #include "diskann_pipeline/validation.hpp"
 
+#include "diskann_pipeline/compatibility.hpp"
+#include <cstdlib>
 #include <algorithm>
 #include <iostream>
 #include <numeric>
@@ -139,9 +141,66 @@ void test_false_ascending_claim() {
             << " candidate=" << result.output_candidate.has_value() << '\n';
 }
 
+
+void test_input_admission() {
+  namespace base = fixture::baseline_fixture;
+  for (const std::string kind : {"native", "accessor", "json-map"}) {
+    base::TemporaryDirectory temporary("xn-admission-" + kind);
+    auto workspace = dp::create_workspace(temporary.path / "workspace");
+    base::NativeDatasetFixture dataset(workspace, 8, 4);
+    const std::vector<dp::GlobalNodeId> map{0,1,2,3,4,5,6,7};
+    auto partition = base::materialize_partition(workspace, dataset, {map});
+    if (kind == "json-map") partition = base::json_payload(workspace, partition,
+        "partition/0/local_to_global_map", {{"local_to_global", map}});
+    auto vd = dp::Validator(workspace).validate(dataset.reference);
+    auto vp = dp::Validator(workspace).validate(partition, {*vd.validated_artifact});
+    DP_EXPECT_TRUE(vp.valid());
+    if (!vp.valid()) throw std::runtime_error("invalid admission fixture");
+    native::CppMainVectorAccessor vectors(workspace, dataset.reference);
+    base::DelegatingVectors generic(vectors);
+    base::TestContext environment(workspace, "xn-admission");
+    environment.context.vector_accessor = kind == "accessor" ? static_cast<dp::VectorAccessor*>(&generic) : &vectors;
+    const auto parameter_path = base::write_parameters(environment.context.temporary_storage,
+        fixture::effective_parameters_json("semantic-small", 4, 1, 1.0, 100));
+    std::size_t factories = 0, stages = 0;
+    dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
+    registry.register_local_build(xn::descriptor(), [&] {
+      ++factories;
+      return std::make_unique<base::ObservedLocal>(xn::make_xn_descent_local_build(), stages);
+    }, xn::input_admission);
+    auto compatible = dp::CompatibilityChecker{}.check(xn::descriptor(), {
+      {dp::ArtifactType::kDataset, dataset.reference.format_version, dp::IdSpace::kNone, vd.validated_artifact->capabilities()},
+      {dp::ArtifactType::kPartition, partition.format_version, dp::IdSpace::kLocal, vp.validated_artifact->capabilities()}},
+      dp::runtime_service_capabilities(environment.context, vd.validated_artifact->dataset()));
+    if (compatible.compatible) compatible = registry.check_known_inputs(
+        xn::descriptor(), {*vd.validated_artifact, *vp.validated_artifact}, environment.context);
+    dp::StageResult result{dp::StageStatus::kFailed, std::nullopt, {}};
+    if (compatible.compatible) result = registry.resolve_local_build_factory(xn::kImplementationId, "1.0.0")()->build(partition, 0, {parameter_path}, environment.context);
+    std::cout << "ADMISSION XN " << kind << " valid=1 preflight=" << compatible.compatible
+              << " factories=" << factories << " stages=" << stages
+              << " algorithm=" << environment.metrics.saw("xn_descent.initialized")
+              << " status=" << dp::to_string(result.status) << std::endl;
+    DP_EXPECT_EQ(result.status, kind == "native" ? dp::StageStatus::kSucceeded : dp::StageStatus::kFailed);
+    DP_EXPECT_EQ(factories, kind == "native" ? std::size_t{1} : std::size_t{0});
+    DP_EXPECT_EQ(stages, factories);
+    DP_EXPECT_EQ(registry.check_known_inputs(xn::descriptor(), {*vd.validated_artifact}, environment.context).compatible,
+                 kind != "accessor");
+    if (kind != "native") {
+      base::TestContext direct(workspace, "direct-admission-defense");
+      direct.context.vector_accessor = environment.context.vector_accessor;
+      const auto defended = xn::make_xn_descent_local_build()->build(
+          partition, 0, {parameter_path}, direct.context);
+      DP_EXPECT_EQ(defended.status, dp::StageStatus::kFailed);
+      DP_EXPECT_TRUE(!direct.metrics.saw("xn_descent.initialized"));
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
+  test_input_admission();
+  if (std::getenv("DISKANN_ADMISSION_ONLY")) return dp::test::finish();
   test_false_ascending_claim();
   fixture::baseline_fixture::TemporaryDirectory temporary("xn-artifact");
   const auto workspace = dp::create_workspace(temporary.path / "workspace");
@@ -170,6 +229,10 @@ int main() {
   native::CppMainVectorAccessor vectors(workspace, dataset.reference);
   fixture::baseline_fixture::TestContext environment(workspace,
                                                       "xn-direct-us1");
+  environment.context.vector_accessor = &vectors;
+  DP_EXPECT_TRUE(xn::input_admission(
+      {*dataset_validation.validated_artifact, *partition_validation.validated_artifact},
+      environment.context).compatible);
   for (const bool known : {true, false}) {
     const std::string label = known ? "euclidean" : "unknown";
     fixture::baseline_fixture::TestContext rejected_environment(

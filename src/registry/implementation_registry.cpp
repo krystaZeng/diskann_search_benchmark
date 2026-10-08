@@ -14,6 +14,7 @@ using Factory = std::variant<PartitionFactory, LocalBuildFactory, MergeFactory>;
 struct Entry {
   ImplementationDescriptor descriptor;
   Factory factory;
+  InputAdmissionCheck admission;
 };
 
 bool same_identity(const ImplementationDescriptor& descriptor,
@@ -75,7 +76,8 @@ namespace {
 template <typename FactoryType>
 void register_entry(ImplementationRegistry::Impl& impl,
                     ImplementationDescriptor descriptor, FactoryType factory,
-                    StageKind expected_stage) {
+                    StageKind expected_stage,
+                    InputAdmissionCheck admission = {}) {
   if (impl.is_sealed) {
     throw PipelineError(ErrorCategory::kRegistrySealed,
                         "implementation Registry is sealed");
@@ -99,7 +101,8 @@ void register_entry(ImplementationRegistry::Impl& impl,
     throw PipelineError(ErrorCategory::kDuplicateImplementation,
                         "duplicate implementation identity");
   }
-  impl.entries.push_back({std::move(descriptor), std::move(factory)});
+  impl.entries.push_back({std::move(descriptor), std::move(factory),
+                          std::move(admission)});
 }
 
 const Entry& resolve_entry(const ImplementationRegistry::Impl& impl,
@@ -135,6 +138,30 @@ void ImplementationRegistry::register_merge(ImplementationDescriptor descriptor,
                                             MergeFactory factory) {
   register_entry(*impl_, std::move(descriptor), std::move(factory),
                  StageKind::kMerge);
+}
+
+void ImplementationRegistry::register_local_build(
+    ImplementationDescriptor descriptor, LocalBuildFactory factory,
+    InputAdmissionCheck admission) {
+  register_entry(*impl_, std::move(descriptor), std::move(factory),
+                 StageKind::kLocalBuild, std::move(admission));
+}
+
+void ImplementationRegistry::register_merge(
+    ImplementationDescriptor descriptor, MergeFactory factory,
+    InputAdmissionCheck admission) {
+  register_entry(*impl_, std::move(descriptor), std::move(factory),
+                 StageKind::kMerge, std::move(admission));
+}
+
+CompatibilityResult ImplementationRegistry::check_known_inputs(
+    const ImplementationDescriptor& consumer,
+    const std::vector<ValidatedArtifact>& known_inputs,
+    const StageContext& context) const {
+  const auto& entry = resolve_entry(*impl_, consumer.implementation_id,
+                                   consumer.implementation_version, consumer.stage);
+  return entry.admission ? entry.admission(known_inputs, context)
+                         : CompatibilityResult{true, std::nullopt};
 }
 
 void ImplementationRegistry::seal() { impl_->is_sealed = true; }

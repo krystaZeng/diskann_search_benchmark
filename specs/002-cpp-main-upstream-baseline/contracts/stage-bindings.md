@@ -279,3 +279,19 @@ The first-round evidence is:
 
 It excludes Native-versus-Unified graph comparison, a Graph Parity result, repeated-run statistics,
 Recall/QPS/latency, production-readiness, and validated_graph_baseline registration.
+
+## Validated physical input admission
+
+`register_cpp_main_stage_bindings` binds `b0_input_admission` and `m0_input_admission`.
+B0 checks the actual `CppMainVectorAccessor` type with RTTI and every known Partition map's
+existing native uint32 media type. M0 checks all known Partition maps and each LocalGraph map
+and native graph encoding independently. Shared metadata helpers live in `native_formats.cpp`;
+callbacks do not read payloads or run algorithms. Existing independent validators and direct
+stage checks remain authoritative for structure and execution safety.
+
+Known inputs are incremental as specified by the public Registry API. New outputs are checked
+after VALID publication and producer success, reused inputs after fresh validation, and merge-only
+inputs before Merge factory creation. Legal JSON maps/graphs remain valid Artifacts, but these
+consumers reject them before their factories. No new persisted label, format version, algorithm,
+ID, checksum rule or M0 semantic is introduced. Existing native artifacts need no rewrite.
+Manual factories wrapping B0/M0 must bind the corresponding admission callback.

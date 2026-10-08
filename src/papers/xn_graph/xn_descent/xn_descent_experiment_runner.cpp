@@ -484,9 +484,9 @@ ExperimentRunnerResult execute_pipeline_experiment_request(
     registry.register_partition(cpp_main::p0_descriptor(),
                                 std::move(factories.partition));
     registry.register_local_build(descriptor(),
-                                  std::move(factories.local_build));
+                                  std::move(factories.local_build), input_admission);
     registry.register_merge(cpp_main::m0_descriptor(),
-                            std::move(factories.merge));
+                            std::move(factories.merge), cpp_main::m0_input_admission);
     registry.seal();
 
     const auto& document = request->document;

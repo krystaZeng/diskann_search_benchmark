@@ -1,6 +1,7 @@
 #pragma once
 
 #include "diskann_pipeline/implementation.hpp"
+#include "diskann_pipeline/registry.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -27,6 +28,8 @@ struct M1Parameters {
 };
 
 ImplementationDescriptor descriptor();
+CompatibilityResult input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext& context);
 M1Parameters parse_parameters(const std::string& json_text);
 std::unique_ptr<GraphMerger> make_m1_merge();
 

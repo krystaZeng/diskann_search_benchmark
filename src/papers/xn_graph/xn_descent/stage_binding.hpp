@@ -1,6 +1,7 @@
 #pragma once
 
 #include "diskann_pipeline/implementation.hpp"
+#include "diskann_pipeline/registry.hpp"
 #include "diskann_pipeline/pipeline.hpp"
 #include "diskann_pipeline/stage_interfaces.hpp"
 
@@ -42,6 +43,8 @@ struct ExperimentRunnerResult {
 };
 
 ImplementationDescriptor descriptor();
+CompatibilityResult input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext& context);
 std::unique_ptr<LocalGraphBuilder> make_xn_descent_local_build();
 ExperimentRunnerResult execute_pipeline_experiment_request(
     const std::string& request_json,

@@ -76,6 +76,29 @@ atomic rename. It never emits a valid result path before the write completes.
 validates every input immediately before its consumer, invokes stages, validates candidates, and
 publishes or quarantines each candidate before continuing.
 
+For physical input admission, the common dispatch path first validates Dataset, then checks
+request compatibility/services and parameters. Dataset-only callbacks cannot certify future
+outputs. A standalone `preflight` with `reuse_artifact` resolves and validates that actual
+Partition once through `ArtifactReuseService`, using the existing Dataset grant, then checks the
+Local/Merge chain and physical maps against that input. The skipped Partition producer's
+`provides` is not used to describe the reused Artifact.
+That existing Partition validation evidence is persisted and referenced by the result's
+`validation_evidence_path`, including when subsequent consumer admission rejects the input.
+Consumer incompatibility leaves legal input evidence `VALID`; it causes neither revalidation
+nor quarantine.
+
+For `execute` with reuse, the CLI retains request/selection/parameter/service checks and the
+Dataset-only callback, but leaves actual Partition validation and admission to Executor's
+existing reuse path. It does not add a second complete Partition validation. A prior independent
+preflight is not a cached execution grant. Non-reuse execution retains declared-chain preflight;
+new payloads are admitted only after validation/publication. `validate` and `evaluate` retain
+their earlier dispatch branches and do not run consumer admission callbacks.
+
+Physical consumer rejection within Executor has the existing FAILED/exit 4 result and zero calls
+to the rejected consumer's factory/stage. Earlier successful producers keep their manifests and
+VALID evidence. Standalone preflight rejection uses exit 3. This does not classify a legal Artifact
+as damaged, require migration, or change Artifact/BuildManifest/EvaluationReport separation.
+
 ## 4. Exit Codes
 
 | Code | Meaning | Invocation guarantee |

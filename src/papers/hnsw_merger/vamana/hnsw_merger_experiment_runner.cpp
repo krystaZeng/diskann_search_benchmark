@@ -384,8 +384,9 @@ int main(int argc, char** argv) {
     dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
     registry.register_merge(native::m0_descriptor(), [] {
       return native::make_m0_merge();
-    });
-    registry.register_merge(m1::descriptor(), [] { return m1::make_m1_merge(); });
+    }, native::m0_input_admission);
+    registry.register_merge(m1::descriptor(), [] { return m1::make_m1_merge(); },
+                            m1::input_admission);
     registry.seal();
     dp::PipelineExecutor executor(registry, workspace);
 

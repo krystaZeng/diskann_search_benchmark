@@ -1,10 +1,16 @@
 #include "papers/hnsw_merger/vamana/stage_binding.hpp"
+#include "baseline/cpp_main/native_formats.hpp"
 
 #include "diskann_pipeline/errors.hpp"
 
 #include <nlohmann/json.hpp>
 
 namespace diskann_pipeline::hnsw_merger_vamana {
+
+CompatibilityResult input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext&) {
+  return cpp_main::check_native_merge_inputs(known_inputs);
+}
 
 ImplementationDescriptor descriptor() {
   return {kImplementationId,

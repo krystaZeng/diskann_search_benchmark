@@ -231,3 +231,6 @@ regressions; those results do not substitute for T037's user-executed external L
 the still-gated SIFT1M run. The later JSON request-provenance regression used the same two CTest
 entries and is recorded separately in `validation/json-request-provenance.md`; it did not rerun or
 relabel the T034 cross-module matrix.
+
+Registry physical admission is framework integration only; the mapped algorithm is unchanged.
+See [contracts/xn-descent-execution-contract.md](contracts/xn-descent-execution-contract.md) for validated encoding and actual-service checks before consumer factories.

@@ -69,12 +69,12 @@ int main() {
   std::size_t m1_factories = 0;
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
   registry.register_partition(native::p0_descriptor(), native::make_p0_partition);
-  registry.register_local_build(native::b0_descriptor(), native::make_b0_local_build);
-  registry.register_merge(native::m0_descriptor(), native::make_m0_merge);
+  registry.register_local_build(native::b0_descriptor(), native::make_b0_local_build, native::b0_input_admission);
+  registry.register_merge(native::m0_descriptor(), native::make_m0_merge, native::m0_input_admission);
   registry.register_merge(m1::descriptor(), [&] {
     ++m1_factories;
     return m1::make_m1_merge();
-  });
+  }, m1::input_admission);
   registry.seal();
   dp::PipelineExecutor executor(registry, workspace);
 

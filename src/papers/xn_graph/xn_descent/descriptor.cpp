@@ -1,6 +1,17 @@
 #include "papers/xn_graph/xn_descent/stage_binding.hpp"
+#include "baseline/cpp_main/native_formats.hpp"
+#include "baseline/cpp_main/stage_bindings.hpp"
 
 namespace diskann_pipeline::xn_descent {
+
+CompatibilityResult input_admission(
+    const std::vector<ValidatedArtifact>& known_inputs, const StageContext& context) {
+  if (!dynamic_cast<const cpp_main::CppMainVectorAccessor*>(context.vector_accessor)) {
+    return {false, FailureInfo{ErrorCategory::kCapabilityUnsatisfied,
+        "XN requires the CppMainVectorAccessor runtime service", std::nullopt}};
+  }
+  return cpp_main::check_native_partition_maps(known_inputs);
+}
 
 ImplementationDescriptor descriptor() {
   return {kImplementationId,
