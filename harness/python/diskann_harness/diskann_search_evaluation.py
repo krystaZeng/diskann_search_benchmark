@@ -681,6 +681,138 @@ def _median(values: list[float]) -> float:
     return (ordered[middle - 1] + ordered[middle]) / 2.0
 
 
+def _admit_observation_set(
+    protocol: dict[str, Any], documents: list[tuple[Path, dict[str, Any]]],
+    validator: Draft202012Validator,
+) -> set[Path]:
+    """Check retained trial identities independently of metric/schema validity."""
+    schema = validator.schema
+    identity_fields = (
+        "format_version", "observation_id", "run_id", "protocol", "search_execution",
+        "dataset_artifact", "global_graph_artifact", "pq_artifact", "disk_layout_artifact",
+        "query_set_checksum", "observation_checksum", "raw_search_point",
+    )
+    point_fields = ("point_id", "L_search", "K", "beamwidth", "cache", "repetition_index", "status")
+    point_properties = schema["$defs"]["rawSearchPoint"]["properties"]
+    # Reuse existing field constraints, but omit metrics, completion counters,
+    # effective cache measurements and environment availability from identity.
+    identity_schema = {
+        "type": "object", "$defs": schema["$defs"],
+        "required": list(identity_fields),
+        "properties": {
+            **{key: schema["properties"][key] for key in identity_fields},
+            "raw_search_point": {
+                "type": "object", "required": list(point_fields),
+                "properties": {
+                    **{key: point_properties[key] for key in point_fields},
+                    "cache": {
+                        "type": "object", "required": ["mode", "requested_nodes"],
+                        "properties": {
+                            key: schema["$defs"]["cacheState"]["properties"][key]
+                            for key in ("mode", "requested_nodes")
+                        },
+                    },
+                },
+            },
+        },
+    }
+    identity_validator = Draft202012Validator(identity_schema)
+    execution = protocol["search_execution"]
+    expected = {
+        (execution["cache"]["mode"], l_search, repetition)
+        for l_search in execution["L_search"]
+        for repetition in range(execution["repetition_count"])
+    }
+    retained: dict[tuple[str, int, int], Path] = {}
+    admitted: set[Path] = set()
+    for path, document in documents:
+        error = next(identity_validator.iter_errors(document), None)
+        if error is not None:
+            location = ".".join(str(item) for item in error.absolute_path)
+            raise SearchEvaluationError(f"observation identity invalid: {path}: {location}: {error.message}")
+        projection = dict(document)
+        claimed = projection.pop("observation_checksum")
+        if claimed != _canonical_digest(projection):
+            raise SearchEvaluationError(f"observation checksum mismatch: {path}")
+        protocol_matches = document["protocol"]["protocol_checksum"] == protocol["protocol_checksum"]
+        execution_matches = document["search_execution"]["canonical_checksum"] == protocol["search_execution_checksum"]
+        if (protocol_matches and document["protocol"]["protocol_id"] != protocol["protocol_id"]) or (
+            execution_matches and document["search_execution"]["execution_id"] != execution["execution_id"]
+        ):
+            raise SearchEvaluationError(f"observation identity contradicts checksum: {path}")
+        if not protocol_matches:
+            # Identifiable foreign-protocol records remain audit references;
+            # they cannot fill a slot in this protocol's declared trial set.
+            continue
+        if not execution_matches or document["query_set_checksum"] != execution["query_set"]["canonical_checksum"]:
+            raise SearchEvaluationError(f"observation identity differs from frozen protocol: {path}")
+        for artifact in ("dataset_artifact", "global_graph_artifact", "pq_artifact", "disk_layout_artifact"):
+            if any(document[artifact][key] != execution[artifact][key]
+                   for key in ("artifact_type", "format_version", "aggregate_checksum")):
+                raise SearchEvaluationError(f"observation identity differs from {artifact}: {path}")
+        point = document["raw_search_point"]
+        key = (point["cache"]["mode"], point["L_search"], point["repetition_index"])
+        if key not in expected:
+            raise SearchEvaluationError(f"undeclared logical trial {key}: {path}")
+        if any(point[key] != execution[key] for key in ("K", "beamwidth")) or (
+            point["cache"]["requested_nodes"] != execution["cache"]["requested_nodes"]
+        ):
+            raise SearchEvaluationError(f"observation control identity differs from frozen protocol: {path}")
+        # Protocol and execution identities are already bound above. File paths,
+        # run_id, point_id and observation_id do not distinguish this slot.
+        if key in retained:
+            raise SearchEvaluationError(f"duplicate logical trial {key}: {retained[key]} and {path}")
+        retained[key] = path
+        admitted.add(path)
+    missing = expected - retained.keys()
+    if missing:
+        raise SearchEvaluationError(f"missing logical trials for {protocol['protocol_id']}: {sorted(missing)}")
+    return admitted
+
+
+def _observation_exclusion_reason(
+    document: dict[str, Any], validator: Draft202012Validator, *,
+    identity_compatible: bool, query_count: int,
+) -> str | None:
+    if not identity_compatible:
+        return "observation belongs to a different protocol"
+    error = next(validator.iter_errors(document), None)
+    if error is not None:
+        location = ".".join(str(item) for item in error.absolute_path)
+        return f"invalid observation: {location}: {error.message}"
+    point = document["raw_search_point"]
+    if point["status"] != "SUCCEEDED":
+        return f"retained terminal observation: {point['status']}"
+    if not (point["completed_query_count"] == point["query_count"] == len(document["per_query"]) == query_count):
+        return "incomplete raw observation"
+    if point["batch_wall_clock_us"] <= 0:
+        return "batch timing is invalid"
+    return None
+
+
+def _verified_observation_environment(
+    root: Path, reference: dict[str, Any], observation_path: Path,
+) -> tuple[dict[str, Any], str]:
+    path = root / reference["fingerprint_path"]
+    try:
+        payload = path.read_bytes()
+    except OSError as error:
+        raise SearchEvaluationError(f"cannot read environment for {observation_path}: {path}: {error}") from error
+    actual_sha = hashlib.sha256(payload).hexdigest()
+    if actual_sha != reference["fingerprint_sha256"]:
+        raise SearchEvaluationError(
+            f"environment checksum mismatch for {observation_path}: {path}: "
+            f"declared {reference['fingerprint_sha256']}, actual {actual_sha}"
+        )
+    try:
+        environment = json.loads(payload)
+    except (ValueError, UnicodeError) as error:
+        raise SearchEvaluationError(f"invalid environment JSON for {observation_path}: {path}: {error}") from error
+    if not isinstance(environment, dict):
+        raise SearchEvaluationError(f"invalid environment object for {observation_path}: {path}")
+    return environment, actual_sha
+
+
 def _evaluate_observation_directory(
     *, protocol_path: str | Path, observations_path: str | Path,
     workspace: str | Path,
@@ -702,11 +834,19 @@ def _evaluate_observation_directory(
     )
     observation_dir = Path(observations_path).resolve()
     documents: list[tuple[Path, dict[str, Any]]] = []
+    file_checksums: dict[Path, str] = {}
     for path in sorted(observation_dir.glob("*.json")):
-        document = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            payload = path.read_bytes()
+            document = json.loads(payload)
+        except (OSError, ValueError, UnicodeError) as error:
+            raise SearchEvaluationError(f"cannot read observation identity: {path}: {error}") from error
         documents.append((path, document))
+        file_checksums[path] = hashlib.sha256(payload).hexdigest()
     if not documents:
         raise SearchEvaluationError("no SearchObservation was supplied")
+    validator = _feature_validator("search-observation.schema.json")
+    admitted = _admit_observation_set(protocol, documents, validator)
 
     results: list[dict[str, Any]] = []
     display: list[dict[str, Any]] = []
@@ -715,39 +855,29 @@ def _evaluate_observation_directory(
     environment_path = None
     environment_sha = None
     for path, document in documents:
-        point = document.get("raw_search_point", {})
-        cache_mode = point.get("cache", {}).get("mode", "zero")
-        l_search = point.get("L_search", 100)
-        repetition = point.get("repetition_index", 0)
-        file_checksum = _sha256(path)
-        errors = list(
-            _feature_validator("search-observation.schema.json").iter_errors(document)
-        )
-        checksum_projection = dict(document)
-        claimed_checksum = checksum_projection.pop("observation_checksum", None)
-        checksum_valid = claimed_checksum == _canonical_digest(checksum_projection)
-        identity_compatible = (
-            document.get("protocol", {}).get("protocol_checksum")
-            == protocol["protocol_checksum"]
-            and document.get("search_execution", {}).get("canonical_checksum")
-            == protocol["search_execution_checksum"]
-            and document.get("query_set_checksum")
-            == execution["query_set"]["canonical_checksum"]
+        point = document["raw_search_point"]
+        cache_mode = point["cache"]["mode"]
+        l_search = point["L_search"]
+        repetition = point["repetition_index"]
+        file_checksum = file_checksums[path]
+        exclusion_reason = _observation_exclusion_reason(
+            document, validator, identity_compatible=path in admitted,
+            query_count=len(ground_truth),
         )
         relative = path.relative_to(root).as_posix()
-        if errors or not checksum_valid or not identity_compatible or point.get("status") != "SUCCEEDED":
+        if exclusion_reason is not None:
             result = audit_excluded_observation(
-                observation_id=document.get("observation_id", path.stem),
+                observation_id=document["observation_id"],
                 path=relative, checksum=file_checksum,
-                status=point.get("status", "INVALID_OUTPUT"),
-                reason="invalid, incomplete, or identity-mismatched observation",
+                status=point["status"], reason=exclusion_reason,
             )
             result.update({"cache_mode": cache_mode, "L_search": l_search, "repetition_index": repetition})
             results.append(result)
             continue
         environment_path = document["environment"]["fingerprint_path"]
-        environment_sha = document["environment"]["fingerprint_sha256"]
-        actual_environment = json.loads((root / environment_path).read_text(encoding="utf-8"))
+        actual_environment, environment_sha = _verified_observation_environment(
+            root, document["environment"], path,
+        )
         performance_admitted = bool(actual_environment.get("performance_admitted", False))
         raw = {
             "status": point["status"], "query_count": point["query_count"],

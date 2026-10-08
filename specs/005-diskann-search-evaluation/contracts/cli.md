@@ -173,6 +173,26 @@ every failed/invalid/cancelled/identity-mismatched/excluded observation as an au
 reference with identity, path, checksum, terminal status, and reason. Such a reference contributes
 no metric, aggregate, median, or comparison finding and cannot make either eligibility true. The
 operation emits one immutable Feature-local SearchEvaluationReport/v1.
+The shared offline evaluator used by both Python and this CLI first admits the complete declared
+trial set, using protocol/search-execution identities and each cache/L/repetition slot rather than
+filenames or record counts. Duplicate slots, missing repetitions/groups, out-of-range repetitions,
+undeclared parameter points, and untrustworthy identities or canonical observation checksums fail
+the invocation; no successful report is published. Where its existing metadata prerequisites are
+available, the FAILED evaluate BuildManifest records input paths and the specific reason.
+Identifiable foreign-protocol inputs remain audit exclusions and do not complete the current set.
+Identity/checksum-correct failed or metric-invalid records count as retained attempts, but have
+no metrics. A complete set can have fewer eligible records than its declared repetition count;
+zero eligible records in one group produces no aggregate for that group, while no evaluable
+observation in the entire batch remains an error.
+
+Before interpreting environment content for an otherwise eligible record, the evaluator checks
+the actual fingerprint file SHA-256 against that record's declaration and parses the same bytes.
+Missing/unreadable files, invalid JSON, or mismatched checksums fail evaluation. Already excluded
+records need no environment I/O and cannot supply the report environment reference. That reference
+contains the verified path and actual checksum. Identical environment evidence may be copied to
+different paths; this does not relax environment/parity admission or authorize cross-environment
+aggregation. No separate CLI or Certification production check duplicates this admission path.
+
 A complete non-normative observation may enter formal Recall aggregation when quality eligibility
 passes. For every complete successful quality-eligible observation, this Python Harness operation
 must calculate and display QPS, mean latency, P99.9 latency, and Mean IOs from the retained raw

@@ -227,6 +227,29 @@ Expected report behavior:
   aggregate, median, or comparison finding and cannot make either eligibility true;
 - serialization and evaluation occur outside the search timer.
 
+Supply exactly the declared logical trial set: every cache/L point and every protocol-declared
+repetition index must be retained once. Feature 005 v1 declares three repetitions, including failed
+or invalid attempts. Renaming/copying an observation does not create a new trial. Duplicate slots,
+missing slots/groups, out-of-range repetitions, and undeclared points reject the evaluation instead
+of producing partial statistics. Uncheckable identities or observation checksums also reject it.
+Identifiable foreign-protocol records are audit-only and cannot fill a missing current trial.
+
+A checksum-correct record with a valid identity but invalid metrics, such as negative timing,
+counts toward retained-record completeness and is excluded from metrics. The original terminal
+status, identity, path, and file checksum remain in the audit reference. Partial failure is allowed;
+an entirely unevaluable batch still fails. Do not manufacture replacement attempts to fill a set.
+
+Keep the environment fingerprint files available for observations that can enter metric evaluation.
+Their actual bytes must match each observation's declared SHA-256 before their content is used.
+Missing/unreadable evidence, malformed JSON, or a checksum mismatch fails evaluation; excluded
+records do not require usable environment files. The report references verified environment
+evidence. Identical copies at different paths work without changes to observations or report
+schemas; checksum verification does not establish compatibility of different actual environments.
+Existing inputs/reports are never rewritten. Use a fresh output workspace for a new invocation;
+failed admission retains the existing FAILED evaluate Manifest when its metadata prerequisites
+are available, and produces no successful report. No graph construction, materialization, or search
+is launched by this offline command.
+
 An evaluation-only GroundTruth/evaluator/aggregation change may generate a new report from the same
 complete observations when the search execution checksum is unchanged. Any metric not derivable
 from saved raw fields must state `requires new search execution`.

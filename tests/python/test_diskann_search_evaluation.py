@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from diskann_harness import diskann_search_evaluation as search
+from diskann_harness.manifests import ImmutableWriteError
 
 
 def test_materialization_request_is_strict_and_fixed(tmp_path: Path) -> None:
@@ -861,10 +862,11 @@ def test_private_query_set_invocation_does_not_start_cpp_runner(
     assert observed == ["query-set-request.json"]
 
 
-def test_offline_evaluator_reuses_complete_observations_without_search(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    protocol = _protocol("zero")
+def _offline_fixture(
+    tmp_path: Path, cache_mode: str = "zero", lengths: tuple[int, ...] = (100, 200, 400),
+) -> tuple[Path, Path]:
+    protocol = _protocol(cache_mode)
+    protocol["search_execution"]["L_search"] = list(lengths)
     dataset_metadata = tmp_path / "normal/dataset/artifact.json"
     dataset_metadata.parent.mkdir(parents=True)
     dataset_metadata.write_text(
@@ -910,9 +912,9 @@ def test_offline_evaluator_reuses_complete_observations_without_search(
     observations = tmp_path / "reports/observations"
     observations.mkdir()
     ids = list(range(100))
-    for repetition in range(3):
-        for l_search in (100, 200, 400):
-            point_id = f"zero-L{l_search}-r{repetition}"
+    for repetition in range(protocol["search_execution"]["repetition_count"]):
+        for l_search in lengths:
+            point_id = f"{cache_mode}-L{l_search}-r{repetition}"
             document = {
                 "format_version": "search-observation/v1",
                 "observation_id": point_id,
@@ -927,7 +929,7 @@ def test_offline_evaluator_reuses_complete_observations_without_search(
                 "pq_artifact": protocol["search_execution"]["pq_artifact"],
                 "disk_layout_artifact": protocol["search_execution"]["disk_layout_artifact"],
                 "query_set_checksum": protocol["search_execution"]["query_set"]["canonical_checksum"],
-                "raw_search_point": {"point_id": point_id, "L_search": l_search, "K": 100, "beamwidth": 2, "cache": {"mode": "zero", "requested_nodes": 0, "effective_nodes": 0, "primary_payload_bytes": 0}, "repetition_index": repetition, "query_count": 2, "completed_query_count": 2, "batch_wall_clock_us": 2000, "status": "SUCCEEDED"},
+                "raw_search_point": {"point_id": point_id, "L_search": l_search, "K": 100, "beamwidth": 2, "cache": {"mode": cache_mode, "requested_nodes": protocol["search_execution"]["cache"]["requested_nodes"], "effective_nodes": 0, "primary_payload_bytes": 0}, "repetition_index": repetition, "query_count": 2, "completed_query_count": 2, "batch_wall_clock_us": 2000, "status": "SUCCEEDED"},
                 "environment": {"fingerprint_path": environment_path.relative_to(tmp_path).as_posix(), "fingerprint_sha256": search._sha256(environment_path)},
                 "per_query": [
                     {"query_row_index": row, "source_query_id": f"opaque-{row}", "result_ids": ids, "result_distances": [float(index) for index in ids], "total_us": 10.0 + row * 20, "n_ios": 2 + row * 2}
@@ -938,6 +940,13 @@ def test_offline_evaluator_reuses_complete_observations_without_search(
             (observations / f"{point_id}.json").write_text(
                 json.dumps(document, sort_keys=True, separators=(",", ":")), encoding="utf-8"
             )
+    return protocol_path, observations
+
+
+def test_offline_evaluator_reuses_complete_observations_without_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    protocol_path, observations = _offline_fixture(tmp_path)
     monkeypatch.setattr(search, "_run_argv", lambda argv: pytest.fail("evaluate must not run search"))
     output = search.evaluate_observation_directory(
         protocol_path=protocol_path, observations_path=observations, workspace=tmp_path
@@ -951,6 +960,314 @@ def test_offline_evaluator_reuses_complete_observations_without_search(
     assert manifest["implementation"]["implementation_id"] == "cpp_main_search_metrics_evaluator_v1"
     assert "metrics" not in manifest
     assert manifest["parameters"]["output_reference"]["sha256"] == search._sha256(Path(output["report_path"]))
+
+
+@pytest.fixture
+def offline_only(monkeypatch: pytest.MonkeyPatch):
+    calls: list[str] = []
+
+    def forbidden(*args, **kwargs):
+        calls.append("execution")
+        pytest.fail("offline evaluation must not execute, search, or materialize")
+
+    for name in ("_run_argv", "materialize_query_set_request", "materialize_ground_truth_request",
+                 "run_search_runner_parity", "preflight"):
+        monkeypatch.setattr(search, name, forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    yield calls
+    assert calls == []
+
+
+def _save_observation(path: Path, document: dict) -> None:
+    document.pop("observation_checksum", None)
+    document["observation_checksum"] = search._canonical_digest(document)
+    path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+
+
+def _offline_call(root: Path, protocol: Path, observations: Path, entry: str) -> dict:
+    # Check all existing input/report bytes even when evaluation raises.
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    try:
+        if entry == "cli":
+            assert search.main(["evaluate", "--protocol", str(protocol),
+                                "--observations", str(observations), "--workspace", str(root)]) == 0
+            protocol_id = json.loads(protocol.read_text())["protocol_id"]
+            return json.loads((root / f"reports/search-evaluation/{protocol_id}-evaluation.json").read_text())
+        return search.evaluate_observation_directory(
+            protocol_path=protocol, observations_path=observations, workspace=root
+        )["report"]
+    finally:
+        assert all(path.read_bytes() == content for path, content in before.items())
+
+
+def _assert_evaluation_failure(root: Path, protocol: Path, observations: Path, reason: str) -> None:
+    protocol_id = json.loads(protocol.read_text())["protocol_id"]
+    assert not (root / f"reports/search-evaluation/{protocol_id}-evaluation.json").exists()
+    manifest = json.loads((root / f"manifests/{protocol_id}-evaluation.json").read_text())
+    assert manifest["stage"] == "evaluate"
+    assert manifest["status"] == "FAILED"
+    assert manifest["failure"]["category"] == "evaluation_failed"
+    assert reason in manifest["failure"]["reason"]
+    assert "output_reference" not in manifest["parameters"]
+    assert manifest["parameters"]["observation_paths"] == sorted(
+        path.relative_to(root).as_posix() for path in observations.glob("*.json")
+    )
+
+
+def _assert_audit(result: dict, path: Path, root: Path) -> None:
+    document = json.loads(path.read_text())
+    assert result["path"] == path.relative_to(root).as_posix()
+    assert result["sha256"] == search._sha256(path)
+    assert result["observation_id"] == document["observation_id"]
+    assert result["terminal_status"] == document["raw_search_point"]["status"]
+    assert result["repetition_index"] == document["raw_search_point"]["repetition_index"]
+    assert result["L_search"] == document["raw_search_point"]["L_search"]
+    assert result["quality_eligible"] is result["performance_eligible"] is False
+    assert result["quality_eligibility_reason"] and result["performance_eligibility_reason"]
+    assert "quality_metrics" not in result and "performance_metrics" not in result
+
+
+@pytest.mark.parametrize("entry", ["python", "cli"])
+@pytest.mark.parametrize("cache_mode,lengths", [("zero", (100,)), ("fixed_bfs", (200, 100))])
+def test_offline_admission_complete_parameters_and_environment_copies(
+    tmp_path: Path, offline_only, entry: str, cache_mode: str, lengths: tuple[int, ...],
+) -> None:
+    protocol, observations = _offline_fixture(tmp_path, cache_mode, lengths)
+    source = tmp_path / "reports/environment.json"
+    for index, path in enumerate(sorted(observations.glob("*.json"))):
+        copied = tmp_path / f"reports/environment-{index}.json"
+        copied.write_bytes(source.read_bytes())
+        document = json.loads(path.read_text())
+        document["environment"]["fingerprint_path"] = copied.relative_to(tmp_path).as_posix()
+        _save_observation(path, document)
+    report = _offline_call(tmp_path, protocol, observations, entry)
+    assert len(report["observation_results"]) == 3 * len(lengths)
+    assert {item["L_search"] for item in report["aggregates"]["quality"]} == set(lengths)
+    assert all(item["eligible_count"] == 3 for item in report["aggregates"]["quality"])
+    assert report["aggregates"]["performance"] == []
+    assert all(item["median_quality_metrics"] == {"recall_at_10": 100.0, "recall_at_100": 100.0}
+               for item in report["aggregates"]["quality"])
+    evidence = report["environment_fingerprint"]
+    assert evidence["sha256"] == search._sha256(tmp_path / evidence["path"])
+    assert evidence["sha256"] == search._sha256(source)
+
+
+@pytest.mark.parametrize("entry", ["python", "cli"])
+@pytest.mark.parametrize("excluded", ["FAILED", "INVALID_OUTPUT", "CANCELLED", "negative_time", "incomplete"])
+def test_offline_admission_complete_but_excluded_record_needs_no_environment(
+    tmp_path: Path, offline_only, entry: str, excluded: str,
+) -> None:
+    protocol, observations = _offline_fixture(tmp_path)
+    path = observations / "zero-L100-r2.json"
+    document = json.loads(path.read_text())
+    if excluded == "negative_time":
+        document["per_query"][0]["total_us"] = -1
+    elif excluded == "incomplete":
+        document["raw_search_point"]["completed_query_count"] = 1
+    else:
+        document["raw_search_point"]["status"] = excluded
+        document["failure"] = {"category": "test_failure", "reason": "retained attempt"}
+        document["per_query"] = []
+    document["environment"]["fingerprint_path"] = "reports/unavailable-environment.json"
+    _save_observation(path, document)
+    report = _offline_call(tmp_path, protocol, observations, entry)
+    assert len(report["observation_results"]) == 9
+    _assert_audit(next(item for item in report["observation_results"] if item["observation_id"] == document["observation_id"]), path, tmp_path)
+    assert next(item for item in report["aggregates"]["quality"] if item["L_search"] == 100)["eligible_count"] == 2
+    assert report["environment_fingerprint"]["path"] == "reports/environment.json"
+
+
+@pytest.mark.parametrize("entry", ["python", "cli"])
+@pytest.mark.parametrize("case,reason", [
+    ("copy", "duplicate logical trial"), ("copy_changed_ids", "duplicate logical trial"),
+    ("copy_excluded", "duplicate logical trial"), ("duplicate_number", "duplicate logical trial"),
+    ("missing_number", "missing logical trials"), ("missing_group", "missing logical trials"),
+    ("negative_number", "repetition_index"), ("out_of_range", "repetition_index"),
+    ("undeclared_l", "undeclared"), ("undeclared_cache", "undeclared"),
+    ("missing_identity", "identity"), ("missing_protocol", "identity"),
+    ("contradictory_identity", "identity"), ("observation_checksum", "observation checksum"),
+    ("environment_content", "environment checksum"), ("environment_claim", "environment checksum"),
+    ("same_path_different_claim", "environment checksum"),
+    ("environment_missing", "environment"), ("environment_unreadable", "environment"),
+    ("environment_json", "environment"),
+])
+def test_offline_admission_rejects_with_failure_evidence(
+    tmp_path: Path, offline_only, entry: str, case: str, reason: str,
+) -> None:
+    protocol, observations = _offline_fixture(tmp_path)
+    path = observations / "zero-L100-r2.json"
+    document = json.loads(path.read_text())
+    if case.startswith("copy"):
+        if case == "copy_excluded":
+            document["per_query"][0]["total_us"] = -1
+            _save_observation(path, document)
+        else:
+            # Two eligible repetitions plus a retained failure: copying a good
+            # trial can silently restore eligible_count=3 under the old code.
+            document["raw_search_point"]["status"] = "FAILED"
+            document["failure"] = {"category": "test_failure", "reason": "retained attempt"}
+            document["per_query"] = []
+            _save_observation(path, document)
+            path = observations / "zero-L100-r0.json"
+            document = json.loads(path.read_text())
+        duplicate = observations / "renamed-copy.json"
+        duplicate.write_bytes(path.read_bytes())
+        if case == "copy_changed_ids":
+            document["observation_id"] = "new-observation-id"
+            document["run_id"] = "new-run-id"
+            document["raw_search_point"]["point_id"] = "new-point-id"
+            _save_observation(duplicate, document)
+    elif case == "missing_number":
+        path.unlink()
+    elif case == "missing_group":
+        for removed in observations.glob("zero-L400-*.json"):
+            removed.unlink()
+    elif case.startswith("environment_"):
+        environment = tmp_path / "reports/environment.json"
+        if case == "environment_content":
+            environment.write_text('{"performance_admitted":false,"changed":true}')
+        elif case == "environment_missing":
+            environment.unlink()
+        elif case == "environment_unreadable":
+            environment.unlink()
+            environment.mkdir()
+        elif case == "environment_json":
+            environment.write_bytes(b"not-json")
+        for target in observations.glob("*.json"):
+            value = json.loads(target.read_text())
+            if case == "environment_claim":
+                value["environment"]["fingerprint_sha256"] = "0" * 64
+            elif case == "environment_json":
+                value["environment"]["fingerprint_sha256"] = search._sha256(environment)
+            _save_observation(target, value)
+    else:
+        point = document["raw_search_point"]
+        if case == "duplicate_number":
+            point["repetition_index"] = 1
+        elif case == "negative_number":
+            point["repetition_index"] = -1
+        elif case == "out_of_range":
+            point["repetition_index"] = 3
+        elif case == "undeclared_l":
+            point["L_search"] = 300
+        elif case == "undeclared_cache":
+            point["cache"].update(mode="fixed_bfs", requested_nodes=10000)
+        elif case == "missing_identity":
+            del point["repetition_index"]
+        elif case == "missing_protocol":
+            del document["protocol"]["protocol_id"]
+        elif case == "contradictory_identity":
+            document["search_execution"]["execution_id"] = "wrong-execution"
+        elif case == "same_path_different_claim":
+            document["environment"]["fingerprint_sha256"] = "0" * 64
+        _save_observation(path, document)
+        if case == "observation_checksum":
+            document["observation_checksum"] = "0" * 64
+            path.write_text(json.dumps(document))
+    with pytest.raises(search.SearchEvaluationError, match=reason):
+        _offline_call(tmp_path, protocol, observations, entry)
+    _assert_evaluation_failure(tmp_path, protocol, observations, reason)
+
+
+@pytest.mark.parametrize("all_excluded", [False, True])
+def test_offline_admission_zero_eligible_group_and_batch(tmp_path: Path, offline_only, all_excluded: bool) -> None:
+    protocol, observations = _offline_fixture(tmp_path)
+    for path in observations.glob("*.json" if all_excluded else "zero-L100-*.json"):
+        document = json.loads(path.read_text())
+        document["per_query"][0]["total_us"] = -1
+        _save_observation(path, document)
+    if all_excluded:
+        with pytest.raises(search.SearchEvaluationError, match="no complete valid observation"):
+            _offline_call(tmp_path, protocol, observations, "python")
+        _assert_evaluation_failure(tmp_path, protocol, observations, "no complete valid observation")
+    else:
+        report = _offline_call(tmp_path, protocol, observations, "python")
+        assert len(report["observation_results"]) == 9
+        assert {item["L_search"] for item in report["aggregates"]["quality"]} == {200, 400}
+        for item in report["observation_results"]:
+            if item["L_search"] == 100:
+                _assert_audit(item, tmp_path / item["path"], tmp_path)
+
+
+@pytest.mark.parametrize("eligible_count,median", [(1, 100.0), (2, 50.0), (3, 0.0)])
+def test_offline_admission_preserves_eligible_medians(
+    tmp_path: Path, offline_only, eligible_count: int, median: float,
+) -> None:
+    protocol, observations = _offline_fixture(tmp_path, lengths=(100,))
+    for repetition in range(3):
+        path = observations / f"zero-L100-r{repetition}.json"
+        document = json.loads(path.read_text())
+        if repetition >= eligible_count:
+            document["raw_search_point"]["status"] = "CANCELLED"
+            document["failure"] = {"category": "cancelled", "reason": "retained attempt"}
+            document["per_query"] = []
+        elif repetition != 0:
+            for query in document["per_query"]:
+                query["result_ids"] = list(range(101, 201))
+        _save_observation(path, document)
+    report = _offline_call(tmp_path, protocol, observations, "python")
+    assert len(report["observation_results"]) == 3
+    assert report["aggregates"]["quality"] == [{
+        "cache_mode": "zero", "L_search": 100, "eligible_count": eligible_count,
+        "aggregation": "median_eligible",
+        "median_quality_metrics": {"recall_at_10": median, "recall_at_100": median},
+    }]
+    for item in report["observation_results"]:
+        if not item["quality_eligible"]:
+            _assert_audit(item, tmp_path / item["path"], tmp_path)
+
+
+@pytest.mark.parametrize("replace_current", [False, True])
+def test_offline_admission_foreign_protocol_is_audit_only(tmp_path: Path, offline_only, replace_current: bool) -> None:
+    protocol, observations = _offline_fixture(tmp_path)
+    path = observations / "zero-L100-r2.json"
+    document = json.loads(path.read_text())
+    document["protocol"].update(protocol_id="foreign-protocol", protocol_checksum="b" * 64)
+    document["search_execution"].update(execution_id="foreign-execution", canonical_checksum="c" * 64)
+    document["observation_id"] = "foreign-observation"
+    document["environment"]["fingerprint_path"] = "reports/unavailable-environment.json"
+    if not replace_current:
+        path = observations / "foreign.json"
+    _save_observation(path, document)
+    if replace_current:
+        with pytest.raises(search.SearchEvaluationError, match="missing logical trials"):
+            _offline_call(tmp_path, protocol, observations, "cli")
+        _assert_evaluation_failure(tmp_path, protocol, observations, "missing logical trials")
+    else:
+        report = _offline_call(tmp_path, protocol, observations, "cli")
+        assert len(report["observation_results"]) == 10
+        assert all(item["eligible_count"] == 3 for item in report["aggregates"]["quality"])
+        _assert_audit(next(item for item in report["observation_results"] if item["observation_id"] == "foreign-observation"), path, tmp_path)
+
+
+@pytest.mark.parametrize("case,reason", [("truth", "GroundTruth checksum"), ("empty", "no SearchObservation"), ("parity", "PASS")])
+def test_offline_admission_existing_rejections(tmp_path: Path, offline_only, case: str, reason: str) -> None:
+    protocol, observations = _offline_fixture(tmp_path)
+    if case == "truth":
+        (tmp_path / "inputs/truth.bin").write_bytes(b"corrupted")
+    elif case == "empty":
+        for path in observations.glob("*.json"):
+            path.unlink()
+    else:
+        environment = tmp_path / "reports/environment.json"
+        environment.write_text('{"performance_admitted":true}')
+        for path in observations.glob("*.json"):
+            document = json.loads(path.read_text())
+            document["environment"]["fingerprint_sha256"] = search._sha256(environment)
+            _save_observation(path, document)
+    with pytest.raises(search.SearchEvaluationError, match=reason):
+        _offline_call(tmp_path, protocol, observations, "cli")
+    _assert_evaluation_failure(tmp_path, protocol, observations, reason)
+
+
+def test_offline_admission_preserves_immutable_output(tmp_path: Path, offline_only) -> None:
+    protocol, observations = _offline_fixture(tmp_path)
+    _offline_call(tmp_path, protocol, observations, "python")
+    with pytest.raises(ImmutableWriteError, match="immutable target already exists"):
+        _offline_call(tmp_path, protocol, observations, "cli")
+    manifest = json.loads((tmp_path / "manifests/protocol-zero-evaluation.json").read_text())
+    assert manifest["status"] == "SUCCEEDED"
 
 
 def test_parity_cli_uses_shell_free_oracle_and_runner_argv(

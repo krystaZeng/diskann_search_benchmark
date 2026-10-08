@@ -432,6 +432,25 @@ Allowed `repetition_index` values are 0, 1, 2. Each declared cache/L pair has ex
 points. Point status is one of `SUCCEEDED`, `FAILED`, `INVALID_OUTPUT`, `CANCELLED` using existing
 terminal semantics. A point never overwrites another point and has no replacement.
 
+Offline evaluation checks this set before deriving metrics. It constructs the expected cache/L
+groups and repetition indices from the frozen protocol's cache, `L_search`, and
+`repetition_count`; Feature 005 v1 already fixes that count to three. This is not a rule for other
+protocols. After binding protocol and search-execution identities/checksums, each
+`(cache mode, L_search, repetition_index)` identifies one slot. Different filenames, paths,
+`observation_id`, `point_id`, or `run_id` do not turn a duplicate slot into another trial.
+Duplicate slots (including failed/excluded copies), missing repetitions or whole groups,
+out-of-range indices, and undeclared parameter points fail evaluation. No copy is silently
+selected, removed, renumbered, or substituted.
+
+Retained-record completeness is separate from success and metric eligibility. Identity fields,
+terminal status, and the canonical observation checksum must be trustworthy before a record can
+fill a slot. An uncheckable or contradictory identity/checksum fails evaluation without default
+IDs or repetition numbers. Identifiable foreign-protocol records remain audit exclusions and
+cannot fill the current set. A checksum-correct record with invalid metrics (for example negative
+`total_us`) still fills its declared slot, but contributes no metrics. Complete sets may therefore
+have fewer than three eligible records in a group. A group with zero eligible records has no
+aggregate; a batch with no evaluable observation retains the existing evaluation failure behavior.
+
 ### 6.4 PerQueryObservation
 
 For a succeeded point every `query_row_index` 0..4884 appears exactly once, in canonical order, with:
@@ -453,6 +472,22 @@ is `retained_invalid`: it remains diagnostic evidence and is never a metric-bear
 input; the evaluator may read only its identity/path/checksum/status/reason to preserve the required
 report audit/exclusion reference. A valid observation is reusable under an evaluation-only protocol
 change when the search execution identity/checksum and all raw inputs are unchanged.
+
+For each otherwise eligible observation, the offline evaluator reads the environment fingerprint
+bytes, checks their SHA-256 against that observation's declaration, then parses those same bytes
+before using environment content for eligibility. Missing/unreadable files, invalid JSON, and
+checksum mismatches fail the invocation. Every participating declaration is checked, including
+different declarations for the same path. Records already excluded on identity, validity, or
+terminal status do not require an available environment file and cannot supply the report's
+environment reference. The report reference uses a verified path and its actual SHA-256.
+Copies of the same evidence at different paths are permitted. Hash verification alone does not
+certify normative performance conditions or permit aggregation across different actual
+environments; existing environment and parity requirements remain applicable.
+
+These checks use existing fields and checksum rules, without a new schema or format version.
+Admission failure publishes no successful EvaluationReport. Where the existing metadata permits
+construction, the independent FAILED evaluation BuildManifest retains the input paths and the
+specific failure reason. Inputs and previously published reports remain immutable.
 
 ## 7. SearchEvaluationReport/v1
 

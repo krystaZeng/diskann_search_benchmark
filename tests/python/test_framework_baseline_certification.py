@@ -1985,7 +1985,6 @@ def _write_feature005_observations(
     protocol_path: Path,
     missed_rows: int,
     degrade_recall100: bool,
-    omit_l: int | None = None,
     invalidate: tuple[int, int] | None = None,
 ) -> Path:
     protocol = json.loads(protocol_path.read_text(encoding="utf-8"))
@@ -2002,8 +2001,6 @@ def _write_feature005_observations(
     shifted_results = list(range(1, 101))
     for repetition in range(3):
         for l_search in execution["L_search"]:
-            if l_search == omit_l:
-                continue
             point_id = f"{protocol['protocol_id']}-L{l_search}-r{repetition}"
             document = {
                 "format_version": "search-observation/v1",
@@ -2073,9 +2070,9 @@ def _write_feature005_observations(
                     for row in range(10)
                 ],
             }
-            document["observation_checksum"] = search._canonical_digest(document)
             if invalidate == (l_search, repetition):
-                document["observation_checksum"] = "0" * 64
+                document["per_query"][0]["total_us"] = -1
+            document["observation_checksum"] = search._canonical_digest(document)
             (observation_root / f"{point_id}.json").write_text(
                 json.dumps(document, sort_keys=True, separators=(",", ":")),
                 encoding="utf-8",
@@ -2088,7 +2085,6 @@ def _feature005_two_graph_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,
     framework_missed_rows: int = 1,
-    omit_framework_l: int | None = None,
     invalidate_framework: tuple[int, int] | None = None,
 ) -> dict[str, object]:
     workspace = tmp_path / "quality-workspace"
@@ -2246,7 +2242,6 @@ def _feature005_two_graph_fixture(
                 protocol_path=protocol_path,
                 missed_rows=0 if role == "reference" else framework_missed_rows,
                 degrade_recall100=role == "framework",
-                omit_l=omit_framework_l if role == "framework" else None,
                 invalidate=invalidate_framework if role == "framework" else None,
             )
             evaluated = search.evaluate_observation_directory(
@@ -2396,23 +2391,45 @@ def test_quality_threshold_is_pointwise_without_compensation(
 def test_quality_missing_group_and_identity_mismatch_are_inconclusive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fixture = _feature005_two_graph_fixture(
-        tmp_path, monkeypatch, omit_framework_l=200
-    )
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch)
     workspace = fixture["workspace"]
     freeze_input = workspace / "freeze.json"
     freeze_input.write_text(json.dumps(_freeze_input(fixture)), encoding="utf-8")
     policy = workspace / "policy.json"
     fbc.freeze_quality_policy(freeze_input, policy, repository_root=REPOSITORY_ROOT)
     compare_document = _comparison_input(fixture)
+    # Independent legacy-report fixtures exercise Certification's own missing
+    # group defense; the current evaluator must only generate complete sets.
+    legacy_paths = []
+    for cache, original in fixture["report_paths"]["framework"].items():
+        legacy = json.loads(original.read_text(encoding="utf-8"))
+        legacy["report_id"] = f"legacy-incomplete-{cache}"
+        legacy["observation_results"] = [item for item in legacy["observation_results"] if item["L_search"] != 200]
+        for family in ("quality", "performance"):
+            legacy["aggregates"][family] = [item for item in legacy["aggregates"][family] if item["L_search"] != 200]
+        legacy.pop("report_checksum")
+        legacy["report_checksum"] = search._canonical_digest(legacy)
+        search._feature_validator("search-evaluation-report.schema.json").validate(legacy)
+        legacy_path = workspace / f"legacy-incomplete-{cache}.json"
+        legacy_path.write_text(json.dumps(legacy), encoding="utf-8")
+        legacy_paths.append(legacy_path.relative_to(workspace).as_posix())
+    compare_document["evaluation_reports"]["framework"] = legacy_paths
     compare_input = workspace / "compare.json"
     compare_input.write_text(json.dumps(compare_document), encoding="utf-8")
     missing_output = workspace / "missing-quality.json"
     assert fbc.compare_quality(
         policy, compare_input, missing_output, repository_root=REPOSITORY_ROOT
     )["result"] == "INCONCLUSIVE"
+    missing_evidence = json.loads(missing_output.read_text(encoding="utf-8"))
+    assert len(missing_evidence["evaluation_reports"]["framework"]) == 2
+    assert all(group["result"] == "INCONCLUSIVE"
+               and group["framework"]["eligible_count"] == 0
+               and "metrics" not in group["framework"]
+               and group["reason"] == "missing, incomplete, or unevaluable Feature 005 aggregate"
+               for group in missing_evidence["groups"] if group["L_search"] == 200)
+    assert not any(item["L_search"] == 200 for item in missing_evidence["observation_attempts"]["framework"])
 
-    mismatched = copy.deepcopy(compare_document)
+    mismatched = _comparison_input(fixture)
     mismatched["evaluation_reports"]["framework"][0] = (
         fixture["report_paths"]["reference"]["zero"]
         .relative_to(workspace)
