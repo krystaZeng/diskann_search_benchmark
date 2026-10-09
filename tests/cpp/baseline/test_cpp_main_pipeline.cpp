@@ -596,7 +596,7 @@ int main(int argc, char** argv) {
                             .execute(request("cancelled", data.dataset.reference),
                                      data.environment.context);
     DP_EXPECT_EQ(result.status, dp::StageStatus::kCancelled);
-    DP_EXPECT_EQ(result.invocations.partition, std::size_t{1});
+    DP_EXPECT_EQ(result.invocations.partition, std::size_t{0});
     DP_EXPECT_EQ(result.invocations.local_build, std::size_t{0});
     DP_EXPECT_EQ(result.invocations.merge, std::size_t{0});
   }
