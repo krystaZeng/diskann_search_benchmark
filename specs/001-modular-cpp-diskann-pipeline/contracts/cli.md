@@ -158,6 +158,39 @@ code `4`, publishes neither a normal nor an `INVALID_OUTPUT` Artifact, and canno
 stage after the subprocess has terminated. Unrequested runner termination remains an internal
 failure.
 
+The Executor's in-process gates run before factories, before methods, before candidate
+validation/publication, and before automatic evaluation. They supplement stage checkpoints;
+they cannot interrupt arbitrary running code immediately. FAILED results and terminal-output
+violations take precedence over a concurrent cancellation. Validation, publication and success
+record persistence have no intervening cancellation gate. Cancellation observed after final
+publication retains the graph reference and VALID evidence; Merge stays SUCCEEDED and automatic
+evaluation is not started. Cancellation does not damage or quarantine earlier successful output.
+
+For FAILED/CANCELLED execute results, `build_manifest_path` is present only when the referenced
+Manifest belongs to this request and matches its terminal status. A factory failure, cancellation
+before a method, or cancellation after successful publication can have no corresponding stage
+terminal: omit that field, retain location and reason in `failure`, and never substitute an earlier
+success. A typed cancellation exception is CANCELLED/category `cancelled`/exit `4`; ordinary
+exceptions remain FAILED. Exit codes are otherwise unchanged.
+
+Harness termination is distinct from cooperative cancellation. If interrupted execute has no
+trustworthy terminal result, the Harness writes `result_version: "2.0.0"` with
+`stage_invocations: null`: all three counts are unknown, not zero or a count of completed
+Manifests. This schema branch allows only execute/CANCELLED/exit `4`, requires a nonempty
+cancelled reason, and carries no invented Artifact, Manifest, validation, evaluation or quarantine
+reference. The terminated process is not expected to produce a complete stage terminal record.
+An existing result appearing during interruption remains an immutable conflict and is not replaced.
+
+Exact counts retain `result_version: "1.0.0"` and the original three nonnegative integers.
+Interrupted preflight/validate/evaluate/registry can retain exact zeros because these operations
+invoke no pipeline stages. Both source and runtime schemas strictly discriminate the versions:
+v1 null, v2 exact counts, and successful null results are invalid. Historical v1 zeros retain their
+original meaning. Readers must handle v2 null explicitly, never coerce it to zero; older readers
+that only accept v1 require a schema/consumer upgrade before consuming these new interrupt
+results. Existing v1 results remain valid and require no rewriting. The shared Harness reader
+validates both branches and preserves null. This does not change upper configuration-loop
+scheduling of subsequent repetitions.
+
 ## 7. Security and Isolation Rules
 
 - Ordinary execute/validate/evaluate commands cannot accept quarantine paths or diagnostic IDs.

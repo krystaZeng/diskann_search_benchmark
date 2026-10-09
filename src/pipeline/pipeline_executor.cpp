@@ -182,7 +182,11 @@ void attach_stage_execution_manifest(
   const bool requires_failure =
       subordinate.status == StageStatus::kFailed ||
       subordinate.status == StageStatus::kInvalidOutput;
-  if (requires_failure != subordinate.failure.has_value()) {
+  const bool cancellation_failure =
+      subordinate.status == StageStatus::kCancelled && subordinate.failure &&
+      subordinate.failure->category == ErrorCategory::kCancelled;
+  if ((requires_failure && !subordinate.failure) ||
+      (!requires_failure && subordinate.failure && !cancellation_failure)) {
     throw PipelineError(
         ErrorCategory::kSchemaInvalid,
         "stage-owned BuildManifest has inconsistent failure evidence");
@@ -210,6 +214,65 @@ std::filesystem::path persist_stage_manifest(
   write_immutable_text(target, serialize_build_manifest(manifest));
   return target;
 }
+
+// State belongs to one execute call. Preparing a factory is not a stage start;
+// only a method invocation makes this stage eligible for terminal evidence.
+struct StageExecution {
+  std::string identity;
+  std::string location{"execution admission"};
+  std::optional<BuildManifest> manifest;
+  bool started{false};
+  bool terminal_write_attempted{false};
+
+  BuildManifest& prepare(std::string id, BuildManifest value) {
+    identity = std::move(id);
+    manifest = std::move(value);
+    started = false;
+    terminal_write_attempted = false;
+    return *manifest;
+  }
+
+  void check_cancel(const StageContext& context, std::string position) {
+    location = std::move(position);
+    if (context.cancellation_token->is_cancelled()) {
+      throw PipelineError(ErrorCategory::kCancelled,
+                          "cancellation observed at " + location);
+    }
+  }
+
+  std::filesystem::path persist(const WorkspaceRef& workspace,
+                                const std::string& run_id,
+                                const std::string& id,
+                                const BuildManifest& value) {
+    // Even a write error must not cause a second attempt that could overwrite a
+    // partial or already immutable terminal record. Do not return a failed path.
+    terminal_write_attempted = true;
+    return persist_stage_manifest(workspace, run_id, id, value);
+  }
+
+  PipelineExecutionResult fail(
+      PipelineExecutionResult result, const WorkspaceRef& workspace,
+      const std::string& run_id, ErrorCategory category,
+      const std::string& original) {
+    const auto status = category == ErrorCategory::kCancelled
+                            ? StageStatus::kCancelled : StageStatus::kFailed;
+    auto reason = location + ": " + original;
+    if (started && !terminal_write_attempted && manifest) {
+      manifest->status = status;
+      manifest->failure = FailureInfo{category, reason, std::nullopt};
+      try {
+        result.build_manifest_paths.push_back(
+            persist(workspace, run_id, identity, *manifest));
+      } catch (const std::exception& evidence_error) {
+        reason += "; terminal evidence write failed: ";
+        reason += evidence_error.what();
+      }
+    }
+    result.status = status;
+    result.failure = FailureInfo{category, std::move(reason), std::nullopt};
+    return result;
+  }
+};
 
 struct PublishedArtifact {
   ArtifactRef reference;
@@ -388,10 +451,10 @@ PipelineExecutionResult terminal_failure(
 }
 
 PipelineExecutionResult terminal_output_violation(
-    PipelineExecutionResult result, const PipelineExecutionRequest& request,
+    PipelineExecutionResult& result, const PipelineExecutionRequest& request,
     const WorkspaceRef& workspace, const TemporaryStorageRef& temporary,
     const std::string& identity, const ImplementationDescriptor& descriptor,
-    BuildManifest manifest, const StageResult& stage) {
+    BuildManifest manifest, const StageResult& stage, StageExecution& execution) {
   const std::string reason =
       "stage violated the terminal-output contract";
   const auto candidate_root = temporary.stage_root / "candidate";
@@ -428,14 +491,14 @@ PipelineExecutionResult terminal_output_violation(
   manifest.failure =
       FailureInfo{ErrorCategory::kSchemaInvalid, reason, std::nullopt};
   manifest.validation_evidence_path = relative_to(evidence_path, workspace.root);
-  const auto manifest_path = persist_stage_manifest(
+  const auto manifest_path = execution.persist(
       workspace, request.run_id, identity, manifest);
+  result.build_manifest_paths.push_back(manifest_path);
   const auto quarantine_id = request.run_id + "-" + identity + "-invalid";
   QuarantineManager(workspace).publish(
       quarantine_id, candidate_root, candidate_metadata, manifest_path,
       evidence_path,
       {ErrorCategory::kSchemaInvalid, reason, std::nullopt}, now_utc());
-  result.build_manifest_paths.push_back(manifest_path);
   result.validation_evidence_paths.push_back(evidence_path);
   result.quarantine_id = quarantine_id;
   return terminal_failure(std::move(result), StageStatus::kInvalidOutput,
@@ -461,8 +524,10 @@ PipelineExecutor::PipelineExecutor(ImplementationRegistry& registry,
 PipelineExecutionResult PipelineExecutor::execute(
     const PipelineExecutionRequest& request, StageContext& context) const {
   PipelineExecutionResult result;
+  StageExecution execution;
   try {
     validate_stage_context(context);
+    execution.check_cancel(context, "before first stage or reuse");
     const Validator validator(workspace_);
     const auto dataset_validation = validator.validate(request.dataset);
     if (!dataset_validation.valid()) {
@@ -561,23 +626,27 @@ PipelineExecutionResult PipelineExecutor::execute(
           workspace_, request.run_id, "merge", request.merge_parameters_json);
       context.temporary_storage =
           create_temporary_storage(workspace_, request.run_id + "-merge");
-      auto merge = registry_.resolve_merge_factory(
-          request.merge_implementation_id,
-          request.merge_implementation_version)();
-      ++result.invocations.merge;
-      result.stage_order.push_back(StageKind::kMerge);
-      const auto stage = merge->merge(
-          partition.reference(), request.merge_only_inputs->local_graphs,
-          merge_parameters, context);
       std::vector<ArtifactRef> manifest_inputs{request.dataset,
                                                partition.reference()};
       manifest_inputs.insert(manifest_inputs.end(),
                              request.merge_only_inputs->local_graphs.begin(),
                              request.merge_only_inputs->local_graphs.end());
-      auto manifest = base_manifest(
+      auto& manifest = execution.prepare("merge", base_manifest(
           request, context, "merge", StageKind::kMerge, merge_descriptor,
           dataset.dataset(), request.merge_parameters_json,
-          std::move(manifest_inputs), merge_started_at);
+          std::move(manifest_inputs), merge_started_at));
+      execution.check_cancel(context, "merge before factory");
+      auto merge = registry_.resolve_merge_factory(
+          request.merge_implementation_id,
+          request.merge_implementation_version)();
+      execution.check_cancel(context, "merge before method");
+      execution.started = true;
+      execution.location = "merge method/output";
+      ++result.invocations.merge;
+      result.stage_order.push_back(StageKind::kMerge);
+      const auto stage = merge->merge(
+          partition.reference(), request.merge_only_inputs->local_graphs,
+          merge_parameters, context);
       attach_stage_execution_manifest(workspace_, request, "merge", "merge",
                                       stage, manifest);
       const bool terminal_output_valid =
@@ -587,8 +656,8 @@ PipelineExecutionResult PipelineExecutor::execute(
            !stage.output_candidate);
       if (!terminal_output_valid) {
         return terminal_output_violation(
-            std::move(result), request, workspace_, context.temporary_storage,
-            "merge", merge_descriptor, manifest, stage);
+            result, request, workspace_, context.temporary_storage,
+            "merge", merge_descriptor, manifest, stage, execution);
       }
       if (stage.status != StageStatus::kSucceeded) {
         manifest.status = stage.status;
@@ -597,7 +666,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                          "Merge implementation failed",
                                          std::nullopt};
         }
-        result.build_manifest_paths.push_back(persist_stage_manifest(
+        result.build_manifest_paths.push_back(execution.persist(
             workspace_, request.run_id, "merge", manifest));
         return terminal_failure(
             std::move(result), stage.status,
@@ -611,6 +680,7 @@ PipelineExecutionResult PipelineExecutor::execute(
       std::vector<ValidatedArtifact> merge_sources{partition};
       merge_sources.insert(merge_sources.end(), validated_locals.begin(),
                            validated_locals.end());
+      execution.check_cancel(context, "merge before validation/publication");
       auto publication = validate_and_publish(
           workspace_, request.run_id, "merge", context.temporary_storage,
           *stage.output_candidate, merge_sources, merge_descriptor, nullptr);
@@ -621,7 +691,7 @@ PipelineExecutionResult PipelineExecutor::execute(
             FailureInfo{failure.category, failure.reason, std::nullopt};
         manifest.validation_evidence_path =
             relative_to(failure.evidence_path, workspace_.root);
-        const auto manifest_path = persist_stage_manifest(
+        const auto manifest_path = execution.persist(
             workspace_, request.run_id, "merge", manifest);
         result.build_manifest_paths.push_back(manifest_path);
         const auto quarantine_id = request.run_id + "-merge-invalid";
@@ -644,8 +714,10 @@ PipelineExecutionResult PipelineExecutor::execute(
       manifest.output_artifacts = {published.reference};
       manifest.validation_evidence_path =
           relative_to(published.evidence_path, workspace_.root);
-      result.build_manifest_paths.push_back(persist_stage_manifest(
+      result.build_manifest_paths.push_back(execution.persist(
           workspace_, request.run_id, "merge", manifest));
+      execution.check_cancel(
+          context, "after merge publication, before automatic evaluation");
       const auto report = evaluate_validated_global_graph(
           workspace_, published.validated,
           relative_to(published.evidence_path, workspace_.root),
@@ -752,17 +824,21 @@ PipelineExecutionResult PipelineExecutor::execute(
           request.partition_parameters_json);
       context.temporary_storage =
           create_temporary_storage(workspace_, request.run_id + "-partition");
-      auto partition = registry_.resolve_partition_factory(
-          request.partition_implementation_id,
-          request.partition_implementation_version)();
-      ++result.invocations.partition;
-      result.stage_order.push_back(StageKind::kPartition);
-      const auto stage = partition->run(request.dataset, parameter_path, context);
-      auto manifest = base_manifest(request, context, "partition",
+      auto& manifest = execution.prepare("partition", base_manifest(request, context, "partition",
                                     StageKind::kPartition,
                                     partition_descriptor, dataset.dataset(),
                                     request.partition_parameters_json,
-                                    {request.dataset}, stage_started_at);
+                                    {request.dataset}, stage_started_at));
+      execution.check_cancel(context, "partition before factory");
+      auto partition = registry_.resolve_partition_factory(
+          request.partition_implementation_id,
+          request.partition_implementation_version)();
+      execution.check_cancel(context, "partition before method");
+      execution.started = true;
+      execution.location = "partition method/output";
+      ++result.invocations.partition;
+      result.stage_order.push_back(StageKind::kPartition);
+      const auto stage = partition->run(request.dataset, parameter_path, context);
       attach_stage_execution_manifest(workspace_, request, "partition",
                                       "partition", stage, manifest);
       const bool terminal_output_valid =
@@ -772,8 +848,8 @@ PipelineExecutionResult PipelineExecutor::execute(
            !stage.output_candidate);
       if (!terminal_output_valid) {
         return terminal_output_violation(
-            std::move(result), request, workspace_, context.temporary_storage,
-            "partition", partition_descriptor, manifest, stage);
+            result, request, workspace_, context.temporary_storage,
+            "partition", partition_descriptor, manifest, stage, execution);
       }
       if (stage.status != StageStatus::kSucceeded) {
         const auto terminal_status = stage.status;
@@ -783,7 +859,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                          "Partition implementation failed",
                                          std::nullopt};
         }
-        result.build_manifest_paths.push_back(persist_stage_manifest(
+        result.build_manifest_paths.push_back(execution.persist(
             workspace_, request.run_id, "partition", manifest));
         return terminal_failure(
             std::move(result), terminal_status,
@@ -794,6 +870,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                 ? "Partition was cancelled"
                 : "Partition implementation failed");
       }
+      execution.check_cancel(context, "partition before validation/publication");
       auto publication = validate_and_publish(
           workspace_, request.run_id, "partition", context.temporary_storage,
           *stage.output_candidate, {dataset}, partition_descriptor,
@@ -805,7 +882,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                        std::nullopt};
         manifest.validation_evidence_path =
             relative_to(failure.evidence_path, workspace_.root);
-        const auto manifest_path = persist_stage_manifest(
+        const auto manifest_path = execution.persist(
             workspace_, request.run_id, "partition", manifest);
         result.build_manifest_paths.push_back(manifest_path);
         const auto quarantine_id = request.run_id + "-partition-invalid";
@@ -827,7 +904,7 @@ PipelineExecutionResult PipelineExecutor::execute(
       manifest.output_artifacts = {published.reference};
       manifest.validation_evidence_path =
           relative_to(published.evidence_path, workspace_.root);
-      result.build_manifest_paths.push_back(persist_stage_manifest(
+      result.build_manifest_paths.push_back(execution.persist(
           workspace_, request.run_id, "partition", manifest));
     }
 
@@ -842,7 +919,6 @@ PipelineExecutionResult PipelineExecutor::execute(
       require_known_inputs(registry_, local_descriptor, known_inputs, context);
       require_known_inputs(registry_, merge_descriptor, known_inputs, context);
       const auto stage_started_at = now_utc();
-      result.local_partition_ids.push_back(id);
       const auto identity = "local-" + std::to_string(id);
       Json local_parameters = Json::parse(request.local_parameters_json);
       local_parameters["partition_id"] = id;
@@ -851,13 +927,6 @@ PipelineExecutionResult PipelineExecutor::execute(
           workspace_, request.run_id, identity, parameters);
       context.temporary_storage = create_temporary_storage(
           workspace_, request.run_id + "-" + identity);
-      auto local = registry_.resolve_local_build_factory(
-          request.local_implementation_id,
-          request.local_implementation_version)();
-      ++result.invocations.local_build;
-      result.stage_order.push_back(StageKind::kLocalBuild);
-      const auto stage = local->build(
-          validated_partition->reference(), id, {parameter_path}, context);
       std::vector<ArtifactRef> local_inputs;
       const auto declares_dataset = std::any_of(
           local_descriptor.requires.input_artifacts.begin(),
@@ -869,10 +938,22 @@ PipelineExecutionResult PipelineExecutor::execute(
         local_inputs.push_back(request.dataset);
       }
       local_inputs.push_back(validated_partition->reference());
-      auto manifest = base_manifest(
+      auto& manifest = execution.prepare(identity, base_manifest(
           request, context, "local_build", StageKind::kLocalBuild,
           local_descriptor, dataset.dataset(),
-          parameters, std::move(local_inputs), stage_started_at);
+          parameters, std::move(local_inputs), stage_started_at));
+      execution.check_cancel(context, identity + " before factory");
+      auto local = registry_.resolve_local_build_factory(
+          request.local_implementation_id,
+          request.local_implementation_version)();
+      execution.check_cancel(context, identity + " before method");
+      execution.started = true;
+      execution.location = identity + " method/output";
+      result.local_partition_ids.push_back(id);
+      ++result.invocations.local_build;
+      result.stage_order.push_back(StageKind::kLocalBuild);
+      const auto stage = local->build(
+          validated_partition->reference(), id, {parameter_path}, context);
       attach_stage_execution_manifest(workspace_, request, identity,
                                       "local_build", stage, manifest);
       const bool terminal_output_valid =
@@ -882,8 +963,8 @@ PipelineExecutionResult PipelineExecutor::execute(
            !stage.output_candidate);
       if (!terminal_output_valid) {
         return terminal_output_violation(
-            std::move(result), request, workspace_, context.temporary_storage,
-            identity, local_descriptor, manifest, stage);
+            result, request, workspace_, context.temporary_storage,
+            identity, local_descriptor, manifest, stage, execution);
       }
       if (stage.status != StageStatus::kSucceeded) {
         const auto terminal_status = stage.status;
@@ -893,7 +974,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                          "Local Build implementation failed",
                                          std::nullopt};
         }
-        result.build_manifest_paths.push_back(persist_stage_manifest(
+        result.build_manifest_paths.push_back(execution.persist(
             workspace_, request.run_id, identity, manifest));
         return terminal_failure(
             std::move(result), terminal_status,
@@ -904,6 +985,8 @@ PipelineExecutionResult PipelineExecutor::execute(
                 ? "Local Build was cancelled"
                 : "Local Build implementation failed");
       }
+      execution.check_cancel(
+          context, identity + " before validation/publication");
       auto publication = validate_and_publish(
           workspace_, request.run_id, identity, context.temporary_storage,
           *stage.output_candidate, {*validated_partition}, local_descriptor,
@@ -915,7 +998,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                        std::nullopt};
         manifest.validation_evidence_path =
             relative_to(failure.evidence_path, workspace_.root);
-        const auto manifest_path = persist_stage_manifest(
+        const auto manifest_path = execution.persist(
             workspace_, request.run_id, identity, manifest);
         result.build_manifest_paths.push_back(manifest_path);
         const auto quarantine_id = request.run_id + "-" + identity + "-invalid";
@@ -938,7 +1021,7 @@ PipelineExecutionResult PipelineExecutor::execute(
       manifest.output_artifacts = {published.reference};
       manifest.validation_evidence_path =
           relative_to(published.evidence_path, workspace_.root);
-      result.build_manifest_paths.push_back(persist_stage_manifest(
+      result.build_manifest_paths.push_back(execution.persist(
           workspace_, request.run_id, identity, manifest));
     }
 
@@ -949,20 +1032,25 @@ PipelineExecutionResult PipelineExecutor::execute(
         workspace_, request.run_id, "merge", request.merge_parameters_json);
     context.temporary_storage =
         create_temporary_storage(workspace_, request.run_id + "-merge");
+    std::vector<ArtifactRef> merge_inputs{validated_partition->reference()};
+    merge_inputs.insert(merge_inputs.end(), result.local_artifacts.begin(),
+                        result.local_artifacts.end());
+    auto& manifest = execution.prepare("merge", base_manifest(request, context, "merge", StageKind::kMerge,
+                                  merge_descriptor, dataset.dataset(),
+                                  request.merge_parameters_json, merge_inputs,
+                                  merge_started_at));
+    execution.check_cancel(context, "merge before factory");
+
     auto merge = registry_.resolve_merge_factory(
         request.merge_implementation_id, request.merge_implementation_version)();
+    execution.check_cancel(context, "merge before method");
+    execution.started = true;
+    execution.location = "merge method/output";
     ++result.invocations.merge;
     result.stage_order.push_back(StageKind::kMerge);
     const auto stage = merge->merge(validated_partition->reference(),
                                     result.local_artifacts, merge_parameters,
                                     context);
-    std::vector<ArtifactRef> merge_inputs{validated_partition->reference()};
-    merge_inputs.insert(merge_inputs.end(), result.local_artifacts.begin(),
-                        result.local_artifacts.end());
-    auto manifest = base_manifest(request, context, "merge", StageKind::kMerge,
-                                  merge_descriptor, dataset.dataset(),
-                                  request.merge_parameters_json, merge_inputs,
-                                  merge_started_at);
     attach_stage_execution_manifest(workspace_, request, "merge", "merge",
                                     stage, manifest);
     const bool terminal_output_valid =
@@ -972,8 +1060,8 @@ PipelineExecutionResult PipelineExecutor::execute(
          !stage.output_candidate);
     if (!terminal_output_valid) {
       return terminal_output_violation(
-          std::move(result), request, workspace_, context.temporary_storage,
-          "merge", merge_descriptor, manifest, stage);
+          result, request, workspace_, context.temporary_storage,
+          "merge", merge_descriptor, manifest, stage, execution);
     }
     if (stage.status != StageStatus::kSucceeded) {
       const auto terminal_status = stage.status;
@@ -983,7 +1071,7 @@ PipelineExecutionResult PipelineExecutor::execute(
                                        "Merge implementation failed",
                                        std::nullopt};
       }
-      result.build_manifest_paths.push_back(persist_stage_manifest(
+      result.build_manifest_paths.push_back(execution.persist(
           workspace_, request.run_id, "merge", manifest));
       return terminal_failure(
           std::move(result), terminal_status,
@@ -997,6 +1085,7 @@ PipelineExecutionResult PipelineExecutor::execute(
     std::vector<ValidatedArtifact> merge_sources{*validated_partition};
     merge_sources.insert(merge_sources.end(), validated_locals.begin(),
                          validated_locals.end());
+    execution.check_cancel(context, "merge before validation/publication");
     auto publication = validate_and_publish(
         workspace_, request.run_id, "merge", context.temporary_storage,
         *stage.output_candidate, merge_sources, merge_descriptor, nullptr);
@@ -1007,7 +1096,7 @@ PipelineExecutionResult PipelineExecutor::execute(
           FailureInfo{failure.category, failure.reason, std::nullopt};
       manifest.validation_evidence_path =
           relative_to(failure.evidence_path, workspace_.root);
-      const auto manifest_path = persist_stage_manifest(
+      const auto manifest_path = execution.persist(
           workspace_, request.run_id, "merge", manifest);
       result.build_manifest_paths.push_back(manifest_path);
       const auto quarantine_id = request.run_id + "-merge-invalid";
@@ -1028,9 +1117,11 @@ PipelineExecutionResult PipelineExecutor::execute(
     manifest.output_artifacts = {published.reference};
     manifest.validation_evidence_path =
         relative_to(published.evidence_path, workspace_.root);
-    result.build_manifest_paths.push_back(persist_stage_manifest(
+    result.build_manifest_paths.push_back(execution.persist(
         workspace_, request.run_id, "merge", manifest));
 
+    execution.check_cancel(
+          context, "after merge publication, before automatic evaluation");
     const auto report = evaluate_validated_global_graph(
         workspace_, published.validated,
         relative_to(published.evidence_path, workspace_.root),
@@ -1039,11 +1130,11 @@ PipelineExecutionResult PipelineExecutor::execute(
     result.status = StageStatus::kSucceeded;
     return result;
   } catch (const PipelineError& error) {
-    return terminal_failure(std::move(result), StageStatus::kFailed,
-                            error.category(), error.what());
+    return execution.fail(std::move(result), workspace_, request.run_id,
+                          error.category(), error.what());
   } catch (const std::exception& error) {
-    return terminal_failure(std::move(result), StageStatus::kFailed,
-                            ErrorCategory::kInternal, error.what());
+    return execution.fail(std::move(result), workspace_, request.run_id,
+                          ErrorCategory::kInternal, error.what());
   }
 }
 

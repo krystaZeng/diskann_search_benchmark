@@ -41,6 +41,19 @@ int main() {
     if (expected_category == dp::ErrorCategory::kCancelled) {
       DP_EXPECT_EQ(observed.status, dp::StageStatus::kCancelled);
       DP_EXPECT_TRUE(!observed.quarantined);
+      if (expected_gate == "stage_start") {
+        DP_EXPECT_EQ(observed.invocations.partition, std::size_t{0});
+      } else {
+        DP_EXPECT_EQ(observed.invocations.partition, std::size_t{1});
+      }
+      if (expected_gate == "next_stage_start")
+        DP_EXPECT_EQ(observed.invocations.local_build, std::size_t{0});
+      if (expected_gate.find("local.") == 0)
+        DP_EXPECT_EQ(observed.invocations.local_build, std::size_t{1});
+      if (expected_gate.find("merge.") == 0) {
+        DP_EXPECT_EQ(observed.invocations.local_build, std::size_t{2});
+        DP_EXPECT_EQ(observed.invocations.merge, std::size_t{1});
+      }
       if (expected_gate.find("partition") != std::string::npos ||
           expected_gate == "stage_start") {
         DP_EXPECT_EQ(observed.invocations.local_build, std::size_t{0});

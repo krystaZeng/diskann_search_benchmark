@@ -11,6 +11,8 @@
 #include <array>
 #include <cmath>
 #include <functional>
+#include <cstdlib>
+#include <fstream>
 
 namespace dp = diskann_pipeline;
 
@@ -456,21 +458,385 @@ void reject_reuse(const std::string& name, ReuseCase scenario,
   DP_EXPECT_EQ(validator.validate(cached, sources).valid(), valid_input);
 }
 
-dp::PipelineExecutionResult run_with_cancel(std::size_t observation,
+class CancelAtEvent final : public dp::MetricsSink {
+ public:
+  CancelAtEvent(dp::test::FakeStageEnvironment& env, std::string event)
+      : env_(env), event_(std::move(event)) {}
+  void event(const std::string& name) override {
+    env_.metrics().event(name);
+    if (name == event_) { observed = true; env_.cancellation().cancel_now(); }
+  }
+  void increment(const std::string& name, std::uint64_t amount) override {
+    env_.metrics().increment(name, amount);
+  }
+  bool observed{false};
+ private:
+  dp::test::FakeStageEnvironment& env_;
+  std::string event_;
+};
+
+dp::PipelineExecutionResult run_with_cancel(const std::string& checkpoint,
                                             const std::string& identity) {
   dp::test::FakeStageEnvironment environment(identity);
   const auto dataset = dp::test::materialize_fake_dataset(environment.workspace());
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kTest);
   dp::test::register_fake_implementations(registry);
-  environment.cancellation().cancel_on_observation(observation);
+  CancelAtEvent metrics(environment, checkpoint);
   auto context = environment.make_context("executor");
-  return dp::PipelineExecutor(registry, environment.workspace())
+  context.metrics_sink = &metrics;
+  auto result = dp::PipelineExecutor(registry, environment.workspace())
       .execute(dp::test::canonical_execution_request(identity, dataset), context);
+  DP_EXPECT_TRUE(metrics.observed);
+  return result;
 }
+
+namespace lifecycle {
+namespace fs = std::filesystem;
+using J = nlohmann::json;
+J read(const fs::path& p) { std::ifstream f(p); return J::parse(f); }
+void save(const fs::path& p, const J& j) { fs::create_directories(p.parent_path()); std::ofstream(p) << j.dump(2); }
+std::string str(dp::StageStatus s) { return std::string(dp::to_string(s)); }
+struct Case { std::string name, action, target, cancel_at; bool ignore_token=false; std::string route="fresh"; };
+std::map<std::string,std::string> snapshot(const fs::path& root);
+struct Trace;
+struct Token : dp::CancellationToken {
+  Trace* t; bool cancelled=false;
+  explicit Token(Trace* v):t(v){}
+  bool is_cancelled() const noexcept override;
+};
+struct Metrics : dp::MetricsSink {
+  Trace* t; explicit Metrics(Trace* v):t(v){}
+  void event(const std::string&) override;
+  void increment(const std::string&, std::uint64_t) override {}
+};
+struct Trace {
+  Case c; dp::PipelineExecutionRequest request; dp::DatasetIdentity dataset;
+  std::array<int,3> factories{}, methods{};
+  std::string active="executor", phase="initial";
+  J events=J::array(), reads=J::array(), candidates=J::array();
+  Token token{this}; Metrics metrics{this};
+  fs::path published_marker;
+  dp::WorkspaceRef workspace;
+  std::map<std::string,std::string> previous_successes;
+  void signal(const std::string& marker) {
+    events.push_back("cancel_requested:"+marker); token.cancelled=true;
+  }
+};
+bool Token::is_cancelled() const noexcept {
+  std::error_code ec;
+  if (!t->published_marker.empty() && fs::is_regular_file(t->published_marker, ec))
+    const_cast<Token*>(this)->cancelled = true;
+  t->reads.push_back(J{{"owner",t->active},{"checkpoint",t->phase},{"cancelled",cancelled}});
+  return cancelled;
+}
+void Metrics::event(const std::string& name) {
+  t->phase=name; t->events.push_back(t->active+":"+name);
+  if (t->active==t->c.target && name==t->c.cancel_at) t->signal(t->active+":"+name);
+}
+J counts(const std::array<int,3>& c) {return {c[0],c[1],c[2]};}
+J failure(const dp::FailureInfo& f) {
+  J r={{"category",std::string(dp::to_string(f.category))},{"reason",f.reason}};
+  if(f.exit_code) r["exit_code"]=*f.exit_code; return r;
+}
+fs::path owned_manifest(Trace& t, const std::string& label, dp::StageContext& ctx, dp::StageStatus status) {
+  dp::BuildManifest m;
+  m.run_id=t.request.run_id; m.stage=label=="P"?"partition":label=="M"?"merge":"local_build";
+  m.implementation={label=="P"?"fake_partition_v1":label=="M"?"fake_merge_v1":"fake_local_graph_v1","1.0.0"};
+  m.source=t.request.source; m.toolchain=t.request.toolchain; m.dataset=t.dataset;
+  m.resource_budget={ctx.memory_budget_bytes,ctx.thread_budget}; m.status=status;
+  m.started_at="2026-10-08T00:00:00Z"; m.ended_at="2026-10-08T00:00:01Z";
+  m.input_artifacts={t.request.dataset};
+  if(status==dp::StageStatus::kFailed) m.failure=dp::FailureInfo{dp::ErrorCategory::kSourceMismatch,"probe-original-stage-reason",37};
+  fs::path p=ctx.temporary_storage.stage_root/"owned-manifest.json";
+  dp::write_immutable_text(p, dp::serialize_build_manifest(m)); return p;
+}
+dp::StageResult method(Trace& t, const std::string& label, dp::StageContext& ctx,
+                       std::function<dp::StageResult()> delegate,
+                       std::function<dp::ArtifactRef()> generate) {
+  int slot=label=="P"?0:label=="M"?2:1;
+  ++t.methods[slot]; t.events.push_back("method:"+label); t.active=label;
+  struct Scope { Trace& t; ~Scope(){t.active="executor";t.phase="between_stages";} } scope{t};
+  const bool hit=label==t.c.target;
+  const std::string a=hit?t.c.action:"success";
+  if(a=="evidence_write_failure") {
+    dp::write_immutable_text(ctx.workspace.manifest_root/t.request.run_id/"stages", "blocking fixture");
+    throw dp::PipelineError(dp::ErrorCategory::kSourceMismatch,"probe-original-write-failure:"+label);
+  }
+  if(a=="throw_pipeline") throw dp::PipelineError(dp::ErrorCategory::kSourceMismatch,"probe-method-pipeline:"+label);
+  if(a=="throw_std") throw std::runtime_error("probe-method-std:"+label);
+  if(a=="throw_cancel") throw dp::PipelineError(dp::ErrorCategory::kCancelled,"probe-method-cancel:"+label);
+  if(a=="throw_std_cancelled") {t.signal("ordinary-error-with-cancellation"); throw std::runtime_error("probe-method-std:"+label);}
+  if(a=="owned_throw") {owned_manifest(t,label,ctx,dp::StageStatus::kFailed); throw std::runtime_error("probe-owned-then-throw:"+label);}
+  if(a=="failed_cancelled") {t.signal("failed-with-token-cancelled"); return {dp::StageStatus::kFailed,std::nullopt,{}};}
+  if(a=="missing_cancelled") {t.signal("missing-with-token-cancelled"); return {dp::StageStatus::kSucceeded,std::nullopt,{}};}
+  if(a=="failed") return {dp::StageStatus::kFailed,std::nullopt,{}};
+  if(a=="cancelled") return {dp::StageStatus::kCancelled,std::nullopt,{}};
+  if(a=="owned_failed") return {dp::StageStatus::kFailed,std::nullopt,owned_manifest(t,label,ctx,dp::StageStatus::kFailed)};
+  if(a=="owned_status_mismatch") return {dp::StageStatus::kFailed,std::nullopt,owned_manifest(t,label,ctx,dp::StageStatus::kSucceeded)};
+  if(a=="missing") return {dp::StageStatus::kSucceeded,std::nullopt,{}};
+  auto generated=[&]() {
+    auto ref=generate(); auto ws=ctx.workspace; ws.normal_root=ctx.temporary_storage.stage_root;
+    t.candidates.push_back(J{{"label",label},{"path",(ctx.temporary_storage.stage_root/ref.metadata_path).string()},
+                             {"sha256",dp::sha256_file(ctx.temporary_storage.stage_root/ref.metadata_path)}});
+    return ref;
+  };
+  dp::StageResult result;
+  if(a=="failed_candidate" || a=="cancelled_candidate" || a=="throw_after_candidate") {
+    auto ref=generated();
+    if(a=="throw_after_candidate") throw std::runtime_error("probe-after-candidate:"+label);
+    result={a=="failed_candidate"?dp::StageStatus::kFailed:dp::StageStatus::kCancelled,ref,{}};
+  } else if(t.c.ignore_token) result={dp::StageStatus::kSucceeded,generated(),{}};
+  else {
+    result=delegate();
+    if(result.output_candidate) t.candidates.push_back(J{{"label",label},{"path",(ctx.temporary_storage.stage_root/result.output_candidate->metadata_path).string()},
+                                                        {"sha256",dp::sha256_file(ctx.temporary_storage.stage_root/result.output_candidate->metadata_path)}});
+  }
+  t.events.push_back("method_return:"+label+":"+str(result.status));
+  if(t.c.cancel_at=="after:"+label) t.signal("after:"+label);
+  return result;
+}
+class P : public dp::PartitionStrategy { Trace& t; public: explicit P(Trace& v):t(v){}
+ dp::StageResult run(const dp::ArtifactRef& d,const fs::path& p,dp::StageContext& c) override {
+ return method(t,"P",c,[&]{return dp::test::make_fake_partition()->run(d,p,c);},[&]{return dp::test::materialize_partition_candidate(c.temporary_storage.stage_root,d);}); }};
+class L : public dp::LocalGraphBuilder {Trace& t;public:explicit L(Trace& v):t(v){}
+ dp::StageResult build(const dp::ArtifactRef& p,dp::PartitionId id,const dp::LocalBuildConfig& cfg,dp::StageContext& c) override {
+ return method(t,"L"+std::to_string(id),c,[&]{return dp::test::make_fake_local_graph()->build(p,id,cfg,c);},[&]{return dp::test::materialize_local_candidate(c.temporary_storage.stage_root,c.workspace,p,id,false);}); }};
+class M : public dp::GraphMerger {Trace& t;public:explicit M(Trace& v):t(v){}
+ dp::StageResult merge(const dp::ArtifactRef& p,const std::vector<dp::ArtifactRef>& l,const fs::path& cfg,dp::StageContext& c) override {
+ return method(t,"M",c,[&]{return dp::test::make_fake_merge()->merge(p,l,cfg,c);},[&]{return dp::test::materialize_global_candidate(c.temporary_storage.stage_root,c.workspace,p,l,false);}); }};
+void factory(Trace& t,int n,const std::string& label) {
+ auto normal=snapshot(t.workspace.normal_root);
+ auto manifests=snapshot(t.workspace.manifest_root);
+ t.previous_successes.insert(normal.begin(),normal.end());
+ t.previous_successes.insert(manifests.begin(),manifests.end());
+ ++t.factories[n]; t.events.push_back("factory:"+label);
+ if(t.c.target==label && t.c.action=="factory_cancel") t.signal("factory-return:"+label);
+ if(t.c.target==label && t.c.action=="factory_cancel_exception") throw dp::PipelineError(dp::ErrorCategory::kCancelled,"probe-factory-cancel:"+label);
+ if(t.c.target==label && t.c.action=="factory_std") throw std::runtime_error("probe-factory-std:"+label);
+ if(t.c.target==label && t.c.action=="factory_pipeline") throw dp::PipelineError(dp::ErrorCategory::kSourceMismatch,"probe-factory-pipeline:"+label);
+}
+std::map<std::string,std::string> snapshot(const fs::path& root) {
+ std::map<std::string,std::string> h;
+ for(const auto& x:fs::recursive_directory_iterator(root)) if(x.is_regular_file()) h[x.path().string()]=dp::sha256_file(x.path());
+ return h;
+}
+J run(Case c,const fs::path& root, const fs::path& cli_request={}) {
+ dp::test::FakeStageEnvironment env(c.name,root); const auto& ws=env.workspace();
+ auto dataset=dp::test::materialize_fake_dataset(ws); dp::Validator validator(ws);
+ auto grant=validator.validate(dataset); if(!grant.valid()) throw std::runtime_error("invalid fixture Dataset");
+ Trace t; t.workspace=ws; t.c=c; t.request=dp::test::canonical_execution_request(c.name,dataset); t.dataset=grant.validated_artifact->dataset();
+ dp::PipelineExecutionResult seed;
+ if(c.route!="fresh") {
+  dp::ImplementationRegistry seed_registry(dp::RegistryAdmissionPolicy::kTest); dp::test::register_fake_implementations(seed_registry);
+  auto seed_context=env.make_context("seed"); seed=dp::PipelineExecutor(seed_registry,ws).execute(dp::test::canonical_execution_request("seed",dataset),seed_context);
+  if(seed.status!=dp::StageStatus::kSucceeded) throw std::runtime_error("seed fixture did not succeed");
+  if(c.route=="reuse") t.request.reused_partition=seed.partition_artifact;
+  else t.request.merge_only_inputs=dp::MergeOnlyInputSet{*seed.partition_artifact,seed.local_artifacts};
+ }
+ auto before=snapshot(ws.normal_root); auto before_manifests=snapshot(ws.manifest_root); before.insert(before_manifests.begin(),before_manifests.end());
+ dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kTest);
+ registry.register_partition(dp::test::fake_partition_descriptor(),[&]()->std::unique_ptr<dp::PartitionStrategy>{factory(t,0,"P");return std::make_unique<P>(t);});
+ registry.register_local_build(dp::test::fake_local_graph_descriptor(),[&]()->std::unique_ptr<dp::LocalGraphBuilder>{factory(t,1,"L"+std::to_string(t.factories[1]));return std::make_unique<L>(t);});
+ registry.register_merge(dp::test::fake_merge_descriptor(),[&]()->std::unique_ptr<dp::GraphMerger>{factory(t,2,"M");return std::make_unique<M>(t);});
+ auto context=env.make_context("probe"); context.cancellation_token=&t.token; context.metrics_sink=&t.metrics;
+ if(c.cancel_at.rfind("published:",0)==0)
+   t.published_marker=ws.manifest_root/c.name/"stages"/(c.cancel_at.substr(10)+".json");
+ if(c.cancel_at=="before") t.signal("before_executor");
+ J o={{"case",c.name},{"action",c.action},{"target",c.target},{"route",c.route},{"workspace",root.string()}};
+ try {
+  if(cli_request.empty()) {
+   auto r=dp::PipelineExecutor(registry,ws).execute(t.request,context);
+   o["status"]=str(r.status); o["executor_counts"]={r.invocations.partition,r.invocations.local_build,r.invocations.merge};
+   o["stage_order"]=J::array(); for(auto s:r.stage_order)o["stage_order"].push_back(std::string(dp::to_string(s)));
+   o["local_partition_ids"]=r.local_partition_ids;
+   o["failure"]=r.failure?failure(*r.failure):J(nullptr);
+   o["result_manifest_paths"]=J::array(); for(auto p:r.build_manifest_paths)o["result_manifest_paths"].push_back(p.string());
+   o["final_artifact"]=r.artifact?J::parse(dp::serialize_artifact_ref(*r.artifact)):J(nullptr);
+   o["evaluation_report"]=r.evaluation_report_path?J(r.evaluation_report_path->string()):J(nullptr);
+   o["quarantine_id"]=r.quarantine_id?J(*r.quarantine_id):J(nullptr);
+  } else {
+   J document{{"request_version", "1.0.0"}, {"request_id", c.name}, {"operation", "execute"},
+      {"study_class", "infrastructure_validation"},
+      {"workspace", {{"root", ws.root.string()}, {"normal_root", ws.normal_root.string()},
+        {"temporary_root", ws.temporary_root.string()}, {"manifest_root", ws.manifest_root.string()},
+        {"report_root", ws.report_root.string()}, {"quarantine_root", ws.quarantine_root.string()},
+        {"memory_budget_bytes", 1048576}, {"thread_budget", 1}}},
+      {"dataset", J::parse(dp::serialize_artifact_ref(dataset))},
+      {"implementations", {{"partition", t.request.partition_implementation_id},
+        {"local_build", t.request.local_implementation_id}, {"merge", t.request.merge_implementation_id}}},
+      {"stage_parameters", {{"partition", J::parse(t.request.partition_parameters_json)},
+        {"local_build", J::parse(t.request.local_parameters_json)}, {"merge", J::parse(t.request.merge_parameters_json)}}},
+      {"repetition_policy", {{"count", 2}, {"aggregation", "retain_all"}}}};
+   const auto request_path=ws.temporary_root/"cli-request.json";
+   dp::write_immutable_text(request_path,document.dump());
+   const auto dispatched=dp::dispatch_runner_request(request_path,"execute",registry,context);
+   o["cli_result"]=J::parse(dispatched.result_json);o["status"]=o["cli_result"]["outcome"];
+   o["exit_code"]=dispatched.exit_code;
+  }
+ } catch(const std::exception& e) {o["escaped_exception"]=e.what();} catch(...) {o["escaped_exception"]="non-std exception";}
+ o["factory_counts"]=counts(t.factories); o["method_counts"]=counts(t.methods);o["events"]=t.events;o["token_reads"]=t.reads;
+ before.insert(t.previous_successes.begin(),t.previous_successes.end());
+ o["prior_inputs_and_successes_unchanged"]=true; for(const auto& [p,sha]:before)if(!fs::is_regular_file(p)||dp::sha256_file(p)!=sha)o["prior_inputs_and_successes_unchanged"]=false;
+ o["dataset_valid_after"]=validator.validate(dataset).valid();
+ o["normal_artifacts"]=J::array(); for(const auto& x:fs::recursive_directory_iterator(ws.normal_root)) if(x.path().filename()=="artifact.json"){
+  auto metadata=read(x.path());
+  auto ref=dp::parse_artifact_ref(J{{"metadata_path",fs::relative(x.path(),ws.normal_root).string()},{"artifact_type",metadata["artifact_type"]},{"format_version",metadata["format_version"]},{"aggregate_checksum",metadata["aggregate_checksum"]}}.dump());
+  o["normal_artifacts"].push_back(J{{"path",x.path().string()},{"valid",validator.validate_with_lineage(ref).valid()}});
+ }
+ o["manifests_on_disk"]=J::array();
+ for(const auto& x:fs::recursive_directory_iterator(ws.root))if(x.is_regular_file() && x.path().extension()==".json") {
+   const auto doc=read(x.path());
+   if(doc.contains("manifest_version")) {
+    J item={{"path",x.path().string()},{"document",doc}};
+    try {auto parsed=dp::parse_build_manifest(doc.dump()); item["cpp_parsed"]=true;}catch(const std::exception& e){item["cpp_parse_error"]=e.what();}
+    o["manifests_on_disk"].push_back(item);
+   }
+ }
+ o["candidate_tracking"]=t.candidates;for(auto& item:o["candidate_tracking"])item["original_path_exists_after"]=fs::exists(item["path"].get<std::string>());
+ o["files_after"]=snapshot(ws.root);
+ save(root/"observation.json",o);return o;
+}
+
+void matrix() {
+ const char* retained=std::getenv("DISKANN_LIFECYCLE_TEST_OUTPUT");
+ dp::test::FakeStageEnvironment owner("lifecycle-matrix");
+ const fs::path base=retained?fs::path(retained):owner.workspace().root/"cases";
+ struct Expected { Case c; Counts factories, methods; std::string status; int manifests; };
+ std::vector<Expected> cases{
+  {{"success","success","",""},{1,2,1},{1,2,1},"SUCCEEDED",4},
+  {{"cancel-before","success","","before"},{0,0,0},{0,0,0},"CANCELLED",0},
+  {{"cancel-after-partition","success","","published:partition"},{1,0,0},{1,0,0},"CANCELLED",1},
+  {{"cancel-between-locals","success","","published:local-0"},{1,1,0},{1,1,0},"CANCELLED",2},
+  {{"cancel-before-merge","success","","published:local-1"},{1,2,0},{1,2,0},"CANCELLED",3},
+  {{"cancel-before-evaluation","success","","published:merge"},{1,2,1},{1,2,1},"CANCELLED",4},
+ };
+ for (std::string label:{"P","L1","M"}) {
+  const Counts entered=label=="P"?Counts{1,0,0}:label=="L1"?Counts{1,2,0}:Counts{1,2,1};
+  auto not_entered=entered; --not_entered[label=="P"?0:label=="M"?2:1];
+  const int prior=label=="P"?0:label=="L1"?2:3;
+  for (std::string action:{"factory_std","factory_pipeline","factory_cancel","factory_cancel_exception","throw_std","throw_pipeline","throw_cancel","throw_std_cancelled","failed","failed_cancelled","cancelled","owned_failed","owned_throw","missing","missing_cancelled","failed_candidate","cancelled_candidate","throw_after_candidate"}) {
+   const bool factory=action.rfind("factory_",0)==0;
+   const bool cancelled=action=="factory_cancel"||action=="factory_cancel_exception"||action=="throw_cancel"||action=="cancelled";
+   const bool invalid=action=="missing"||action=="missing_cancelled"||action=="failed_candidate"||action=="cancelled_candidate";
+   cases.push_back({{action+"-"+label,action,label,""},entered,factory?not_entered:entered,
+                    invalid?"INVALID_OUTPUT":cancelled?"CANCELLED":"FAILED",prior+(factory?0:1)});
+  }
+  cases.push_back({{"cancel-before-publication-"+label,"success",label,"after:"+label},entered,entered,"CANCELLED",prior+1});
+  for (std::string action:{"failed_candidate","cancelled_candidate"})
+   cases.push_back({{"cancel-with-invalid-"+action+label,action,label,"after:"+label},entered,entered,"INVALID_OUTPUT",prior+1});
+ }
+ for (std::string route:{"reuse","merge_only"}) {
+  const Counts full=route=="reuse"?Counts{0,2,1}:Counts{0,0,1};
+  cases.push_back({{route+"-success","success","","",false,route},full,full,"SUCCEEDED",route=="reuse"?4:1});
+  cases.push_back({{route+"-cancel-before","success","","before",false,route},{0,0,0},{0,0,0},"CANCELLED",0});
+  const auto target=route=="reuse"?"L0":"M";
+  const Counts first=route=="reuse"?Counts{0,1,0}:Counts{0,0,1};
+  for(std::string action:{"throw_std","throw_cancel","factory_std","factory_cancel"}) {
+    const bool factory=action.rfind("factory_",0)==0;
+    cases.push_back({{route+"-"+action,action,target,"",false,route},first,factory?Counts{}:first,
+                     action=="throw_cancel"||action=="factory_cancel"?"CANCELLED":"FAILED",
+                     (route=="reuse"?1:0)+(factory?0:1)});
+  }
+  cases.push_back({{route+"-cancel-final","success","","published:merge",false,route},full,full,"CANCELLED",route=="reuse"?4:1});
+ }
+ for (const auto& e:cases) {
+  const auto o=run(e.c,base/e.c.name);
+  std::cout << "lifecycle " << e.c.name << " " << o.at("status") << " F=" << o.at("factory_counts") << " S=" << o.at("method_counts") << " E=" << o.at("executor_counts") << std::endl;
+  DP_EXPECT_EQ(o.at("factory_counts"), J(e.factories));
+  DP_EXPECT_EQ(o.at("method_counts"), J(e.methods));
+  DP_EXPECT_EQ(o.at("executor_counts"), J(e.methods));
+  DP_EXPECT_EQ(o.at("status"),J(e.status));
+  DP_EXPECT_EQ(o.at("stage_order").size(),e.methods[0]+e.methods[1]+e.methods[2]);
+  DP_EXPECT_EQ(o.at("local_partition_ids").size(),e.methods[1]);
+  DP_EXPECT_EQ(o.at("result_manifest_paths").size(),static_cast<std::size_t>(e.manifests));
+  DP_EXPECT_TRUE(o.at("prior_inputs_and_successes_unchanged").get<bool>());
+  DP_EXPECT_TRUE(o.at("dataset_valid_after").get<bool>());
+  for(const auto& a:o.at("normal_artifacts")) DP_EXPECT_TRUE(a.at("valid").get<bool>());
+  for(const auto& m:o.at("manifests_on_disk")) DP_EXPECT_TRUE(m.at("cpp_parsed").get<bool>());
+  if(e.status!="SUCCEEDED") DP_EXPECT_TRUE(o.at("evaluation_report").is_null());
+  if(e.status!="INVALID_OUTPUT") DP_EXPECT_TRUE(o.at("quarantine_id").is_null());
+  if(e.status=="CANCELLED") {
+   DP_EXPECT_TRUE(o.at("failure").is_object());
+   if(o.at("failure").is_object()) DP_EXPECT_EQ(o.at("failure").at("category"),J("cancelled"));
+  }
+  if(e.c.action.rfind("throw_",0)==0 || e.c.action.rfind("factory_",0)==0) {
+   if(e.c.action!="factory_cancel") DP_EXPECT_TRUE(o.at("failure").at("reason").get<std::string>().find("probe-")!=std::string::npos);
+   if(e.c.action.rfind("throw_",0)==0 && !o.at("result_manifest_paths").empty()) {
+    auto terminal=read(o.at("result_manifest_paths").back().get<std::string>());
+    DP_EXPECT_EQ(terminal.at("status"),J(e.status));
+    DP_EXPECT_TRUE(terminal.contains("failure"));
+    if(terminal.contains("failure")) {
+    DP_EXPECT_EQ(terminal.at("failure").at("category"),o.at("failure").at("category"));
+    DP_EXPECT_TRUE(terminal.at("failure").at("reason").get<std::string>().find("probe-")!=std::string::npos);
+    }
+   }
+  }
+  if(e.c.action=="owned_throw") {
+   for(const auto& m:o.at("manifests_on_disk")) {
+    if(m.at("path").get<std::string>().find("/stages/")!=std::string::npos)
+      DP_EXPECT_TRUE(!m.at("document").at("parameters").contains("stage_execution_manifest"));
+   }
+  }
+  if(e.c.name.rfind("cancel-before-publication-",0)==0) {
+   DP_EXPECT_TRUE(!o.at("candidate_tracking").empty());
+   DP_EXPECT_TRUE(o.at("candidate_tracking").back().at("original_path_exists_after").get<bool>());
+   const auto& candidate=o.at("candidate_tracking").back();
+   if(candidate.at("original_path_exists_after").get<bool>())
+     DP_EXPECT_EQ(dp::sha256_file(candidate.at("path").get<std::string>()),candidate.at("sha256").get<std::string>());
+   if(!o.at("result_manifest_paths").empty()) {
+    const auto terminal=read(o.at("result_manifest_paths").back().get<std::string>());
+    DP_EXPECT_EQ(terminal.at("status"),J("CANCELLED"));
+    DP_EXPECT_TRUE(!terminal.contains("validation_evidence_path"));
+   }
+  }
+  if(e.c.name=="cancel-before-evaluation") {
+   DP_EXPECT_TRUE(!o.at("final_artifact").is_null());
+   if(!o.at("result_manifest_paths").empty()) {
+    const auto terminal=read(o.at("result_manifest_paths").back().get<std::string>());
+    DP_EXPECT_EQ(terminal.at("status"),J("SUCCEEDED"));
+   }
+  }
+ }
+ const auto write_failure=run({"evidence-write-failure","evidence_write_failure","P",""},base/"evidence-write-failure");
+ DP_EXPECT_EQ(write_failure.at("status"),J("FAILED"));
+ DP_EXPECT_TRUE(write_failure.at("result_manifest_paths").empty());
+ DP_EXPECT_EQ(write_failure.at("executor_counts"),J({1,0,0}));
+ DP_EXPECT_EQ(write_failure.at("failure").at("category"),J("source_mismatch"));
+ DP_EXPECT_TRUE(write_failure.at("failure").at("reason").get<std::string>().find("probe-original-write-failure")!=std::string::npos);
+ DP_EXPECT_TRUE(write_failure.at("failure").at("reason").get<std::string>().find("terminal evidence write failed")!=std::string::npos);
+ for(const auto& e:cases) {
+  if(e.c.route!="fresh") continue; // merge-only is a C++ path, not a CLI request.
+  auto c=e.c; c.name="cli-"+c.name;
+  const auto observed=run(c,base/c.name,"dispatch");
+  const auto& cli=observed.at("cli_result");
+  DP_EXPECT_EQ(cli.at("outcome"),J(e.status));
+  DP_EXPECT_EQ(observed.at("exit_code"),J(e.status=="SUCCEEDED"?0:e.status=="INVALID_OUTPUT"?5:4));
+  DP_EXPECT_EQ(observed.at("factory_counts"),J(e.factories));
+  DP_EXPECT_EQ(observed.at("method_counts"),J(e.methods));
+  DP_EXPECT_EQ(cli.at("stage_invocations").at("partition"),J(e.methods[0]));
+  DP_EXPECT_EQ(cli.at("stage_invocations").at("local_build"),J(e.methods[1]));
+  DP_EXPECT_EQ(cli.at("stage_invocations").at("merge"),J(e.methods[2]));
+  const bool no_terminal=e.c.action.rfind("factory_",0)==0 || e.c.name=="cancel-before" || e.c.cancel_at.rfind("published:",0)==0;
+  DP_EXPECT_EQ(cli.contains("build_manifest_path"),!no_terminal);
+  if(cli.contains("build_manifest_path")) {
+   const auto terminal=read(base/c.name/cli.at("build_manifest_path").get<std::string>());
+   DP_EXPECT_EQ(terminal.at("status"),cli.at("outcome"));
+   DP_EXPECT_EQ(terminal.at("run_id"),J(c.name));
+  }
+  if(e.status=="CANCELLED") DP_EXPECT_EQ(cli.at("failure").at("category"),J("cancelled"));
+  if(e.status!="SUCCEEDED") DP_EXPECT_TRUE(!cli.contains("evaluation_report_path"));
+  if(e.c.name=="cancel-before-evaluation") {
+   DP_EXPECT_TRUE(cli.contains("artifact"));
+   DP_EXPECT_TRUE(cli.contains("validation_evidence_path"));
+  }
+ }
+}
+} // namespace lifecycle
 
 }  // namespace
 
 int main() {
+  lifecycle::matrix();
   runtime_services_matrix();
   reject_reuse("reuse-missing-local-claimed", ReuseCase::kMissingLocal, true);
   reject_reuse("reuse-missing-merge-claimed", ReuseCase::kMissingMerge, true);
@@ -479,18 +845,18 @@ int main() {
   reject_reuse("reuse-invalid-checksum", ReuseCase::kChecksum);
   reject_reuse("reuse-invalid-structure", ReuseCase::kStructure);
   reject_reuse("reuse-invalid-lineage", ReuseCase::kLineage);
-  const auto partition_cancelled = run_with_cancel(1, "cancel-partition");
+  const auto partition_cancelled = run_with_cancel("partition.start", "cancel-partition");
   DP_EXPECT_EQ(partition_cancelled.status, dp::StageStatus::kCancelled);
   DP_EXPECT_EQ(partition_cancelled.invocations.local_build, std::size_t{0});
   DP_EXPECT_EQ(partition_cancelled.invocations.merge, std::size_t{0});
   DP_EXPECT_TRUE(!partition_cancelled.artifact.has_value());
 
-  const auto local_cancelled = run_with_cancel(4, "cancel-local");
+  const auto local_cancelled = run_with_cancel("local_build.start", "cancel-local");
   DP_EXPECT_EQ(local_cancelled.status, dp::StageStatus::kCancelled);
   DP_EXPECT_EQ(local_cancelled.invocations.merge, std::size_t{0});
   DP_EXPECT_TRUE(!local_cancelled.artifact.has_value());
 
-  const auto merge_cancelled = run_with_cancel(10, "cancel-merge");
+  const auto merge_cancelled = run_with_cancel("merge.start", "cancel-merge");
   DP_EXPECT_EQ(merge_cancelled.status, dp::StageStatus::kCancelled);
   DP_EXPECT_EQ(merge_cancelled.invocations.merge, std::size_t{1});
   DP_EXPECT_TRUE(!merge_cancelled.artifact.has_value());

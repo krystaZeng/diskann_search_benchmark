@@ -734,3 +734,55 @@ def test_feature006_quality_and_decision_schemas_are_strict_and_local() -> None:
         _feature_006_validator("global-graph-artifact-v2.schema.json").validate(
             public_graph
         )
+
+
+def _interrupted_execute() -> dict:
+    return {
+        "result_version": "2.0.0", "request_id": "interrupted-execute",
+        "operation": "execute", "outcome": "CANCELLED", "exit_code": 4,
+        "stage_invocations": None,
+        "failure": {"category": "cancelled", "reason": "Harness requested termination; forced=false"},
+    }
+
+
+def test_runner_result_versions_preserve_exact_and_unknown_counts() -> None:
+    validator = _validator("runner-result.schema.json")
+    unknown = _interrupted_execute()
+    validator.validate(unknown)
+    for outcome, exit_code in (("SUCCEEDED", 0), ("FAILED", 4), ("CANCELLED", 4)):
+        for counts in ({"partition": 0, "local_build": 0, "merge": 0},
+                       {"partition": 1, "local_build": 2, "merge": 1}):
+            exact = {**unknown, "result_version": "1.0.0", "outcome": outcome,
+                     "exit_code": exit_code, "stage_invocations": counts}
+            validator.validate(exact)
+    legacy_cancelled = {**unknown, "result_version": "1.0.0",
+                        "stage_invocations": {"partition": 0, "local_build": 0, "merge": 0}}
+    del legacy_cancelled["failure"]
+    validator.validate(legacy_cancelled)
+    assert unknown["stage_invocations"] is None
+
+
+@pytest.mark.parametrize("change", [
+    {"result_version": "1.0.0"}, {"result_version": "3.0.0"},
+    {"operation": "preflight"}, {"operation": "validate"}, {"operation": "evaluate"},
+    {"operation": "registry"}, {"outcome": "SUCCEEDED", "exit_code": 0},
+    {"outcome": "FAILED"}, {"outcome": "REJECTED"}, {"exit_code": 10},
+    {"stage_invocations": {"partition": 0, "local_build": 0, "merge": 0}},
+    {"stage_invocations": {"partition": None, "local_build": 0, "merge": 0}},
+    {"failure": {"category": "internal", "reason": "wrong category"}},
+    {"failure": {"category": "cancelled", "reason": ""}},
+    {"failure": {"category": "cancelled"}},
+    {"build_manifest_path": "previous-success.json"},
+    {"evaluation_report_path": "not-produced.json"}, {"quarantine_id": "not-produced"},
+    {"validation_evidence_path": "unverified.json"},
+])
+def test_unknown_runner_result_rejects_invalid_combinations(change: dict) -> None:
+    with pytest.raises(ValidationError):
+        _validator("runner-result.schema.json").validate({**_interrupted_execute(), **change})
+
+
+def test_unknown_runner_result_requires_failure() -> None:
+    result = _interrupted_execute()
+    del result["failure"]
+    with pytest.raises(ValidationError):
+        _validator("runner-result.schema.json").validate(result)

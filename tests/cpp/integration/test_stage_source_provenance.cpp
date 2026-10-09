@@ -76,6 +76,9 @@ enum class SubordinateMode {
   kRunning,
   kPathEscape,
   kOuterFailed,
+  kCancelled,
+  kCancelledReason,
+  kCancelAfterSuccess,
 };
 
 class ManifestPartition final : public dp::PartitionStrategy {
@@ -98,6 +101,10 @@ class ManifestPartition final : public dp::PartitionStrategy {
       result.output_candidate.reset();
     }
 
+    if (mode_ == SubordinateMode::kCancelled || mode_ == SubordinateMode::kCancelledReason) {
+      result.status = dp::StageStatus::kCancelled;
+      result.output_candidate.reset();
+    }
     const auto path = dp::resolve_confined_path(
         context.workspace.report_root,
         std::filesystem::path("stage-owned") / run_id_ / "partition.json");
@@ -142,6 +149,12 @@ class ManifestPartition final : public dp::PartitionStrategy {
       manifest.failure = dp::FailureInfo{dp::ErrorCategory::kInternal,
                                          "subprocess failed", 17};
     }
+    if (mode_ == SubordinateMode::kCancelled || mode_ == SubordinateMode::kCancelledReason)
+      manifest.status = dp::StageStatus::kCancelled;
+    if (mode_ == SubordinateMode::kCancelledReason)
+      manifest.failure = dp::FailureInfo{dp::ErrorCategory::kCancelled, "subprocess cancelled", 4};
+    if (mode_ == SubordinateMode::kCancelAfterSuccess)
+      dynamic_cast<dp::test::FakeCancellationToken*>(context.cancellation_token)->cancel_now();
     dp::write_immutable_text(path, dp::serialize_build_manifest(manifest));
     result.build_manifest_path = path;
     return result;
@@ -306,9 +319,41 @@ void test_failed_outer_stage_retains_valid_subordinate_reference() {
   DP_EXPECT_EQ(subordinate.failure->exit_code, std::optional<int>{17});
 }
 
+void test_cancelled_subordinate_manifest_compatibility() {
+  for (auto mode : {SubordinateMode::kCancelled, SubordinateMode::kCancelledReason,
+                    SubordinateMode::kCancelAfterSuccess}) {
+    dp::test::FakeStageEnvironment environment("cancelled-subordinate");
+    const auto dataset = dp::test::materialize_fake_dataset(environment.workspace());
+    const auto result = execute_with_partition(environment, dataset, "cancelled-run", mode);
+    DP_EXPECT_EQ(result.status, dp::StageStatus::kCancelled);
+    DP_EXPECT_EQ(result.invocations.partition, std::size_t{1});
+    DP_EXPECT_EQ(result.invocations.local_build, std::size_t{0});
+    DP_EXPECT_EQ(result.build_manifest_paths.size(), std::size_t{1});
+    if (result.build_manifest_paths.empty()) continue;
+    const auto parent = read_manifest(result.build_manifest_paths.front());
+    DP_EXPECT_EQ(parent.status, dp::StageStatus::kCancelled);
+    const auto link = parameters(parent).at("stage_execution_manifest");
+    const auto copy = environment.workspace().root / link.at("path").get<std::string>();
+    const auto original = environment.workspace().report_root / "stage-owned/cancelled-run/partition.json";
+    DP_EXPECT_EQ(read_text(copy), read_text(original));
+    DP_EXPECT_EQ(dp::sha256_file(copy), link.at("sha256").get<std::string>());
+    const auto subordinate = read_manifest(copy);
+    DP_EXPECT_EQ(subordinate.status, mode == SubordinateMode::kCancelAfterSuccess
+                    ? dp::StageStatus::kSucceeded : dp::StageStatus::kCancelled);
+    DP_EXPECT_EQ(subordinate.failure.has_value(), mode == SubordinateMode::kCancelledReason);
+    if (subordinate.failure) {
+      DP_EXPECT_EQ(subordinate.failure->reason, std::string("subprocess cancelled"));
+      DP_EXPECT_EQ(subordinate.failure->category, dp::ErrorCategory::kCancelled);
+    }
+    DP_EXPECT_TRUE(!parent.validation_evidence_path.has_value());
+    DP_EXPECT_TRUE(!result.partition_artifact.has_value());
+    DP_EXPECT_TRUE(!result.quarantine_id.has_value());
+  }
+}
 }  // namespace
 
 int main() {
+  test_cancelled_subordinate_manifest_compatibility();
   test_legacy_fallback_and_empty_transport();
   test_present_stage_sources_for_new_and_reused_partition();
   test_valid_subordinate_manifest_is_confined_and_stage_local();

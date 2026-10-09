@@ -217,6 +217,36 @@ Hard API rules:
   resolution/validation, and before output publication; future implementations declare and test
   equivalent bounded cooperative checkpoints appropriate to their work.
 
+### Executor cancellation and exceptional completion
+
+The Executor checks its cooperative token before the first stage/reuse, before each factory,
+and again before calling the returned stage object. This applies to each Local PartitionId,
+reused Partition inputs, and merge-only execution. Factory creation is not a stage invocation:
+counts, stage order, and Local IDs are registered only when the method starts. Factory errors
+retain their location/category/reason without creating a fictitious stage execution Manifest.
+
+After a method starts, a typed or standard exception records that stage's terminal Manifest
+unless a terminal write has already been attempted. `PipelineError(kCancelled, ...)` yields
+`CANCELLED` and category `cancelled`; other exceptions remain `FAILED`, even if the token also
+becomes cancelled. Standard exceptions retain `what()` under `internal`. A failed evidence write
+adds a diagnostic without replacing the original exception or returning a nonexistent path.
+Records are immutable; this is not recovery from partial disk writes.
+
+Returned FAILED/CANCELLED and terminal-output violations are handled before the post-method
+cancellation gate. A legal successful candidate is checked for cancellation before validation
+and publication: cancellation leaves it temporary, with no VALID claim or quarantine. No new
+cancellation read interrupts validation, publication, or success-evidence persistence. The next
+boundary observes cancellation after that work reaches success or error. In particular, after
+Merge publication and before automatic evaluation, cancellation preserves the legal graph,
+VALID evidence and SUCCEEDED Merge Manifest, returns CANCELLED, and skips evaluation.
+There is no new cancellation mechanism inside evaluation or an arbitrary running algorithm.
+
+An explicitly returned legal stage-owned Manifest remains byte-for-byte immutable and is linked
+by path and checksum. CANCELLED Manifests may omit failure as before, or provide failure with
+category `cancelled`. Unreferenced files are not discovered by scanning; error text discarded
+inside an algorithm cannot be reconstructed. This lifecycle state is private to the Executor;
+`StageResult`, `PipelineExecutionResult`, and the public C++ signatures are unchanged.
+
 ## 4. Descriptor and Static Factory Registry
 
 ```cpp

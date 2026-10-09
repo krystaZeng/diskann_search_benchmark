@@ -254,18 +254,50 @@ NegativeCaseObservation preflight_case(const std::string& case_id) {
           result.quarantine_id.has_value(), result.artifact.has_value(), true};
 }
 
-NegativeCaseObservation cancellation_case(const std::string& case_id,
-                                           std::size_t observation,
-                                           std::string gate) {
+class CancellationEvent final : public MetricsSink {
+ public:
+  CancellationEvent(FakeStageEnvironment& env, std::string name)
+      : env_(env), name_(std::move(name)) {}
+  void event(const std::string& name) override {
+    env_.metrics().event(name);
+    if (name == name_) { observed = true; env_.cancellation().cancel_now(); }
+  }
+  void increment(const std::string& name, std::uint64_t amount) override {
+    env_.metrics().increment(name, amount);
+  }
+  bool observed{false};
+ private:
+  FakeStageEnvironment& env_;
+  std::string name_;
+};
+class AfterPartitionPublication final : public CancellationToken {
+ public:
+  explicit AfterPartitionPublication(std::filesystem::path marker) : marker_(std::move(marker)) {}
+  bool is_cancelled() const noexcept override {
+    std::error_code error;
+    observed = std::filesystem::is_regular_file(marker_, error);
+    return observed;
+  }
+  mutable bool observed{false};
+ private: std::filesystem::path marker_;
+};
+NegativeCaseObservation cancellation_case(const std::string& case_id, std::string gate) {
   FakeStageEnvironment environment("negative-" + case_id);
   const auto dataset = materialize_fake_dataset(environment.workspace());
   ImplementationRegistry registry(RegistryAdmissionPolicy::kTest);
   register_fake_implementations(registry);
-  environment.cancellation().cancel_on_observation(observation);
+  auto checkpoint = gate;
+  if (checkpoint.rfind("local.", 0) == 0) checkpoint.replace(0, 6, "local_build.");
+  CancellationEvent metrics(environment, checkpoint);
+  AfterPartitionPublication boundary(environment.workspace().manifest_root / case_id / "stages/partition.json");
   auto context = environment.make_context(case_id + "-context");
+  context.metrics_sink = &metrics;
+  if (case_id == "cancel_before_stage") environment.cancellation().cancel_now();
+  if (case_id == "cancel_between_stages") context.cancellation_token = &boundary;
   const auto result = PipelineExecutor(registry, environment.workspace())
-                          .execute(canonical_execution_request(case_id, dataset),
-                                   context);
+                          .execute(canonical_execution_request(case_id, dataset), context);
+  if (case_id != "cancel_before_stage" && !metrics.observed && !boundary.observed)
+    throw std::runtime_error("cancellation checkpoint was not reached: " + gate);
   return {result.failure ? result.failure->category : ErrorCategory::kInternal,
           std::move(gate), result.status, result.invocations,
           result.evaluation_report_path ? 1U : 0U, 0, 0,
@@ -275,23 +307,22 @@ NegativeCaseObservation cancellation_case(const std::string& case_id,
 }  // namespace
 
 NegativeCaseObservation execute_negative_case(const std::string& case_id) {
-  static const std::unordered_map<std::string, std::pair<std::size_t, std::string>>
+  static const std::unordered_map<std::string, std::string>
       cancellations{
-          {"cancel_before_stage", {1, "stage_start"}},
-          {"cancel_between_stages", {4, "next_stage_start"}},
-          {"cancel_partition_start", {1, "partition.start"}},
-          {"cancel_partition_after_input", {2, "partition.after_input"}},
-          {"cancel_partition_before_publish", {3, "partition.before_publish"}},
-          {"cancel_local_start", {4, "local.start"}},
-          {"cancel_local_after_input", {5, "local.after_input"}},
-          {"cancel_local_before_publish", {6, "local.before_publish"}},
-          {"cancel_merge_start", {10, "merge.start"}},
-          {"cancel_merge_after_input", {11, "merge.after_input"}},
-          {"cancel_merge_before_publish", {12, "merge.before_publish"}}};
+          {"cancel_before_stage", "stage_start"},
+          {"cancel_between_stages", "next_stage_start"},
+          {"cancel_partition_start", "partition.start"},
+          {"cancel_partition_after_input", "partition.after_input"},
+          {"cancel_partition_before_publish", "partition.before_publish"},
+          {"cancel_local_start", "local.start"},
+          {"cancel_local_after_input", "local.after_input"},
+          {"cancel_local_before_publish", "local.before_publish"},
+          {"cancel_merge_start", "merge.start"},
+          {"cancel_merge_after_input", "merge.after_input"},
+          {"cancel_merge_before_publish", "merge.before_publish"}};
   const auto cancellation = cancellations.find(case_id);
   if (cancellation != cancellations.end()) {
-    return cancellation_case(case_id, cancellation->second.first,
-                             cancellation->second.second);
+    return cancellation_case(case_id, cancellation->second);
   }
   if (case_id == "unsupported_version" || case_id == "wrong_id_space" ||
       case_id == "capability_unsatisfied" ||

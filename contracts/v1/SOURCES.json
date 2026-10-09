@@ -89,7 +89,7 @@
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/runner-result.schema.json",
       "target": "contracts/v1/schemas/runner-result.schema.json",
-      "sha256": "9497cd3851a3b128053fd9775789399e4e53fb6a4f182127efb1093500d7cc63"
+      "sha256": "8b5931f52c0faa28f0c5831efff84a47a8e26dff6343d532f8cbad1a4b9d86a9"
     },
     {
       "source": "specs/001-modular-cpp-diskann-pipeline/contracts/schemas/validation-evidence.schema.json",

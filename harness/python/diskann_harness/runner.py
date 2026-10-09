@@ -124,17 +124,19 @@ def run_runner(
             raise RunnerError(
                 "runner published a conflicting terminal result during Harness cancellation"
             ) from None
+        # These operations never invoke pipeline stages. For execute, a terminated
+        # child may have started work that has no completed Manifest; counts are
+        # unknown unless a trustworthy terminal result exists (handled above).
+        counts_known = operation in {"preflight", "validate", "evaluate", "registry"}
         cancellation = {
-            "result_version": "1.0.0",
+            "result_version": "1.0.0" if counts_known else "2.0.0",
             "request_id": request_id,
             "operation": operation,
             "outcome": "CANCELLED",
             "exit_code": 4,
-            "stage_invocations": {
-                "partition": 0,
-                "local_build": 0,
-                "merge": 0,
-            },
+            "stage_invocations": (
+                {"partition": 0, "local_build": 0, "merge": 0} if counts_known else None
+            ),
             "failure": {
                 "category": "cancelled",
                 "reason": (
@@ -144,13 +146,13 @@ def run_runner(
                 "exit_code": int(process.returncode if process.returncode is not None else -1),
             },
         }
-        write_immutable_json(result_path, cancellation)
         root = (
             Path(repository_root).resolve()
             if repository_root is not None
             else Path(__file__).resolve().parents[3]
         )
         _schema_validator("runner-result.schema.json", root).validate(cancellation)
+        write_immutable_json(result_path, cancellation)
         return cancellation
 
     result_path = Path(result)

@@ -707,9 +707,25 @@ RunnerDispatchResult dispatch_runner_request(
          {"merge", executed.invocations.merge}};
     if (executed.artifact) result["artifact"] = artifact_ref_json(*executed.artifact);
     if (!executed.build_manifest_paths.empty()) {
-      result["build_manifest_path"] =
-          relative_to(executed.build_manifest_paths.back(), workspace.root)
-              .generic_string();
+      const auto& path = executed.build_manifest_paths.back();
+      // A boundary/factory failure has no started-stage terminal record. Never
+      // label an earlier success as evidence of this execution's failure.
+      bool terminal_matches = true;
+      if (executed.status == StageStatus::kFailed ||
+          executed.status == StageStatus::kCancelled) {
+        try {
+          std::ifstream input(path);
+          const auto manifest = parse_build_manifest(Json::parse(input).dump());
+          terminal_matches = manifest.run_id == request_id &&
+                             manifest.status == executed.status;
+        } catch (const std::exception&) {
+          terminal_matches = false;
+        }
+      }
+      if (terminal_matches) {
+        result["build_manifest_path"] =
+            relative_to(path, workspace.root).generic_string();
+      }
     }
     if (!executed.validation_evidence_paths.empty()) {
       result["validation_evidence_path"] =

@@ -316,6 +316,24 @@ PLANNED ──preflight pass──> RUNNING ──candidate valid──> SUCCEED
 Terminal manifests are immutable. `INVALID_OUTPUT` is not interchangeable with `FAILED` or
 `CANCELLED`.
 
+Factory creation precedes RUNNING and does not count as an invocation. Private Executor state
+tracks the actual method start and terminal write; an exception after method start must leave
+FAILED/CANCELLED evidence when writing is possible, with the original category and reason.
+Factory failure or a boundary cancellation does not invent an executed stage. Typed cancellation
+exceptions are CANCELLED; ordinary failures are not reclassified based on token state.
+Explicit stage-owned evidence remains separately linked by checksum, including legacy CANCELLED
+records without failure and CANCELLED records whose failure category is `cancelled`.
+
+Stage and run terminals differ: cancellation observed after successful final publication leaves
+Merge SUCCEEDED and the graph VALID, but the run CANCELLED with no automatic evaluation.
+A cancelled temporary candidate has no VALID claim and is not quarantined. Success publication
+and its evidence finish without intervening cancellation checks; this is not a disk transaction.
+
+Runner results with exact counts keep version `1.0.0`. Version `2.0.0` is restricted to Harness
+interrupted execute/CANCELLED/exit 4 with a cancellation reason and `stage_invocations: null`.
+Null denotes the entire count set being unknown; it cannot be inferred from completed Manifests,
+coerced to zero, or used with a successful result. No historical result or Artifact is reinterpreted.
+
 ### 8.2 Artifact publication lifecycle
 
 ```text
