@@ -1,0 +1,81 @@
+{
+  "created_at": "2026-10-13T04:42:25.037859+00:00",
+  "small_report": "experiments/reports/diskann-kmeans-small-20261013/verification.json",
+  "small_report_sha256": "0e0e15eea84164f5d23a3461fa77b8ff6da196e11903b6c8bc3274bef5271810",
+  "source_and_binary_checks": {
+    "CMakeLists.txt": {
+      "expected": "6f87d45ee1362c0587730c7b9f4f4e16034c8cd5e158dd50a62be859de5492cc",
+      "actual": "6f87d45ee1362c0587730c7b9f4f4e16034c8cd5e158dd50a62be859de5492cc"
+    },
+    "tests/CMakeLists.txt": {
+      "expected": "d6796fe4273134829595a9936cfaebc2d05874c51bca9767b22064fd5f8c3d8e",
+      "actual": "d6796fe4273134829595a9936cfaebc2d05874c51bca9767b22064fd5f8c3d8e"
+    },
+    "src/partition/diskann_kmeans/CMakeLists.txt": {
+      "expected": "c9df3d812b3cf4774b71da8167e44bf8d7a7ec9da01b4cc154eaf696e272a99f",
+      "actual": "c9df3d812b3cf4774b71da8167e44bf8d7a7ec9da01b4cc154eaf696e272a99f"
+    },
+    "src/partition/diskann_kmeans/native_partition.cpp": {
+      "expected": "bb520eccb6700089d212841bc2e2c49d9db07b059e1eab9848295ca65b0fe780",
+      "actual": "bb520eccb6700089d212841bc2e2c49d9db07b059e1eab9848295ca65b0fe780"
+    },
+    "src/partition/diskann_kmeans/parameters.cpp": {
+      "expected": "ed2cf75390db2a705b97e922b4a6c9b9b0823a63df4a00b1696c5e07c79816f4",
+      "actual": "ed2cf75390db2a705b97e922b4a6c9b9b0823a63df4a00b1696c5e07c79816f4"
+    },
+    "src/partition/diskann_kmeans/partition.cpp": {
+      "expected": "b7b00f6cb703d5753a8e42220083104bc71823b11489b1b644325ea0f6f7b2c0",
+      "actual": "b7b00f6cb703d5753a8e42220083104bc71823b11489b1b644325ea0f6f7b2c0"
+    },
+    "src/partition/diskann_kmeans/runner.cpp": {
+      "expected": "d329ce453d1595fb8af6761f5231e7d362bc9184c0eb49ee8e32fbfe36f69398",
+      "actual": "d329ce453d1595fb8af6761f5231e7d362bc9184c0eb49ee8e32fbfe36f69398"
+    },
+    "src/partition/diskann_kmeans/stage_binding.hpp": {
+      "expected": "4f78a76fdfa842fa1f80d670ca1107eebdd919c781e555a592ffe3982a5cb8d8",
+      "actual": "4f78a76fdfa842fa1f80d670ca1107eebdd919c781e555a592ffe3982a5cb8d8"
+    },
+    "tests/cpp/partition/CMakeLists.txt": {
+      "expected": "4b73d86c3daa08d93eb7ff5d93c814c770cb5890e027e93ac5fa0a82c9ec2a1e",
+      "actual": "4b73d86c3daa08d93eb7ff5d93c814c770cb5890e027e93ac5fa0a82c9ec2a1e"
+    },
+    "tests/cpp/partition/test_diskann_kmeans.cpp": {
+      "expected": "152c33ce031d17b06bb1b8137a1119412cddaf34ccca3dc51bd70defad16662a",
+      "actual": "152c33ce031d17b06bb1b8137a1119412cddaf34ccca3dc51bd70defad16662a"
+    },
+    "contracts/partition/diskann-kmeans-v1/parameters.schema.json": {
+      "expected": "bd0d927916184294f9d83873504a09bbfd57bdc91f93aa8b587cfd0e331d51e0",
+      "actual": "bd0d927916184294f9d83873504a09bbfd57bdc91f93aa8b587cfd0e331d51e0"
+    },
+    "experiments/configs/diskann-kmeans/small.json": {
+      "expected": "49b98c8da639c1bd815f450e42f1b9bfe0c31b2d7fbeee47d7ae817a8bb06a32",
+      "actual": "49b98c8da639c1bd815f450e42f1b9bfe0c31b2d7fbeee47d7ae817a8bb06a32"
+    },
+    "docs/implementations/diskann-kmeans-partition.md": {
+      "expected": "13c45aba4b45d52d56dcd4129a1a4a025c6d4a1adb43fa97331c341d61368b3e",
+      "actual": "13c45aba4b45d52d56dcd4129a1a4a025c6d4a1adb43fa97331c341d61368b3e"
+    },
+    "build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/kmeans_partition_runner": {
+      "expected": "4132351b8982d27b94ab07c5cc03e4021dce91f08335ff0f8186b5bae31574a3",
+      "actual": "4132351b8982d27b94ab07c5cc03e4021dce91f08335ff0f8186b5bae31574a3"
+    },
+    "build/kmeans-partition-linux-20261013/cpp-main-upstream/src/libdiskann_s.a": {
+      "expected": "f72130507d87a2b4aa1fa577c4b9c2d54f49e8120a1777225f69fd427bb48837",
+      "actual": "f72130507d87a2b4aa1fa577c4b9c2d54f49e8120a1777225f69fd427bb48837"
+    },
+    "upstream/diskann-cpp-main/src/partition.cpp": {
+      "expected": "f30f56125c04901d631cae5394c7ac1712d26b8f787def17b80ca92caa95e8b3",
+      "actual": "f30f56125c04901d631cae5394c7ac1712d26b8f787def17b80ca92caa95e8b3"
+    }
+  },
+  "git": {
+    "branch": "codex/kmeans-partition",
+    "head": "0a19cb886428ecbc27b873e47e30af77e11da9dd",
+    "status": "M CMakeLists.txt\n M tests/CMakeLists.txt\n?? 1010_pipeline_Inout_analysis.md\n?? 1012_整体架构.md\n?? architecture_eval_0920.md\n?? contracts/partition/\n?? docs/architecture/figures/\n?? docs/implementations/\n?? experiments/configs/diskann-kmeans/\n?? experiments/reports/diskann-kmeans-small-20261013/\n?? next_steps_0920.md\n?? output/\n?? src/partition/\n?? tests/cpp/partition/",
+    "diff": "diff --git a/CMakeLists.txt b/CMakeLists.txt\nindex 222a4bf..43e4dff 100644\n--- a/CMakeLists.txt\n+++ b/CMakeLists.txt\n@@ -28,6 +28,12 @@ option(\n   DISKANN_SEARCH_EVALUATION\n   \"Build the fixed DiskANN post-GlobalGraph search evaluation Feature\"\n   OFF)\n+option(DISKANN_KMEANS_PARTITION\n+       \"Build configurable-K native DiskANN Partition (Linux)\" OFF)\n+if(DISKANN_KMEANS_PARTITION AND\n+   (NOT DISKANN_CPP_MAIN_BASELINE OR NOT CMAKE_SYSTEM_NAME STREQUAL \"Linux\"))\n+  message(FATAL_ERROR \"DISKANN_KMEANS_PARTITION requires Linux and DISKANN_CPP_MAIN_BASELINE=ON\")\n+endif()\n \n if(DISKANN_SEARCH_EVALUATION AND NOT DISKANN_CPP_MAIN_BASELINE)\n   message(FATAL_ERROR\n@@ -140,6 +146,10 @@ if(DISKANN_CPP_MAIN_BASELINE AND\n   diskann_configure_cpp_main_baseline()\n endif()\n \n+if(DISKANN_KMEANS_PARTITION)\n+  add_subdirectory(src/partition/diskann_kmeans)\n+endif()\n+\n include(CTest)\n if(BUILD_TESTING)\n   add_subdirectory(tests)\ndiff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt\nindex 09744f8..54544d8 100644\n--- a/tests/CMakeLists.txt\n+++ b/tests/CMakeLists.txt\n@@ -1,6 +1,10 @@\n add_subdirectory(cpp/fakes)\n add_subdirectory(cpp)\n \n+if(DISKANN_KMEANS_PARTITION)\n+  add_subdirectory(cpp/partition)\n+endif()\n+\n if(DISKANN_CPP_MAIN_BASELINE AND\n    (NOT DISKANN_SEARCH_EVALUATION OR DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE))\n   add_subdirectory(cpp/baseline)",
+    "staged": "",
+    "upstream_status": "",
+    "upstream_head": "78256bbab4685e1774e78d331e081a153be26823",
+    "gitlink": "160000 78256bbab4685e1774e78d331e081a153be26823 0\tupstream/diskann-cpp-main"
+  }
+}

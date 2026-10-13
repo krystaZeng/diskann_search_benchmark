@@ -1,0 +1,19 @@
+{
+  "config_version": "diskann-kmeans-run/v1",
+  "run_id": "kmeans-sift1m-k3-20261013-01",
+  "workspace": {
+    "root": "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace",
+    "memory_budget_bytes": 12884901888,
+    "thread_budget": 6
+  },
+  "dataset": {
+    "metadata_path": "datasets/sift1m/artifact.json",
+    "artifact_type": "dataset",
+    "format_version": "diskann-float32-dataset/v1",
+    "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+  },
+  "partition": {
+    "K": 3,
+    "max_k_means_reps": 15
+  }
+}

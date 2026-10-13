@@ -28,6 +28,12 @@ option(
   DISKANN_SEARCH_EVALUATION
   "Build the fixed DiskANN post-GlobalGraph search evaluation Feature"
   OFF)
+option(DISKANN_KMEANS_PARTITION
+       "Build configurable-K native DiskANN Partition (Linux)" OFF)
+if(DISKANN_KMEANS_PARTITION AND
+   (NOT DISKANN_CPP_MAIN_BASELINE OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  message(FATAL_ERROR "DISKANN_KMEANS_PARTITION requires Linux and DISKANN_CPP_MAIN_BASELINE=ON")
+endif()
 
 if(DISKANN_SEARCH_EVALUATION AND NOT DISKANN_CPP_MAIN_BASELINE)
   message(FATAL_ERROR
@@ -138,6 +144,10 @@ if(DISKANN_CPP_MAIN_BASELINE AND
    (NOT DISKANN_SEARCH_EVALUATION OR DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE))
   include(CppMainBaseline)
   diskann_configure_cpp_main_baseline()
+endif()
+
+if(DISKANN_KMEANS_PARTITION)
+  add_subdirectory(src/partition/diskann_kmeans)
 endif()
 
 include(CTest)

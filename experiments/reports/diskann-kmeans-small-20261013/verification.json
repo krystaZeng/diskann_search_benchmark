@@ -1,0 +1,476 @@
+{
+  "report_kind": "diskann_kmeans_small_scale_verification",
+  "created_at": "2026-10-13T04:26:52.628181+00:00",
+  "scope": "Independent configurable-K Partition integration; native small-data behavior and existing B0 consumption only. No Baseline certification expansion.",
+  "repository_state": {
+    "branch": "codex/kmeans-partition",
+    "head": "0a19cb886428ecbc27b873e47e30af77e11da9dd",
+    "changes_uncommitted": true,
+    "existing_user_untracked_files_preserved": true
+  },
+  "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+  "upstream": {
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "dirty_worktree": false,
+    "repository": "https://github.com/microsoft/DiskANN.git"
+  },
+  "environment": {
+    "execution": "Linux amd64 Docker container on macOS host, not a bare-metal performance validation",
+    "image": "sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf",
+    "network": "none",
+    "repository_mount": "read_only",
+    "only_repository_writable_mount": "/workspace/build/kmeans-partition-linux-20261013",
+    "toolchain": {
+      "os": "Linux",
+      "compiler_path": "/usr/bin/c++",
+      "compiler_version": "11.4.0",
+      "cmake_version": "3.22.1",
+      "generator": "Unix Makefiles",
+      "build_type": "Release"
+    },
+    "wrapper_source_at_configure": {
+      "branch": "codex/kmeans-partition",
+      "commit": "0a19cb886428ecbc27b873e47e30af77e11da9dd",
+      "dirty_source_checksum": "e7537e506d8cd1a764674fddf3af14f0fadcda2d0dd8b6dde81a549bfdde3b6d",
+      "dirty_worktree": true,
+      "repository": "/workspace"
+    }
+  },
+  "native_link_path": {
+    "direct_static_archive_ID_only_symbol": "undefined reference (not exported)",
+    "vector_output_alternative": "also absent from archive symbol listing; not adopted",
+    "chosen_path": "out-of-tree explicit float instantiation including unmodified pinned partition.cpp; original native flags/includes/definitions inherited; one ID-only path",
+    "probe_counts": {
+      "K2": [
+        49,
+        47
+      ],
+      "K3": [
+        73,
+        11,
+        12
+      ]
+    },
+    "probe_actual_training_samples": 96,
+    "native_algorithms_reimplemented": false,
+    "upstream_modified": false,
+    "successful_probe_commands": [
+      "/usr/bin/c++ -O2 -std=c++17 -I upstream/diskann-cpp-main/include build/kmeans-partition-linux-20261013/native-probe/probe.cpp build/kmeans-partition-linux-20261013/native-probe/instantiate.cpp build/diskann-search-evaluation-linux/cpp-main-upstream/src/libdiskann_s.a -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -laio -o build/kmeans-partition-linux-20261013/native-probe/probe",
+      "OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 build/kmeans-partition-linux-20261013/native-probe/probe"
+    ]
+  },
+  "build_commands": [
+    "cmake -S . -B build/kmeans-partition-linux-20261013 -G \"Unix Makefiles\" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DDISKANN_CPP_MAIN_BASELINE=ON -DDISKANN_KMEANS_PARTITION=ON -DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/workspace/build/ogp-partition-adaptation/_deps/nlohmann_json-src",
+    "cmake --build build/kmeans-partition-linux-20261013 --target diskann_kmeans_tests -j 4",
+    "cmake --build build/kmeans-partition-linux-20261013 --target cpp_main_native_formats cpp_main_source_build_admission cpp_main_link_smoke cpp_main_descriptors_preflight cpp_main_p0 cpp_main_b0 cpp_main_m0 cpp_main_pipeline stage_source_provenance terminal_output_contract diskann_pipeline_runner -j 4"
+  ],
+  "executed_tests": [
+    {
+      "command": "ctest --test-dir build/kmeans-partition-linux-20261013 -R \"^diskann_kmeans_parameters_contract$\" --output-on-failure",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "coverage": "positive/invalid K and reps, defaults, probability derivation, sample count zero/<K/>8388608 guards without large allocations; malformed/empty/duplicate/missing/out-of-range/unsorted/truncated maps; centroid count/dimension/finite content"
+    },
+    {
+      "command": "KMEANS_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/validation ctest --test-dir build/kmeans-partition-linux-20261013 -R \"^diskann_kmeans_native_b0$\" --output-on-failure -V",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "coverage": "Native K1 direct boundary; cancellation/invalid-K before initialization; config-driven K2(default15 reps) and K3(3 reps), independent nearest-center property, actual B0 maps/graphs, source/checksum corruptions, immutable output rejection, real all-zero empty-shard failure with no B0"
+    },
+    {
+      "command": "OMP_NUM_THREADS=6 MKL_NUM_THREADS=6 ctest --test-dir build/kmeans-partition-linux-20261013 -R \"^(cpp_main_(native_formats|source_build_admission|link_smoke|descriptors_preflight|p0|b0|m0|pipeline)|stage_source_provenance|terminal_output_contract)$\" --output-on-failure",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0,
+      "note": "8 native Baseline tests plus 2 existing framework lifecycle/provenance tests; lifecycle fakes are supplemental and do not substitute for native KMeans/B0 validation."
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q tests/python/test_contract_schemas.py tests/python/test_contract_source_sync.py tests/python/test_production_assembly.py",
+      "passed": 36,
+      "failed": 1,
+      "skipped": 0,
+      "failure": "test_temporary_install_contains_only_production_assembly: pre-existing build/feature-001/src/libdiskann_pipeline_core.a missing; original hardcoded build left unchanged."
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 build/kmeans-partition-linux-20261013/check_production_assembly.py",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "note": "Executed unchanged existing production-assembly test bodies with in-memory BUILD/PRODUCTION_RUNNER rebinding to the new isolated Linux build. Not a claim that the original hardcoded pytest command now passes."
+    }
+  ],
+  "development_failures_resolved": [
+    "Probe argument order corrected to match fixed partition.h.",
+    "An obsolete build directory no longer contained libdiskann_s.a; switched read-only probe to an existing Linux archive, then rebuilt from fixed source in the new directory.",
+    "Direct ID-only static archive linkage failed because template symbol was not exported; both sharder symbols inspected, explicit native instantiation selected and verified.",
+    "Probe include relative path corrected before the successful native run.",
+    "Initial module build lacked MKL include path; module CMake now inherits upstream include paths/definitions and native bridge flags."
+  ],
+  "cases": [
+    {
+      "case": "k2",
+      "dataset_nodes": 96,
+      "dimension": 4,
+      "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+      "outcome": "SUCCEEDED",
+      "config": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k2/config.json",
+        "sha256": "1a36ff1ae06c02e79c91a0a3bed403ffb2bc3dc5f083b0c646bf1be9d56fc977"
+      },
+      "result": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k2/workspace/result.json",
+        "sha256": "1afbf89c1f831f3361bb218b29c2c340fcdeafbf2f1a200de161b333715625c7"
+      },
+      "build_manifest": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k2/workspace/manifests/kmeans-k2/stage-execution/partition.json",
+        "sha256": "64d842736469fce6bbc799de7787388a7ca35ddcf37ba19c996b2f10bf5f8560"
+      },
+      "effective_parameters": {
+        "K": 2,
+        "expected_training_samples_target": 256000,
+        "k_base": 1,
+        "max_k_means_reps": 15,
+        "randomness": "native_random_device_no_seed_override",
+        "sample_probability": 1.0
+      },
+      "actual_training_sample_count": 96,
+      "stage_invocations": {
+        "local_build": 2,
+        "merge": 1,
+        "partition": 1
+      },
+      "metrics": {
+        "elapsed_seconds": 0.148544896,
+        "process_peak_rss_bytes": 28844032,
+        "rss_scope": "process_lifetime_high_water_mark",
+        "timing_scope": "parameter_validation_sampling_training_centroid_and_id_io_artifact_validation"
+      },
+      "partition_artifact": {
+        "aggregate_checksum": "179ae639e900832a4c2e94a57694a46b7c4fb642ae23f54365bf7d0b6c0c1a8b",
+        "artifact_type": "partition",
+        "format_version": "partition-artifact/v1",
+        "metadata_path": "kmeans-k2/partition/artifact.json"
+      },
+      "partition_metadata_path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k2/workspace/normal/kmeans-k2/partition/artifact.json",
+      "partition_node_counts": [
+        62,
+        34
+      ],
+      "payloads": [
+        {
+          "byte_length": 256,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-0-map.bin",
+          "role": "partition/0/local_to_global_map",
+          "sha256": "b2519e15cd6c7b14a0ec75c0fddea78e8c0c88398e1dcaca024afbd8c30460b9"
+        },
+        {
+          "byte_length": 144,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-1-map.bin",
+          "role": "partition/1/local_to_global_map",
+          "sha256": "d5f86b75afa569a8b1c21f7cbced18842e8013801b3cc8797cdc074d7a548939"
+        },
+        {
+          "byte_length": 40,
+          "media_type": "application/vnd.diskann.cpp-main.float32-centroids;version=1",
+          "path": "centroids.bin",
+          "role": "centroids",
+          "sha256": "843f9043dd0929d30f5f2f40d93584e4e7a31025087da7781d064aaaf7c60306"
+        }
+      ],
+      "capabilities": [
+        "partition.centroids/v1",
+        "partition.complete_local_to_global_map/v1",
+        "partition.local_to_global_ascending/v1"
+      ],
+      "checks": {
+        "contract_valid": true,
+        "all_shards_nonempty": true,
+        "exactly_once_global_coverage": true,
+        "maps_ascending_in_range_and_correct_length": true,
+        "nearest_centroid_property": true,
+        "nearest_centroid_tolerance": "assigned_squared_L2 <= min_squared_L2 + 1e-4 * max(1, min_squared_L2)",
+        "native_B0_consumed": true,
+        "all_local_graphs_valid": true,
+        "local_graph_maps_equal_partition_maps": true,
+        "existing_result_and_run_rejected_without_overwrite": true
+      },
+      "local_graphs": [
+        {
+          "aggregate_checksum": "5d41c64fab180e73bd1d66018c3e78624b750c8d4e7468d4bab759d77923658d",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-k2/local-0/artifact.json"
+        },
+        {
+          "aggregate_checksum": "e17d395b6ee285c2659044b7c9b4cbfa9c4afe976314497eda2fa6665b1fe373",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-k2/local-1/artifact.json"
+        }
+      ]
+    },
+    {
+      "case": "k3",
+      "dataset_nodes": 96,
+      "dimension": 4,
+      "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+      "outcome": "SUCCEEDED",
+      "config": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k3/config.json",
+        "sha256": "af29e11e9e327cc8a6d4503c5c5fcecf31c43988b3993f643b1df92662008621"
+      },
+      "result": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k3/workspace/result.json",
+        "sha256": "2c597fe5a5369511d851d178b34276c55a6cc78b75b41b6b599c12a39397b34a"
+      },
+      "build_manifest": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k3/workspace/manifests/kmeans-k3/stage-execution/partition.json",
+        "sha256": "1ede22b096e43d95da316eaadd3f5f357eb8163bcd4b4b0aa361151d3242cc4d"
+      },
+      "effective_parameters": {
+        "K": 3,
+        "expected_training_samples_target": 256000,
+        "k_base": 1,
+        "max_k_means_reps": 3,
+        "randomness": "native_random_device_no_seed_override",
+        "sample_probability": 1.0
+      },
+      "actual_training_sample_count": 96,
+      "stage_invocations": {
+        "local_build": 3,
+        "merge": 1,
+        "partition": 1
+      },
+      "metrics": {
+        "elapsed_seconds": 0.165537024,
+        "process_peak_rss_bytes": 28831744,
+        "rss_scope": "process_lifetime_high_water_mark",
+        "timing_scope": "parameter_validation_sampling_training_centroid_and_id_io_artifact_validation"
+      },
+      "partition_artifact": {
+        "aggregate_checksum": "4e87692e7bd97c0df1d97937a2d9d4faae8920fc0cad07451d1472cc5f71a2cb",
+        "artifact_type": "partition",
+        "format_version": "partition-artifact/v1",
+        "metadata_path": "kmeans-k3/partition/artifact.json"
+      },
+      "partition_metadata_path": "build/kmeans-partition-linux-20261013/validation/7840726422049/k3/workspace/normal/kmeans-k3/partition/artifact.json",
+      "partition_node_counts": [
+        11,
+        23,
+        62
+      ],
+      "payloads": [
+        {
+          "byte_length": 52,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-0-map.bin",
+          "role": "partition/0/local_to_global_map",
+          "sha256": "e39bfea4455d1eb2a7a40f7c9c8e15f29f20f8aeda0a2b29bf11c2aae90eeaf3"
+        },
+        {
+          "byte_length": 100,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-1-map.bin",
+          "role": "partition/1/local_to_global_map",
+          "sha256": "07b8e76614a76ed4ff14f811655c65c8d80da315dd6818c7eb9bb71e73005d55"
+        },
+        {
+          "byte_length": 256,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-2-map.bin",
+          "role": "partition/2/local_to_global_map",
+          "sha256": "b2519e15cd6c7b14a0ec75c0fddea78e8c0c88398e1dcaca024afbd8c30460b9"
+        },
+        {
+          "byte_length": 56,
+          "media_type": "application/vnd.diskann.cpp-main.float32-centroids;version=1",
+          "path": "centroids.bin",
+          "role": "centroids",
+          "sha256": "3bee2d4369b4c4287d5ad7c3c67b343adcdcafa9a7ce0f03c82cb07be06d9955"
+        }
+      ],
+      "capabilities": [
+        "partition.centroids/v1",
+        "partition.complete_local_to_global_map/v1",
+        "partition.local_to_global_ascending/v1"
+      ],
+      "checks": {
+        "contract_valid": true,
+        "all_shards_nonempty": true,
+        "exactly_once_global_coverage": true,
+        "maps_ascending_in_range_and_correct_length": true,
+        "nearest_centroid_property": true,
+        "nearest_centroid_tolerance": "assigned_squared_L2 <= min_squared_L2 + 1e-4 * max(1, min_squared_L2)",
+        "native_B0_consumed": true,
+        "all_local_graphs_valid": true,
+        "local_graph_maps_equal_partition_maps": true,
+        "existing_result_and_run_rejected_without_overwrite": true
+      },
+      "local_graphs": [
+        {
+          "aggregate_checksum": "8c123cdc43d3f21a1ef7e2e77faa8978df0d981d8d95da22a13b7ee50db5d272",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-k3/local-0/artifact.json"
+        },
+        {
+          "aggregate_checksum": "3d0cade45d9cf2f55752938112f09d6686d6ecbc447b7afd88097a764cb6f8d2",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-k3/local-1/artifact.json"
+        },
+        {
+          "aggregate_checksum": "9863d4edfd88ecce0d783e2b56a8948a4a45dd2c96f927080a60314ea29dd018",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-k3/local-2/artifact.json"
+        }
+      ]
+    },
+    {
+      "case": "empty-shard",
+      "dataset_nodes": 96,
+      "dimension": 4,
+      "dataset_checksum": "4fb8cd24dca54004fad0d6e6a69f92c874ada0e53e21ac28a80e93a6634593f1",
+      "outcome": "FAILED",
+      "config": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/empty-shard/config.json",
+        "sha256": "3166b09fbbec683fb097bb65c0be298c7f252e18a4047d495763ac61121588ef"
+      },
+      "result": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/empty-shard/workspace/result.json",
+        "sha256": "7a6f96aff670b29b577231d3fb560e793ac8628b8e167f703b303676c625eddf"
+      },
+      "build_manifest": {
+        "path": "build/kmeans-partition-linux-20261013/validation/7840726422049/empty-shard/workspace/manifests/kmeans-k2/stage-execution/partition.json",
+        "sha256": "4a9f2c49fd0bc0e584526295435d52f6c386504ebac6566eca0e5e010e8446b2"
+      },
+      "effective_parameters": {
+        "K": 2,
+        "expected_training_samples_target": 256000,
+        "k_base": 1,
+        "max_k_means_reps": 15,
+        "randomness": "native_random_device_no_seed_override",
+        "sample_probability": 1.0
+      },
+      "actual_training_sample_count": 96,
+      "stage_invocations": {
+        "local_build": 0,
+        "merge": 0,
+        "partition": 1
+      },
+      "metrics": {
+        "elapsed_seconds": 0.048295587,
+        "process_peak_rss_bytes": 28712960,
+        "rss_scope": "process_lifetime_high_water_mark",
+        "timing_scope": "parameter_validation_sampling_training_centroid_and_id_io_artifact_validation"
+      },
+      "failure": {
+        "category": "mapping_incomplete",
+        "reason": "missing, empty or malformed native shard 1"
+      },
+      "expected_negative_case": true,
+      "checks": {
+        "failed_record_retained": true,
+        "B0_not_invoked": true,
+        "no_K_reduction_or_retry": true
+      }
+    }
+  ],
+  "content_identity_checks": {
+    "runner_sha256": "4132351b8982d27b94ab07c5cc03e4021dce91f08335ff0f8186b5bae31574a3",
+    "native_library_sha256": "f72130507d87a2b4aa1fa577c4b9c2d54f49e8120a1777225f69fd427bb48837",
+    "native_partition_source_sha256": "f30f56125c04901d631cae5394c7ac1712d26b8f787def17b80ca92caa95e8b3",
+    "all_match_run_manifest": true
+  },
+  "source_files_sha256": {
+    "CMakeLists.txt": "6f87d45ee1362c0587730c7b9f4f4e16034c8cd5e158dd50a62be859de5492cc",
+    "tests/CMakeLists.txt": "d6796fe4273134829595a9936cfaebc2d05874c51bca9767b22064fd5f8c3d8e",
+    "src/partition/diskann_kmeans/CMakeLists.txt": "c9df3d812b3cf4774b71da8167e44bf8d7a7ec9da01b4cc154eaf696e272a99f",
+    "src/partition/diskann_kmeans/native_partition.cpp": "bb520eccb6700089d212841bc2e2c49d9db07b059e1eab9848295ca65b0fe780",
+    "src/partition/diskann_kmeans/parameters.cpp": "ed2cf75390db2a705b97e922b4a6c9b9b0823a63df4a00b1696c5e07c79816f4",
+    "src/partition/diskann_kmeans/partition.cpp": "b7b00f6cb703d5753a8e42220083104bc71823b11489b1b644325ea0f6f7b2c0",
+    "src/partition/diskann_kmeans/runner.cpp": "d329ce453d1595fb8af6761f5231e7d362bc9184c0eb49ee8e32fbfe36f69398",
+    "src/partition/diskann_kmeans/stage_binding.hpp": "4f78a76fdfa842fa1f80d670ca1107eebdd919c781e555a592ffe3982a5cb8d8",
+    "tests/cpp/partition/CMakeLists.txt": "4b73d86c3daa08d93eb7ff5d93c814c770cb5890e027e93ac5fa0a82c9ec2a1e",
+    "tests/cpp/partition/test_diskann_kmeans.cpp": "152c33ce031d17b06bb1b8137a1119412cddaf34ccca3dc51bd70defad16662a",
+    "contracts/partition/diskann-kmeans-v1/parameters.schema.json": "bd0d927916184294f9d83873504a09bbfd57bdc91f93aa8b587cfd0e331d51e0",
+    "experiments/configs/diskann-kmeans/small.json": "49b98c8da639c1bd815f450e42f1b9bfe0c31b2d7fbeee47d7ae817a8bb06a32",
+    "docs/implementations/diskann-kmeans-partition.md": "13c45aba4b45d52d56dcd4129a1a4a025c6d4a1adb43fa97331c341d61368b3e"
+  },
+  "evidence_logs": [
+    {
+      "path": "build/kmeans-partition-linux-20261013/native-probe/run.log",
+      "sha256": "e88f2465d047b200c7da0826e77b24e99cb03900cd8c96d0635ad14a39c07295"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/configure-final.log",
+      "sha256": "b8b70ab479735f552485646142fb520bb5b232c5fecc7f4bb505cc91b637160e"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/build-final.log",
+      "sha256": "c896bb36b6ce1d359903eccd35d5258aeaa79053dbd6996a8c16aa52bed4d12f"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/test-unit-final.log",
+      "sha256": "af22818ffc5b32c8929db2dc8f5a291086feda6d2645b5b4a8306d7b6f40bc2d"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/test-integration.log",
+      "sha256": "7bf01ffde8f07b3ed546768d05c345856843fcf84d3c26eac98a3370b656a67d"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/build-regression.log",
+      "sha256": "7e16c4865cfdc4905e48fc4ab8c1fe50b7fdd0afb476a07c1efca551655c4bb9"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/test-regression.log",
+      "sha256": "422badf6816e5dbd9376b2a90b6169db672d6f8291c8bc88af292ef2abb79d05"
+    },
+    {
+      "path": "build/kmeans-partition-linux-20261013/test-production-assembly.log",
+      "sha256": "ac633b3cf52f510f197881e104e2e9ce8e4058739bdd77caf0fbce92c1705833"
+    }
+  ],
+  "not_executed": [
+    {
+      "validation": "SIFT1M including actual p<1 sampling",
+      "reason": "User authorized only small-scale validation. Native behavior here used N=96, p=1; probability/sample boundary logic separately unit-tested."
+    },
+    {
+      "validation": "Human diff review",
+      "reason": "Pending user review; no automatic commit or push."
+    },
+    {
+      "validation": "SIFT10M/larger runs and resource validation",
+      "reason": "Not authorized; requires explicit approval, prior SIFT1M validation/review and resource planning."
+    },
+    {
+      "validation": "Linux bare-metal performance/resource validation and other build generators/platforms",
+      "reason": "Current execution used the available Linux amd64 Docker image with Unix Makefiles. No performance certification."
+    },
+    {
+      "validation": "Full repository, Search/PQ/disk-layout suites",
+      "reason": "Outside this bounded Partition integration; relevant native Baseline, provenance, artifact and assembly checks were selected."
+    }
+  ],
+  "remaining_limitations": [
+    "The original production-assembly pytest entry still points to an incomplete legacy build; equivalent unchanged test bodies passed on the new build.",
+    "Native randomness retained; empty shards and inadequate actual sample sizes fail without retries or K changes.",
+    "Native sampling/sharding buffers unchanged; resource budgets are recorded, not allocator hard limits. RSS is process lifetime peak.",
+    "Hard partitions can leave separate graph components; unchanged M0 does not create cross-shard candidates or repair connectivity. No search-quality claim."
+  ],
+  "final_git_checks": {
+    "diff_check": "passed: git diff --check and whitespace checks of all task-owned new files, including this report",
+    "upstream_worktree_clean": true,
+    "upstream_head": "78256bbab4685e1774e78d331e081a153be26823",
+    "gitlink": "160000 78256bbab4685e1774e78d331e081a153be26823 0\tupstream/diskann-cpp-main",
+    "staged_files": [],
+    "final_diff_review": "tracked CMake diff and task-owned additions reviewed; no upstream or unrelated tracked file changes"
+  }
+}

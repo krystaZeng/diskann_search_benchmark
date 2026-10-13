@@ -1,6 +1,10 @@
 add_subdirectory(cpp/fakes)
 add_subdirectory(cpp)
 
+if(DISKANN_KMEANS_PARTITION)
+  add_subdirectory(cpp/partition)
+endif()
+
 if(DISKANN_CPP_MAIN_BASELINE AND
    (NOT DISKANN_SEARCH_EVALUATION OR DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE))
   add_subdirectory(cpp/baseline)

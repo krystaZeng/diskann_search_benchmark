@@ -1,0 +1,22 @@
+{
+  "compile_commands": {
+    "path": "build/kmeans-partition-linux-20261013/compile_commands.json",
+    "sha256": "d93ed48027bc8d506f783bb4bd73d9cbc72c5488122b63be0c894b2a0c72b865",
+    "byte_length": 159808
+  },
+  "runner_link_command": {
+    "path": "build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/CMakeFiles/kmeans_partition_runner.dir/link.txt",
+    "sha256": "9cbe40ad1123605b825776a4f3df80f2cfbd0f737e44c3940d5150c6bd20731e",
+    "byte_length": 392
+  },
+  "existing_postvalidation_runner": {
+    "path": "build/kmeans-partition-linux-20261013/src/cli/diskann_pipeline_runner",
+    "sha256": "ffb45f140dc0e8970470440f07396b7e4f944b762ade4e8ce57898c08669a5b4",
+    "byte_length": 1376152
+  },
+  "compile_command_entries": 163,
+  "build_reused": true,
+  "rebuilt": false,
+  "test_rerun": false,
+  "note": "Generated command table includes configured targets; this does not claim all targets were compiled. Native runner/library and all 13 small-report source/config/doc hashes match prior verification."
+}

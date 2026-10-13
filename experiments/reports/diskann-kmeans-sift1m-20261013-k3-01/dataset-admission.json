@@ -1,0 +1,41 @@
+{
+  "source": {
+    "path": "sift1M_dataset/base_vector.bin",
+    "dataset_id": "sift1m",
+    "global_node_count": 1000000,
+    "vector_dimension": 128,
+    "byte_length": 512000008,
+    "checksum": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e"
+  },
+  "preparation_method": "existing cpp_main_baseline._admit_dataset; immutable byte copy, no regeneration or normalization",
+  "admission": {
+    "artifact_ref": {
+      "metadata_path": "datasets/sift1m/artifact.json",
+      "artifact_type": "dataset",
+      "format_version": "diskann-float32-dataset/v1",
+      "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+    },
+    "validation_evidence_path": "manifests/evidence/dataset-admission.json",
+    "source_sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+    "destination_sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+    "non_finite_count": 0,
+    "facts": {
+      "npts": 1000000,
+      "dimension": 128,
+      "byte_length": 512000008,
+      "sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+      "non_finite_count": 0,
+      "value_count": 128000000
+    }
+  },
+  "copy_independent_full_scan": {
+    "npts": 1000000,
+    "dimension": 128,
+    "byte_length": 512000008,
+    "sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+    "non_finite_count": 0,
+    "value_count": 128000000
+  },
+  "schema_validation": "passed",
+  "source_scan_and_copy_scan": "all 128000000 float32 values finite"
+}

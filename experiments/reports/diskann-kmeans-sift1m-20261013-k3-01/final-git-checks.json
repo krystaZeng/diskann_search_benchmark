@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-10-13T04:52:54.734054+00:00",
+  "branch": "codex/kmeans-partition",
+  "head": "0a19cb886428ecbc27b873e47e30af77e11da9dd",
+  "git_diff_check": 0,
+  "status_short": "M CMakeLists.txt\n M tests/CMakeLists.txt\n?? 1010_pipeline_Inout_analysis.md\n?? 1012_整体架构.md\n?? architecture_eval_0920.md\n?? contracts/partition/\n?? docs/architecture/figures/\n?? docs/implementations/\n?? experiments/configs/diskann-kmeans/\n?? experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/\n?? experiments/reports/diskann-kmeans-small-20261013/\n?? next_steps_0920.md\n?? output/\n?? src/partition/\n?? tests/cpp/partition/",
+  "diff_stat": "CMakeLists.txt       | 10 ++++++++++\n tests/CMakeLists.txt |  4 ++++\n 2 files changed, 14 insertions(+)",
+  "staged_files": [],
+  "upstream_status": "",
+  "upstream_branch": "cpp_main",
+  "upstream_head": "78256bbab4685e1774e78d331e081a153be26823",
+  "gitlink": "160000 78256bbab4685e1774e78d331e081a153be26823 0\tupstream/diskann-cpp-main",
+  "tracked_diff_matches_preflight": true,
+  "new_report_json_and_whitespace_check": "passed",
+  "functional_code_changed_in_this_task": false,
+  "human_diff_review": "pending",
+  "commit": false,
+  "push": false
+}

@@ -1,0 +1,16 @@
+{
+  "config_version": "diskann-kmeans-run/v1",
+  "run_id": "kmeans-k2",
+  "workspace": {
+    "root": "/workspace/build/kmeans-small/workspace",
+    "memory_budget_bytes": 1073741824,
+    "thread_budget": 6
+  },
+  "dataset": {
+    "metadata_path": "dataset/artifact.json",
+    "artifact_type": "dataset",
+    "format_version": "diskann-float32-dataset/v1",
+    "aggregate_checksum": "REPLACE_WITH_VALIDATED_DATASET_AGGREGATE_CHECKSUM"
+  },
+  "partition": {"K": 2, "max_k_means_reps": 15}
+}

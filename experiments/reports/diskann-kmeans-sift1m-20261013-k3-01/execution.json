@@ -1,0 +1,24 @@
+{
+  "started_at": "2026-10-13T04:44:52.859759+00:00",
+  "ended_at": "2026-10-13T04:48:48.005395+00:00",
+  "elapsed_seconds": 235.32166603900077,
+  "exit_code": 0,
+  "stop_reason": null,
+  "command": [
+    "/workspace/build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/kmeans_partition_runner",
+    "execute",
+    "--request",
+    "/workspace/experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/config.json",
+    "--result",
+    "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json"
+  ],
+  "user_cpu_seconds": 184.727889,
+  "system_cpu_seconds": 19.858082,
+  "wait4_max_rss_bytes": 1186344960,
+  "rss_scope": "Linux wait4 runner child/reaped descendants high-water mark; not sum of simultaneous RSS or independent stage peak",
+  "sampled_container_peak_memory_current_bytes": 2836217856,
+  "container_memory_scope": "1-second sampled cgroup memory.current includes container processes and charged file cache; not exact peak",
+  "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0",
+  "memory_peak": null,
+  "disk_free_bytes_end": 37841387520
+}

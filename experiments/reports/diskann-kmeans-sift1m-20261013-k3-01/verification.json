@@ -1,0 +1,401 @@
+{
+  "report_kind": "diskann_kmeans_sift1m_native_functional_verification",
+  "created_at": "2026-10-13T04:52:03.699024+00:00",
+  "conclusion": "SIFT1M 原生功能及结构验证通过。",
+  "run_id": "kmeans-sift1m-k3-20261013-01",
+  "attempts": 1,
+  "retries": 0,
+  "status": "SUCCEEDED",
+  "configuration": {
+    "config_version": "diskann-kmeans-run/v1",
+    "run_id": "kmeans-sift1m-k3-20261013-01",
+    "workspace": {
+      "root": "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace",
+      "memory_budget_bytes": 12884901888,
+      "thread_budget": 6
+    },
+    "dataset": {
+      "metadata_path": "datasets/sift1m/artifact.json",
+      "artifact_type": "dataset",
+      "format_version": "diskann-float32-dataset/v1",
+      "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+    },
+    "partition": {
+      "K": 3,
+      "max_k_means_reps": 15
+    }
+  },
+  "frozen_budget": {
+    "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/budget.json",
+    "sha256": "933cab753e55b6905ba0dd4086797e492aa376a567e9132e34acaf6a429de8ea",
+    "byte_length": 2949
+  },
+  "actual_command": {
+    "argv": [
+      "docker",
+      "run",
+      "--rm",
+      "--platform",
+      "linux/amd64",
+      "--pull=never",
+      "--network=none",
+      "--memory=14g",
+      "--memory-swap=14g",
+      "--cpus=6",
+      "--mount",
+      "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+      "--mount",
+      "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01,dst=/workspace/build/kmeans-partition-sift1m-20261013-k3-01",
+      "--workdir",
+      "/workspace",
+      "sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf",
+      "python3",
+      "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/execute-once.py"
+    ],
+    "shell_display": "docker run --rm --platform linux/amd64 --pull=never --network=none --memory=14g --memory-swap=14g --cpus=6 --mount 'type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly' --mount 'type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01,dst=/workspace/build/kmeans-partition-sift1m-20261013-k3-01' --workdir /workspace sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf python3 /workspace/build/kmeans-partition-sift1m-20261013-k3-01/execute-once.py",
+    "native_command": [
+      "/workspace/build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/kmeans_partition_runner",
+      "execute",
+      "--request",
+      "/workspace/experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/config.json",
+      "--result",
+      "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json"
+    ],
+    "only_writable_repository_mount": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01",
+    "repository_and_upstream_read_only": true,
+    "image": "sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf"
+  },
+  "environment": {
+    "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/environment.json",
+    "sha256": "7a0b2b09aa1d476395a5d4a8814e1684d90ff3237d4d382ca6d46fba483b6dad",
+    "byte_length": 10705
+  },
+  "environment_scope": "Existing Linux amd64 Docker image on macOS host. This is a native functional/structural validation, not bare-metal performance certification.",
+  "build_reuse": {
+    "rebuild": false,
+    "unit_or_full_test_rerun": false,
+    "prior_small_scale_report": {
+      "path": "experiments/reports/diskann-kmeans-small-20261013/verification.json",
+      "sha256": "0e0e15eea84164f5d23a3461fa77b8ff6da196e11903b6c8bc3274bef5271810",
+      "byte_length": 23455
+    },
+    "all_13_reported_source_config_doc_files_match": true,
+    "runner_sha256": "4132351b8982d27b94ab07c5cc03e4021dce91f08335ff0f8186b5bae31574a3",
+    "native_library_sha256": "f72130507d87a2b4aa1fa577c4b9c2d54f49e8120a1777225f69fd427bb48837",
+    "native_partition_source_sha256": "f30f56125c04901d631cae5394c7ac1712d26b8f787def17b80ca92caa95e8b3",
+    "source_binary_preflight": {
+      "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/identity-preflight.json",
+      "sha256": "962d84c82b4f4285b37578399ceb7a3c8adaa8eef327cd2f9501f16aee35fa63",
+      "byte_length": 6127
+    },
+    "compile_link_evidence": {
+      "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/build-evidence.json",
+      "sha256": "a4a90799a9820eee9954e8bbe1366ca6d54050fa99db76e280d3cec380e5c6e5",
+      "byte_length": 1030
+    },
+    "reason": "Source, runner, native archive and pinned upstream identities unchanged since passing small-scale native checks."
+  },
+  "upstream": {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "worktree_clean": true,
+    "gitlink_unchanged": true
+  },
+  "dataset": {
+    "source": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/sift1M_dataset/base_vector.bin",
+    "copied_payload": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/vectors.bin",
+    "node_count": 1000000,
+    "dimension": 128,
+    "scalar_type": "float32",
+    "distance_metric": "l2",
+    "byte_length": 512000008,
+    "sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+    "artifact": {
+      "metadata_path": "datasets/sift1m/artifact.json",
+      "artifact_type": "dataset",
+      "format_version": "diskann-float32-dataset/v1",
+      "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+    },
+    "source_and_copy_headers_sizes_checksums_and_all_finite_values": "passed",
+    "byte_preserving_copy": true,
+    "admission": {
+      "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/dataset-admission.json",
+      "sha256": "305e03a6f0c5fbdcddd889c335ef0a0f50804ed50dcbe5af354f2033983d1e2e",
+      "byte_length": 1570
+    }
+  },
+  "sampling": {
+    "effective_probability": 0.256,
+    "expected_target": 256000,
+    "actual_training_sample_count": 256374,
+    "actual_sample_bounds_valid": true,
+    "randomness": "native random_device, no fixed seed",
+    "lloyd_max_repetitions": 15,
+    "lloyd_note": "Native stdout reports convergence-based early termination; 15 is an upper limit, not a claim of exactly 15 iterations."
+  },
+  "partition": {
+    "status": "SUCCEEDED",
+    "partition_count": 3,
+    "node_counts": [
+      249798,
+      264593,
+      485609
+    ],
+    "node_count_sum": 1000000,
+    "all_nonempty": true,
+    "each_GlobalNodeId_exactly_once": true,
+    "maps_lengths_ranges_strict_ascending": true,
+    "centroid_shape": [
+      3,
+      128
+    ],
+    "centroids_finite": true,
+    "artifact": {
+      "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+      "artifact_type": "partition",
+      "format_version": "partition-artifact/v1",
+      "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+    }
+  },
+  "B0": {
+    "status": "SUCCEEDED",
+    "real_invocations": 3,
+    "parameters": {
+      "L": 32,
+      "R": 16,
+      "alpha": 1.2,
+      "build_pq_bytes": 0,
+      "max_occlusion_size": 750,
+      "num_threads": 6,
+      "saturation": false,
+      "use_opq": false
+    },
+    "native_local_max_degree": 10,
+    "local_graphs": [
+      {
+        "aggregate_checksum": "b6ff6d235595b240023660d2364e6a174d22bb964e6ca515ed24cf88a28ba31e",
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/local-0/artifact.json"
+      },
+      {
+        "aggregate_checksum": "dc1605762c2f5f671bfcb0c5d0b5f7df23939d4f889e2de7068eb44f19c1b676",
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/local-1/artifact.json"
+      },
+      {
+        "aggregate_checksum": "b131487f38f8829d748e799ad7e7b9e5041650b034c8b850ed031f025623ce4a",
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/local-2/artifact.json"
+      }
+    ],
+    "counts_partition_ids_and_maps_match_partition": true,
+    "native_graph_structure_and_neighbor_ID_ranges_valid": true
+  },
+  "M0": {
+    "status": "SUCCEEDED",
+    "real_invocations": 1,
+    "parameters": {
+      "R": 16,
+      "use_filters": false
+    },
+    "artifact": {
+      "aggregate_checksum": "4b213d1b2c35b8b4a5885ebd2c4d9981840ffbb00bed31fbc285b9ae246a6f22",
+      "artifact_type": "global_graph",
+      "format_version": "global-graph-artifact/v1",
+      "metadata_path": "kmeans-sift1m-k3-20261013-01/merge/artifact.json"
+    },
+    "global_node_count": 1000000,
+    "id_space": "global",
+    "structural_validation": {
+      "declared_max_degree": 16,
+      "graph_integrity": "VALID",
+      "invalid_neighbor_count": 0,
+      "logical_node_count": 1000000,
+      "observed_max_degree": 10,
+      "passed": true
+    },
+    "scope": "Structural integrity only. No connectivity, Recall, QPS, or performance conclusion."
+  },
+  "validation_checks": {
+    "postrun_native_contract_and_lineage_validator": "passed (Dataset -> Partition -> 3 LocalGraphs -> GlobalGraph)",
+    "json_schemas_and_aggregate_checksums": "passed",
+    "payload_lengths_and_sha256": "passed",
+    "partition_count_nonempty_exact_coverage": "passed",
+    "map_ranges_lengths_strict_ascending": "passed",
+    "centroids_shape_finite": "passed: 3 x 128 float32",
+    "B0_real_invocations": 3,
+    "local_counts_partition_ids_maps_match": "passed",
+    "local_and_global_neighbor_ranges": "passed via existing native graph validators",
+    "global_node_count_and_id_space": "passed: 1000000 GlobalNodeId",
+    "source_input_output_manifest_config_bindings": "passed",
+    "subordinate_manifest_sha_binding": "passed",
+    "frozen_build_and_toolchain_identity": "passed"
+  },
+  "results_and_manifest_details": {
+    "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/result-checks.json",
+    "sha256": "13db240fbbda043233446797adbd1396ecb094d75f18007202593905378fa692",
+    "byte_length": 30787
+  },
+  "execution": {
+    "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/execution.json",
+    "sha256": "453bff6a14ec9c5a2a04f4f35215322367b9bdb4673ffd1d9ce0a47c2dc1c0f8",
+    "byte_length": 1096
+  },
+  "timing": {
+    "partition_internal_elapsed_seconds": 3.523810217,
+    "partition_internal_scope": "parameter_validation_sampling_training_centroid_and_id_io_artifact_validation",
+    "partition_internal_exclusions": "Initial Dataset binding/provenance and full outer-stage lifecycle; all B0/M0 work.",
+    "partition_parent_stage_elapsed_seconds": 13.099778,
+    "partition_parent_stage_scope": "Existing parent Manifest timestamps cover Partition stage lifecycle including Dataset binding and publication/validation overhead.",
+    "pipeline_elapsed_seconds": 235.32166603900077,
+    "pipeline_scope": "External monotonic clock around the one native runner process: admission, KMeans, B0 x3, M0, publication/validation and existing structural EvaluationReport. Excludes prior copy/preflight and later independent post-validation.",
+    "parent_stage_times": [
+      {
+        "stage": "partition",
+        "partition_id": null,
+        "elapsed_seconds": 13.099778
+      },
+      {
+        "stage": "local_build",
+        "partition_id": 0,
+        "elapsed_seconds": 40.903489
+      },
+      {
+        "stage": "local_build",
+        "partition_id": 1,
+        "elapsed_seconds": 50.276925
+      },
+      {
+        "stage": "local_build",
+        "partition_id": 2,
+        "elapsed_seconds": 103.491722
+      },
+      {
+        "stage": "merge",
+        "partition_id": null,
+        "elapsed_seconds": 7.916135
+      }
+    ]
+  },
+  "resources": {
+    "recorded_memory_budget_bytes": 12884901888,
+    "budget_is_native_allocator_hard_limit": false,
+    "separate_container_memory_limit_bytes": 15032385536,
+    "thread_budget": 6,
+    "partition_recorded_process_peak_rss_bytes": 1154564096,
+    "partition_rss_scope": "process_lifetime_high_water_mark",
+    "pipeline_wait4_max_rss_bytes": 1186344960,
+    "pipeline_rss_scope": "Linux wait4 runner child/reaped descendants high-water mark; not sum of simultaneous RSS or independent stage peak",
+    "sampled_container_peak_memory_current_bytes": 2836217856,
+    "container_memory_scope": "1-second sampled cgroup memory.current includes container processes and charged file cache; not exact peak",
+    "cgroup_exact_peak_unavailable": true,
+    "memory_events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0",
+    "user_cpu_seconds": 184.727889,
+    "system_cpu_seconds": 19.858082,
+    "retained_work_directory_bytes": 1765980617,
+    "raw_samples": {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/resources.jsonl",
+      "sha256": "4f2e70727cc3130056042cb7b814a61180ec119d5c32de5915ad4eab556af340",
+      "byte_length": 62949
+    }
+  },
+  "executed_validation_commands": [
+    {
+      "action": "dataset preparation",
+      "call": "existing cpp_main_baseline._admit_dataset(repository, new_workspace, expected_identity), then _scan_dataset(copy, expected_identity) and existing Dataset schema validator",
+      "result": "passed; source and copied payload fully scanned; no fixture --prepare"
+    },
+    {
+      "command": [
+        "/workspace/build/kmeans-partition-linux-20261013/src/cli/diskann_pipeline_runner",
+        "validate",
+        "--request",
+        "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/validate-input.json",
+        "--result",
+        "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/input-contract-result.json"
+      ],
+      "exit_code": 0,
+      "result": "passed"
+    },
+    {
+      "command": [
+        "/workspace/build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/kmeans_partition_runner",
+        "execute",
+        "--request",
+        "/workspace/experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/config.json",
+        "--result",
+        "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json"
+      ],
+      "exit_code": 0,
+      "result": "one native run succeeded"
+    },
+    {
+      "command": [
+        "/workspace/build/kmeans-partition-linux-20261013/src/cli/diskann_pipeline_runner",
+        "validate",
+        "--request",
+        "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/validate-output.json",
+        "--result",
+        "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/output-contract-result.json"
+      ],
+      "exit_code": 0,
+      "result": "passed; existing Validator recursively admitted Dataset, Partition, all LocalGraphs and GlobalGraph; no stage invocations"
+    },
+    {
+      "command": "PYTHONDONTWRITEBYTECODE=1 .venv/bin/python build/kmeans-partition-sift1m-20261013-k3-01/check-results.py",
+      "exit_code": 0,
+      "result": "passed; existing schema/identity helpers plus exact coverage/maps/centroids/manifest checks"
+    }
+  ],
+  "evidence_inventory": {
+    "path": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/evidence-inventory.json",
+    "sha256": "f569cf6d3afa8a3afc6b2f7280feb4471b241b12325c641608bbb16589cdbe20",
+    "byte_length": 22121
+  },
+  "native_stdout": {
+    "path": "build/kmeans-partition-sift1m-20261013-k3-01/stdout.log",
+    "sha256": "7463c2705f93cc08543519bfefe890a0a09221bba83e49a9a03799c76c01f024",
+    "byte_length": 4873
+  },
+  "native_stderr": {
+    "path": "build/kmeans-partition-sift1m-20261013-k3-01/stderr.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "byte_length": 0
+  },
+  "native_result": {
+    "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json",
+    "sha256": "10b16234420d6e7cfd945828bb42b9277853a283e6efc1425db7737a940e1595",
+    "byte_length": 2561
+  },
+  "failures_this_run": [],
+  "incomplete_items_and_limits": [
+    "Original pytest command remains 36 passed / 1 failed in prior small-scale report: production-assembly install test points to incomplete build/feature-001 missing src/libdiskann_pipeline_core.a. Unchanged test bodies separately passed with new Linux build rebinding. The original command was not rerun or repaired, and is not claimed fully passing.",
+    "Human diff review is pending. No commit, push or staging performed.",
+    "No bare-metal Linux performance validation or performance certification; timings and RSS describe this one Docker run only.",
+    "No SIFT10M/larger validation, Search, PQ, disk layout, Recall, QPS, connectivity or compactness measurement.",
+    "Only K=3 on SIFT1M was run once. K remains configurable; native randomness and empty-shard/sample rejection behavior remain unchanged.",
+    "Native allocation/buffering is unchanged; 12 GiB is an advisory pipeline budget, with a separately enforced 14 GiB cgroup safety cap for this run. No SIFT10M resource inference."
+  ],
+  "provenance_notes": [
+    "Partition subordinate output is the original temporary candidate identity. Pipeline moved it to normal; aggregate checksum matches parent final reference.",
+    "B0 and M0 use existing parent stage BuildManifests; they do not emit separate subordinate execution manifests. No new manifests were fabricated.",
+    "B0 frozen top-level R=16 yields native local max_degree=floor(2R/3)=10.",
+    "Configured wrapper dirty_source_checksum belongs to the reused small-test build; current per-file sources and binary were separately matched."
+  ],
+  "change_summary": {
+    "functional_code_modified": false,
+    "public_contracts_or_gates_modified": false,
+    "new_reviewable_files_directory": "experiments/reports/diskann-kmeans-sift1m-20261013-k3-01",
+    "new_retained_workspace": "build/kmeans-partition-sift1m-20261013-k3-01",
+    "existing_changes_preserved": true,
+    "tracked_diff_identical_to_preflight": true,
+    "staged_files": [],
+    "branch": "codex/kmeans-partition",
+    "head": "0a19cb886428ecbc27b873e47e30af77e11da9dd",
+    "git_diff_check": "passed"
+  }
+}

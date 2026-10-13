@@ -1,0 +1,35 @@
+{
+  "argv": [
+    "docker",
+    "run",
+    "--rm",
+    "--platform",
+    "linux/amd64",
+    "--pull=never",
+    "--network=none",
+    "--memory=14g",
+    "--memory-swap=14g",
+    "--cpus=6",
+    "--mount",
+    "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+    "--mount",
+    "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01,dst=/workspace/build/kmeans-partition-sift1m-20261013-k3-01",
+    "--workdir",
+    "/workspace",
+    "sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf",
+    "python3",
+    "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/execute-once.py"
+  ],
+  "shell_display": "docker run --rm --platform linux/amd64 --pull=never --network=none --memory=14g --memory-swap=14g --cpus=6 --mount 'type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly' --mount 'type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01,dst=/workspace/build/kmeans-partition-sift1m-20261013-k3-01' --workdir /workspace sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf python3 /workspace/build/kmeans-partition-sift1m-20261013-k3-01/execute-once.py",
+  "native_command": [
+    "/workspace/build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/kmeans_partition_runner",
+    "execute",
+    "--request",
+    "/workspace/experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/config.json",
+    "--result",
+    "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json"
+  ],
+  "only_writable_repository_mount": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01",
+  "repository_and_upstream_read_only": true,
+  "image": "sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf"
+}

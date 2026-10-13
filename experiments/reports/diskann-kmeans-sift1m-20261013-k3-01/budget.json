@@ -1,0 +1,67 @@
+{
+  "frozen_at": "2026-10-13T04:44:27.650377+00:00",
+  "attempt_count": 1,
+  "retries": 0,
+  "complete_scope": [
+    "KMeans Partition",
+    "B0 x3",
+    "M0",
+    "existing structural validation/evaluation only"
+  ],
+  "configuration_sha256": "d83340bd9811cca1fe361effd3f4d9cb81952c5f040281bca73d40663b7e5c9b",
+  "runner_sha256": "4132351b8982d27b94ab07c5cc03e4021dce91f08335ff0f8186b5bae31574a3",
+  "native_command": [
+    "/workspace/build/kmeans-partition-linux-20261013/src/partition/diskann_kmeans/kmeans_partition_runner",
+    "execute",
+    "--request",
+    "/workspace/experiments/reports/diskann-kmeans-sift1m-20261013-k3-01/config.json",
+    "--result",
+    "/workspace/build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json"
+  ],
+  "environment": {
+    "OMP_NUM_THREADS": "6",
+    "MKL_NUM_THREADS": "6"
+  },
+  "effective_partition_parameters": {
+    "K": 3,
+    "max_k_means_reps": 15,
+    "k_base": 1,
+    "sample_probability": 0.256,
+    "expected_training_samples_target": 256000,
+    "seed": "native randomness, no override"
+  },
+  "frozen_B0": {
+    "L": 32,
+    "R": 16,
+    "alpha": 1.2,
+    "build_pq_bytes": 0,
+    "max_occlusion_size": 750,
+    "num_threads": 6,
+    "saturation": false,
+    "use_opq": false
+  },
+  "frozen_M0": {
+    "R": 16,
+    "use_filters": false
+  },
+  "memory_budget_bytes": 12884901888,
+  "memory_budget_is_allocator_limit": false,
+  "container_memory_limit_bytes": 15032385536,
+  "container_swap_bytes": 0,
+  "thread_budget": 6,
+  "wall_time_limit_seconds": 3600,
+  "termination_grace_seconds": 10,
+  "disk_free_admission_bytes": 17179869184,
+  "disk_free_stop_bytes": 4294967296,
+  "planned_output_disk_allowance_bytes": 8589934592,
+  "resource_rationale": "Linux VM has 6 schedulable CPUs and about 19.55 GiB RAM, with >17 GiB available at preflight. Native ID sharding may hold both full float/raw data buffers (~0.95 GiB), sample and assignment buffers. B0 runs sequentially and must handle an uneven shard as large as the full dataset plus native graph, scratch, reconstructed vectors, artifact and validation copies. 12 GiB budget and separate 14 GiB cgroup cap leave VM headroom; 8 GiB disk allowance covers dataset copy, graph/vector copies, temporary shards, validation and manifests. 60-minute wall cap covers native pipeline including repeated contract/checksum work, not a promised runtime.",
+  "stop_conditions": [
+    "resource/data/build identity admission fails: no execution",
+    "one native run exits nonzero or invalid output: retain all, no retry",
+    "wall time over 3600 seconds: terminate process group, kill after 10 seconds",
+    "disk free below 4 GiB: terminate and preserve existing output",
+    "container 14 GiB memory cap/OOM: failed or incomplete, no retry"
+  ],
+  "preflight_evidence": "build/kmeans-partition-sift1m-20261013-k3-01/environment-preflight.json",
+  "controller_sha256": "88e780bf21f9703af3442e476f83dafe8cb2e9cf8aa3c7daaabb8b37ee61d83e"
+}

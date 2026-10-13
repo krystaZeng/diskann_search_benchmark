@@ -1,0 +1,453 @@
+{
+  "created_at": "2026-10-13T04:52:03.697426+00:00",
+  "root": "build/kmeans-partition-sift1m-20261013-k3-01",
+  "files": [
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/attempt-started.json",
+      "sha256": "e98c217f9cd9d10458f36ba257b301f9868614a719b897fdf355faed206f6ee8",
+      "byte_length": 730
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/check-results-exit-code.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "byte_length": 2
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/check-results.py",
+      "sha256": "c52f6b98d0de2f3c48eefd42d0192c9baef99de5cb29a08d405fb3a82e4e9add",
+      "byte_length": 9993
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/check-results.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/check-results.stdout.log",
+      "sha256": "97684a8a90bcabf4d8ca047e480887693b23751e36ac53b6cc4b751e9abb8ed0",
+      "byte_length": 886
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/docker-exit-code.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "byte_length": 2
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/docker.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/docker.stdout.log",
+      "sha256": "453bff6a14ec9c5a2a04f4f35215322367b9bdb4673ffd1d9ce0a47c2dc1c0f8",
+      "byte_length": 1096
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/environment-preflight.json",
+      "sha256": "7a0b2b09aa1d476395a5d4a8814e1684d90ff3237d4d382ca6d46fba483b6dad",
+      "byte_length": 10705
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/execute-once.py",
+      "sha256": "88e780bf21f9703af3442e476f83dafe8cb2e9cf8aa3c7daaabb8b37ee61d83e",
+      "byte_length": 4133
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/execution.json",
+      "sha256": "453bff6a14ec9c5a2a04f4f35215322367b9bdb4673ffd1d9ce0a47c2dc1c0f8",
+      "byte_length": 1096
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/input-contract-command.json",
+      "sha256": "e344d99f357257d0906020d21189a31f1a41e29e203b0da4439a4c69e17f3a77",
+      "byte_length": 360
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/input-contract.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/input-contract.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/output-contract-command.json",
+      "sha256": "11431dc59f7fdc3ff687bd3970aa41664afd4bc7b7d15530e122df69be0cceae",
+      "byte_length": 464
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/output-contract.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/output-contract.stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/preflight.py",
+      "sha256": "2976fdf427e4057c67f68604c115c1b4fed9fc514f825162d82c27a2392f06a4",
+      "byte_length": 2428
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/resources.jsonl",
+      "sha256": "4f2e70727cc3130056042cb7b814a61180ec119d5c32de5915ad4eab556af340",
+      "byte_length": 62949
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "byte_length": 0
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/stdout.log",
+      "sha256": "7463c2705f93cc08543519bfefe890a0a09221bba83e49a9a03799c76c01f024",
+      "byte_length": 4873
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/validate-input.json",
+      "sha256": "81aa333a66724d1d13aab9da67f64ef1b00b3f3da7110d7a9808175dc069bc95",
+      "byte_length": 1296
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/validate-output.json",
+      "sha256": "ff18f928acb069b6a43bb12163ea7068f2e132efa9a194cf4623160ae45cebf2",
+      "byte_length": 1353
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/validate-output.py",
+      "sha256": "0d103967d495079ff604bcd09832dfb9fd654f751f9b1008033020e6e1351ba9",
+      "byte_length": 1591
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/input-contract-result.json",
+      "sha256": "f77255cffcc86ffdde8e0072fab4bd4d74d27f991da4c503ded73c9a1b573064",
+      "byte_length": 489
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/dataset-admission.json",
+      "sha256": "35aa9f8c8372e56b1adb52e6815f5fe4cfc9c34f7c9da284a3a759291284e392",
+      "byte_length": 681
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-local-0-valid.json",
+      "sha256": "34fe33e385fd3e5aff1afb3903e4d7bea2d656ebf852d3de882b9c29435778a3",
+      "byte_length": 499
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-local-1-valid.json",
+      "sha256": "3e7e9657ff37be9ac3a2a47f7c7873a77f2dff3ca23b76df8d74ca8086a788dd",
+      "byte_length": 499
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-local-2-valid.json",
+      "sha256": "e454d585cedd9b1bbb617c0a3ec645187858576e0752d4ef21b1d2f22199ef42",
+      "byte_length": 499
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-merge-valid.json",
+      "sha256": "165850c8e9045f14d050a30bc525a20f5732a123696961bc745c698f12e239d5",
+      "byte_length": 499
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-partition-valid.json",
+      "sha256": "ba6c811edaae70f33a856837f39f0fe44c9c720c8749b195b09d9786ad79a89d",
+      "byte_length": 497
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/sift1m-input-contract-validate.json",
+      "sha256": "ff1647be78f1f9b32fcb1cbfe14ef841624cd3382f675985ab07f1ef4b794dbb",
+      "byte_length": 477
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/sift1m-output-lineage-contract-validate.json",
+      "sha256": "165850c8e9045f14d050a30bc525a20f5732a123696961bc745c698f12e239d5",
+      "byte_length": 499
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/parameters/local-0.json",
+      "sha256": "11f9337cee69f316f0b13cc85db9936805f8dacb58ab6709081b0bd49997c868",
+      "byte_length": 139
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/parameters/local-1.json",
+      "sha256": "b7efe610cac50dee894ffb5b8cb8a9da685e948e20ad987a605cc6175b5baf50",
+      "byte_length": 139
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/parameters/local-2.json",
+      "sha256": "9d6b7d101e4f82c8fced58d5a41ccf6495a4db1911a35ed97dfdb2d8dafae1c8",
+      "byte_length": 139
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/parameters/merge.json",
+      "sha256": "be04115d2e9edeafb426977893f869a04c8869e380d3902566aa0b20c18504a1",
+      "byte_length": 28
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/parameters/partition.json",
+      "sha256": "f5acee151524789259e1dbc4af4cc71b9280e43ca49fb230ef784967ff9ca75a",
+      "byte_length": 29
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stage-execution/partition.json",
+      "sha256": "ff2c5d48f5ea5aeddcea88e07ed504f6b6342d7639d3fe4cc30b42be8c5402f1",
+      "byte_length": 120017
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/local-0.json",
+      "sha256": "baa2ddd515ddd7335ac3e702d9543f903f2f6792f95a4419466c56f774960378",
+      "byte_length": 119441
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/local-1.json",
+      "sha256": "5c6427813be2c8716b5db565924110394a03e249db2a17d2b0afc4f717bb9831",
+      "byte_length": 119441
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/local-2.json",
+      "sha256": "b7df02745fc032afcf6a242ded7f9c43ae11169e849611607bd22ed460677898",
+      "byte_length": 119441
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/merge.json",
+      "sha256": "59aab972ea579fad399a66caeb5fb8b5161bcb968450f60c3f20e300703da2ad",
+      "byte_length": 119808
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/partition.json",
+      "sha256": "97f3bf71e2cda98cce6b3eacffe218a996e3963cd1b365296967f82b83216537",
+      "byte_length": 119292
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/artifact.json",
+      "sha256": "5e1b85355a63ad56a29f3fdd54a0c94297216791833675b36dab11b38b5cc63e",
+      "byte_length": 876
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/vectors.bin",
+      "sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+      "byte_length": 512000008
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/artifact.json",
+      "sha256": "78cc1777411074e9c2ad72e3a8c1acdd4535c92c57e4bbba634ae022668d29b2",
+      "byte_length": 1340
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/graph.index",
+      "sha256": "6e0594e951462c04fe72351f26769a388baecf8dfbe7acc0131827b89da789f1",
+      "byte_length": 10587972
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/map.bin",
+      "sha256": "49be95a4efeb4ba0aa275d22a9d5ffda5250aa152393aed1ce0895684eee9dff",
+      "byte_length": 999200
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/artifact.json",
+      "sha256": "dee0ad61adfe5849df2cc429c5f31d2b9e04ca256f189639280ef8647c9ac0b7",
+      "byte_length": 1341
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/graph.index",
+      "sha256": "2355f7f42f16208c42139115bc6c8332494f322ed45e3d8eb82cbf3e16b807e6",
+      "byte_length": 11204460
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/map.bin",
+      "sha256": "afa28c7630df4b6527add1d13270b1e84e57002cc8daa12649ce5f959d96062c",
+      "byte_length": 1058380
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/artifact.json",
+      "sha256": "1b7455472565065409c205227d871973306695e829aeb97cd3c12760386aeac9",
+      "byte_length": 1341
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/graph.index",
+      "sha256": "44d3704918dd233d606903f9ec42f25db912617b29126cc03292412697ada2ae",
+      "byte_length": 20811004
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/map.bin",
+      "sha256": "15dfbd82289f482dd4425fa22f961e2660003c71fdd34bc65a04ab1758940708",
+      "byte_length": 1942444
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/artifact.json",
+      "sha256": "d309ab1e722b7b00360a60c49daf31ff1047f3f27c0a8c2bc00d821ac5885726",
+      "byte_length": 2443
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/global.index",
+      "sha256": "7ea62d3339de72ae3c4ab8ed447918b5645a5287cbb439888a9c8f017b467429",
+      "byte_length": 42603388
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/medoids.bin",
+      "sha256": "cddd78d6d39daf0618d2d5e46c656c4c6a433a0aac677d3c7ceded7ecf3f1e3e",
+      "byte_length": 20
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/artifact.json",
+      "sha256": "b0c6fa27968efc31204d50ff046d9171c21b5415721996cd93bc863f17fd91db",
+      "byte_length": 2097
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/centroids.bin",
+      "sha256": "ca3bef623668a8f6a24e07b23aee83df6c4835ccd59dbd38ae30cdee77e43746",
+      "byte_length": 1544
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-0-map.bin",
+      "sha256": "49be95a4efeb4ba0aa275d22a9d5ffda5250aa152393aed1ce0895684eee9dff",
+      "byte_length": 999200
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-1-map.bin",
+      "sha256": "afa28c7630df4b6527add1d13270b1e84e57002cc8daa12649ce5f959d96062c",
+      "byte_length": 1058380
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-2-map.bin",
+      "sha256": "15dfbd82289f482dd4425fa22f961e2660003c71fdd34bc65a04ab1758940708",
+      "byte_length": 1942444
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/output-contract-result.json",
+      "sha256": "e2472f918ceaf652fd0790d15c7f03817a4c56db3cc6736f09d6b35a5a72c663",
+      "byte_length": 529
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/reports/kmeans-sift1m-k3-20261013-01-evaluation.json",
+      "sha256": "275884b50e0bc5242bdee1581a23f680ebfceef1ee728595786f15008ae10736",
+      "byte_length": 730
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/result.json",
+      "sha256": "10b16234420d6e7cfd945828bb42b9277853a283e6efc1425db7737a940e1595",
+      "byte_length": 2561
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-0/native/local.index",
+      "sha256": "6e0594e951462c04fe72351f26769a388baecf8dfbe7acc0131827b89da789f1",
+      "byte_length": 10587972
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-0/native/local.index.data",
+      "sha256": "d36e65b0dcd25fcdffbfbb10e98e496a7007b1c832e90a2acf05bc2a206852e7",
+      "byte_length": 127896584
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-0/preparation/shard.bin",
+      "sha256": "d36e65b0dcd25fcdffbfbb10e98e496a7007b1c832e90a2acf05bc2a206852e7",
+      "byte_length": 127896584
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-1/native/local.index",
+      "sha256": "2355f7f42f16208c42139115bc6c8332494f322ed45e3d8eb82cbf3e16b807e6",
+      "byte_length": 11204460
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-1/native/local.index.data",
+      "sha256": "0c4ccf3df60232f3b95de58b25205120a3c765eaf39d770c9b17d9320fcccb5d",
+      "byte_length": 135471624
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-1/preparation/shard.bin",
+      "sha256": "0c4ccf3df60232f3b95de58b25205120a3c765eaf39d770c9b17d9320fcccb5d",
+      "byte_length": 135471624
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-2/native/local.index",
+      "sha256": "44d3704918dd233d606903f9ec42f25db912617b29126cc03292412697ada2ae",
+      "byte_length": 20811004
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-2/native/local.index.data",
+      "sha256": "247140c321835442b181e5e026aed1894312266063bbc58173d45e2621efa85f",
+      "byte_length": 248631816
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-local-2/preparation/shard.bin",
+      "sha256": "247140c321835442b181e5e026aed1894312266063bbc58173d45e2621efa85f",
+      "byte_length": 248631816
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/medoids.bin",
+      "sha256": "cddd78d6d39daf0618d2d5e46c656c4c6a433a0aac677d3c7ceded7ecf3f1e3e",
+      "byte_length": 20
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/merged.index",
+      "sha256": "7ea62d3339de72ae3c4ab8ed447918b5645a5287cbb439888a9c8f017b467429",
+      "byte_length": 42603388
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/shard-0.ids",
+      "sha256": "49be95a4efeb4ba0aa275d22a9d5ffda5250aa152393aed1ce0895684eee9dff",
+      "byte_length": 999200
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/shard-0.index",
+      "sha256": "6e0594e951462c04fe72351f26769a388baecf8dfbe7acc0131827b89da789f1",
+      "byte_length": 10587972
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/shard-1.ids",
+      "sha256": "afa28c7630df4b6527add1d13270b1e84e57002cc8daa12649ce5f959d96062c",
+      "byte_length": 1058380
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/shard-1.index",
+      "sha256": "2355f7f42f16208c42139115bc6c8332494f322ed45e3d8eb82cbf3e16b807e6",
+      "byte_length": 11204460
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/shard-2.ids",
+      "sha256": "15dfbd82289f482dd4425fa22f961e2660003c71fdd34bc65a04ab1758940708",
+      "byte_length": 1942444
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-merge/native/shard-2.index",
+      "sha256": "44d3704918dd233d606903f9ec42f25db912617b29126cc03292412697ada2ae",
+      "byte_length": 20811004
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-partition/kmeans-build-manifest.json",
+      "sha256": "ff2c5d48f5ea5aeddcea88e07ed504f6b6342d7639d3fe4cc30b42be8c5402f1",
+      "byte_length": 120017
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-partition/native/kmeans_centroids.bin",
+      "sha256": "ca3bef623668a8f6a24e07b23aee83df6c4835ccd59dbd38ae30cdee77e43746",
+      "byte_length": 1544
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-partition/native/kmeans_subshard-0_ids_uint32.bin",
+      "sha256": "49be95a4efeb4ba0aa275d22a9d5ffda5250aa152393aed1ce0895684eee9dff",
+      "byte_length": 999200
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-partition/native/kmeans_subshard-1_ids_uint32.bin",
+      "sha256": "afa28c7630df4b6527add1d13270b1e84e57002cc8daa12649ce5f959d96062c",
+      "byte_length": 1058380
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-partition/native/kmeans_subshard-2_ids_uint32.bin",
+      "sha256": "15dfbd82289f482dd4425fa22f961e2660003c71fdd34bc65a04ab1758940708",
+      "byte_length": 1942444
+    },
+    {
+      "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/temporary/kmeans-sift1m-k3-20261013-01-partition/validation.json",
+      "sha256": "72f88304843f1d131bf213ab4464f20ab9bf3b9f3fcc143cf42e5156e15932f9",
+      "byte_length": 468
+    }
+  ],
+  "total_retained_bytes": 1765980617,
+  "note": "Includes immutable Dataset/Partition/LocalGraph/GlobalGraph payloads, native temporary outputs, parent/subordinate manifests, validation/evaluation evidence, exact run logs, resource samples, commands and one-run collection/check scripts. No historical files were overwritten."
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/partition/diskann-kmeans-v1/parameters.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["K"],
+  "properties": {
+    "K": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "max_k_means_reps": {"type": "integer", "minimum": 1, "default": 15}
+  },
+  "$comment": "K <= validated Dataset N; p=min(1,256000/N); k_base=1; actual sample checks precede initialization. Runtime validates numeric bounds as well as this schema."
+}

@@ -1,0 +1,658 @@
+{
+  "created_at": "2026-10-13T04:50:13.475862+00:00",
+  "checks": {
+    "postrun_native_contract_and_lineage_validator": "passed (Dataset -> Partition -> 3 LocalGraphs -> GlobalGraph)",
+    "json_schemas_and_aggregate_checksums": "passed",
+    "payload_lengths_and_sha256": "passed",
+    "partition_count_nonempty_exact_coverage": "passed",
+    "map_ranges_lengths_strict_ascending": "passed",
+    "centroids_shape_finite": "passed: 3 x 128 float32",
+    "B0_real_invocations": 3,
+    "local_counts_partition_ids_maps_match": "passed",
+    "local_and_global_neighbor_ranges": "passed via existing native graph validators",
+    "global_node_count_and_id_space": "passed: 1000000 GlobalNodeId",
+    "source_input_output_manifest_config_bindings": "passed",
+    "subordinate_manifest_sha_binding": "passed",
+    "frozen_build_and_toolchain_identity": "passed"
+  },
+  "partition_counts": [
+    249798,
+    264593,
+    485609
+  ],
+  "actual_training_sample_count": 256374,
+  "partition_metrics": {
+    "elapsed_seconds": 3.523810217,
+    "process_peak_rss_bytes": 1154564096,
+    "rss_scope": "process_lifetime_high_water_mark",
+    "timing_scope": "parameter_validation_sampling_training_centroid_and_id_io_artifact_validation"
+  },
+  "partition_subordinate_manifest": {
+    "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stage-execution/partition.json",
+    "sha256": "ff2c5d48f5ea5aeddcea88e07ed504f6b6342d7639d3fe4cc30b42be8c5402f1",
+    "byte_length": 120017
+  },
+  "parent_manifests": [
+    {
+      "file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/partition.json",
+        "sha256": "97f3bf71e2cda98cce6b3eacffe218a996e3963cd1b365296967f82b83216537",
+        "byte_length": 119292
+      },
+      "stage": "partition",
+      "implementation": {
+        "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+        "implementation_version": "1.0.0"
+      },
+      "status": "SUCCEEDED",
+      "stage_parameters": {
+        "K": 3,
+        "max_k_means_reps": 15
+      },
+      "input_artifacts": [
+        {
+          "metadata_path": "datasets/sift1m/artifact.json",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+        }
+      ],
+      "validation_evidence": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-partition-valid.json",
+        "sha256": "ba6c811edaae70f33a856837f39f0fe44c9c720c8749b195b09d9786ad79a89d",
+        "byte_length": 497
+      },
+      "started_at": "2026-10-13T04:45:09.998488Z",
+      "ended_at": "2026-10-13T04:45:23.098266Z",
+      "parent_manifest_elapsed_seconds": 13.099778
+    },
+    {
+      "file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/local-0.json",
+        "sha256": "baa2ddd515ddd7335ac3e702d9543f903f2f6792f95a4419466c56f774960378",
+        "byte_length": 119441
+      },
+      "stage": "local_build",
+      "implementation": {
+        "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+        "implementation_version": "1.0.0"
+      },
+      "status": "SUCCEEDED",
+      "stage_parameters": {
+        "L": 32,
+        "R": 16,
+        "alpha": 1.2,
+        "build_pq_bytes": 0,
+        "max_occlusion_size": 750,
+        "num_threads": 6,
+        "saturation": false,
+        "use_opq": false,
+        "partition_id": 0
+      },
+      "input_artifacts": [
+        {
+          "metadata_path": "datasets/sift1m/artifact.json",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+        },
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "aggregate_checksum": "b6ff6d235595b240023660d2364e6a174d22bb964e6ca515ed24cf88a28ba31e",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/local-0/artifact.json"
+        }
+      ],
+      "validation_evidence": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-local-0-valid.json",
+        "sha256": "34fe33e385fd3e5aff1afb3903e4d7bea2d656ebf852d3de882b9c29435778a3",
+        "byte_length": 499
+      },
+      "started_at": "2026-10-13T04:45:23.114731Z",
+      "ended_at": "2026-10-13T04:46:04.018220Z",
+      "parent_manifest_elapsed_seconds": 40.903489
+    },
+    {
+      "file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/local-1.json",
+        "sha256": "5c6427813be2c8716b5db565924110394a03e249db2a17d2b0afc4f717bb9831",
+        "byte_length": 119441
+      },
+      "stage": "local_build",
+      "implementation": {
+        "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+        "implementation_version": "1.0.0"
+      },
+      "status": "SUCCEEDED",
+      "stage_parameters": {
+        "L": 32,
+        "R": 16,
+        "alpha": 1.2,
+        "build_pq_bytes": 0,
+        "max_occlusion_size": 750,
+        "num_threads": 6,
+        "saturation": false,
+        "use_opq": false,
+        "partition_id": 1
+      },
+      "input_artifacts": [
+        {
+          "metadata_path": "datasets/sift1m/artifact.json",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+        },
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "aggregate_checksum": "dc1605762c2f5f671bfcb0c5d0b5f7df23939d4f889e2de7068eb44f19c1b676",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/local-1/artifact.json"
+        }
+      ],
+      "validation_evidence": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-local-1-valid.json",
+        "sha256": "3e7e9657ff37be9ac3a2a47f7c7873a77f2dff3ca23b76df8d74ca8086a788dd",
+        "byte_length": 499
+      },
+      "started_at": "2026-10-13T04:46:04.027341Z",
+      "ended_at": "2026-10-13T04:46:54.304266Z",
+      "parent_manifest_elapsed_seconds": 50.276925
+    },
+    {
+      "file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/local-2.json",
+        "sha256": "b7df02745fc032afcf6a242ded7f9c43ae11169e849611607bd22ed460677898",
+        "byte_length": 119441
+      },
+      "stage": "local_build",
+      "implementation": {
+        "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+        "implementation_version": "1.0.0"
+      },
+      "status": "SUCCEEDED",
+      "stage_parameters": {
+        "L": 32,
+        "R": 16,
+        "alpha": 1.2,
+        "build_pq_bytes": 0,
+        "max_occlusion_size": 750,
+        "num_threads": 6,
+        "saturation": false,
+        "use_opq": false,
+        "partition_id": 2
+      },
+      "input_artifacts": [
+        {
+          "metadata_path": "datasets/sift1m/artifact.json",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+        },
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "aggregate_checksum": "b131487f38f8829d748e799ad7e7b9e5041650b034c8b850ed031f025623ce4a",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/local-2/artifact.json"
+        }
+      ],
+      "validation_evidence": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-local-2-valid.json",
+        "sha256": "e454d585cedd9b1bbb617c0a3ec645187858576e0752d4ef21b1d2f22199ef42",
+        "byte_length": 499
+      },
+      "started_at": "2026-10-13T04:46:54.317640Z",
+      "ended_at": "2026-10-13T04:48:37.809362Z",
+      "parent_manifest_elapsed_seconds": 103.491722
+    },
+    {
+      "file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/kmeans-sift1m-k3-20261013-01/stages/merge.json",
+        "sha256": "59aab972ea579fad399a66caeb5fb8b5161bcb968450f60c3f20e300703da2ad",
+        "byte_length": 119808
+      },
+      "stage": "merge",
+      "implementation": {
+        "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+        "implementation_version": "1.0.0"
+      },
+      "status": "SUCCEEDED",
+      "stage_parameters": {
+        "R": 16,
+        "use_filters": false
+      },
+      "input_artifacts": [
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+        },
+        {
+          "aggregate_checksum": "b6ff6d235595b240023660d2364e6a174d22bb964e6ca515ed24cf88a28ba31e",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/local-0/artifact.json"
+        },
+        {
+          "aggregate_checksum": "dc1605762c2f5f671bfcb0c5d0b5f7df23939d4f889e2de7068eb44f19c1b676",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/local-1/artifact.json"
+        },
+        {
+          "aggregate_checksum": "b131487f38f8829d748e799ad7e7b9e5041650b034c8b850ed031f025623ce4a",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/local-2/artifact.json"
+        }
+      ],
+      "output_artifacts": [
+        {
+          "aggregate_checksum": "4b213d1b2c35b8b4a5885ebd2c4d9981840ffbb00bed31fbc285b9ae246a6f22",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "kmeans-sift1m-k3-20261013-01/merge/artifact.json"
+        }
+      ],
+      "validation_evidence": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/manifests/evidence/kmeans-sift1m-k3-20261013-01-merge-valid.json",
+        "sha256": "165850c8e9045f14d050a30bc525a20f5732a123696961bc745c698f12e239d5",
+        "byte_length": 499
+      },
+      "started_at": "2026-10-13T04:48:37.822129Z",
+      "ended_at": "2026-10-13T04:48:45.738264Z",
+      "parent_manifest_elapsed_seconds": 7.916135
+    }
+  ],
+  "artifacts": [
+    {
+      "reference": {
+        "metadata_path": "datasets/sift1m/artifact.json",
+        "artifact_type": "dataset",
+        "format_version": "diskann-float32-dataset/v1",
+        "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
+      },
+      "metadata_file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/artifact.json",
+        "sha256": "5e1b85355a63ad56a29f3fdd54a0c94297216791833675b36dab11b38b5cc63e",
+        "byte_length": 876
+      },
+      "payloads": [
+        {
+          "byte_length": 512000008,
+          "media_type": "application/vnd.diskann.cpp-main.float32-bin;version=1",
+          "path": "vectors.bin",
+          "role": "vectors",
+          "sha256": "8c7b3d999ba3133f865af72df078f77c2d248fdb80571d7ea1f1bb8e1750658e",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/vectors.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/vectors.bin"
+        }
+      ],
+      "source_artifacts": [],
+      "structural": {
+        "distance_metric": "l2",
+        "global_node_count": 1000000,
+        "scalar_type": "float32",
+        "vector_dimension": 128
+      },
+      "id_space": "none"
+    },
+    {
+      "reference": {
+        "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+        "artifact_type": "partition",
+        "format_version": "partition-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/partition/artifact.json"
+      },
+      "metadata_file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/artifact.json",
+        "sha256": "b0c6fa27968efc31204d50ff046d9171c21b5415721996cd93bc863f17fd91db",
+        "byte_length": 2097
+      },
+      "payloads": [
+        {
+          "byte_length": 999200,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-0-map.bin",
+          "role": "partition/0/local_to_global_map",
+          "sha256": "49be95a4efeb4ba0aa275d22a9d5ffda5250aa152393aed1ce0895684eee9dff",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-0-map.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-0-map.bin"
+        },
+        {
+          "byte_length": 1058380,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-1-map.bin",
+          "role": "partition/1/local_to_global_map",
+          "sha256": "afa28c7630df4b6527add1d13270b1e84e57002cc8daa12649ce5f959d96062c",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-1-map.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-1-map.bin"
+        },
+        {
+          "byte_length": 1942444,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "partition-2-map.bin",
+          "role": "partition/2/local_to_global_map",
+          "sha256": "15dfbd82289f482dd4425fa22f961e2660003c71fdd34bc65a04ab1758940708",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-2-map.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/partition-2-map.bin"
+        },
+        {
+          "byte_length": 1544,
+          "media_type": "application/vnd.diskann.cpp-main.float32-centroids;version=1",
+          "path": "centroids.bin",
+          "role": "centroids",
+          "sha256": "ca3bef623668a8f6a24e07b23aee83df6c4835ccd59dbd38ae30cdee77e43746",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/centroids.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/centroids.bin"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "aggregate_checksum": "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1"
+        }
+      ],
+      "structural": {
+        "partition_count": 3,
+        "partitions": [
+          {
+            "local_node_count": 249798,
+            "local_to_global_map_role": "partition/0/local_to_global_map",
+            "partition_id": 0
+          },
+          {
+            "local_node_count": 264593,
+            "local_to_global_map_role": "partition/1/local_to_global_map",
+            "partition_id": 1
+          },
+          {
+            "local_node_count": 485609,
+            "local_to_global_map_role": "partition/2/local_to_global_map",
+            "partition_id": 2
+          }
+        ]
+      },
+      "id_space": "local"
+    },
+    {
+      "reference": {
+        "aggregate_checksum": "b6ff6d235595b240023660d2364e6a174d22bb964e6ca515ed24cf88a28ba31e",
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/local-0/artifact.json"
+      },
+      "metadata_file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/artifact.json",
+        "sha256": "78cc1777411074e9c2ad72e3a8c1acdd4535c92c57e4bbba634ae022668d29b2",
+        "byte_length": 1340
+      },
+      "payloads": [
+        {
+          "byte_length": 999200,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "map.bin",
+          "role": "local_to_global_map",
+          "sha256": "49be95a4efeb4ba0aa275d22a9d5ffda5250aa152393aed1ce0895684eee9dff",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/map.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/map.bin"
+        },
+        {
+          "byte_length": 10587972,
+          "media_type": "application/vnd.diskann.cpp-main.local-graph;version=1",
+          "path": "graph.index",
+          "role": "local_graph",
+          "sha256": "6e0594e951462c04fe72351f26769a388baecf8dfbe7acc0131827b89da789f1",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/graph.index",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-0/graph.index"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      ],
+      "structural": {
+        "declared_max_degree": 10,
+        "local_node_count": 249798,
+        "observed_max_degree": 10,
+        "partition_id": 0,
+        "source_partition_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449"
+      },
+      "id_space": "local"
+    },
+    {
+      "reference": {
+        "aggregate_checksum": "dc1605762c2f5f671bfcb0c5d0b5f7df23939d4f889e2de7068eb44f19c1b676",
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/local-1/artifact.json"
+      },
+      "metadata_file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/artifact.json",
+        "sha256": "dee0ad61adfe5849df2cc429c5f31d2b9e04ca256f189639280ef8647c9ac0b7",
+        "byte_length": 1341
+      },
+      "payloads": [
+        {
+          "byte_length": 1058380,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "map.bin",
+          "role": "local_to_global_map",
+          "sha256": "afa28c7630df4b6527add1d13270b1e84e57002cc8daa12649ce5f959d96062c",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/map.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/map.bin"
+        },
+        {
+          "byte_length": 11204460,
+          "media_type": "application/vnd.diskann.cpp-main.local-graph;version=1",
+          "path": "graph.index",
+          "role": "local_graph",
+          "sha256": "2355f7f42f16208c42139115bc6c8332494f322ed45e3d8eb82cbf3e16b807e6",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/graph.index",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-1/graph.index"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      ],
+      "structural": {
+        "declared_max_degree": 10,
+        "local_node_count": 264593,
+        "observed_max_degree": 10,
+        "partition_id": 1,
+        "source_partition_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449"
+      },
+      "id_space": "local"
+    },
+    {
+      "reference": {
+        "aggregate_checksum": "b131487f38f8829d748e799ad7e7b9e5041650b034c8b850ed031f025623ce4a",
+        "artifact_type": "local_graph",
+        "format_version": "local-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/local-2/artifact.json"
+      },
+      "metadata_file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/artifact.json",
+        "sha256": "1b7455472565065409c205227d871973306695e829aeb97cd3c12760386aeac9",
+        "byte_length": 1341
+      },
+      "payloads": [
+        {
+          "byte_length": 1942444,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-id-map;version=1",
+          "path": "map.bin",
+          "role": "local_to_global_map",
+          "sha256": "15dfbd82289f482dd4425fa22f961e2660003c71fdd34bc65a04ab1758940708",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/map.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/map.bin"
+        },
+        {
+          "byte_length": 20811004,
+          "media_type": "application/vnd.diskann.cpp-main.local-graph;version=1",
+          "path": "graph.index",
+          "role": "local_graph",
+          "sha256": "44d3704918dd233d606903f9ec42f25db912617b29126cc03292412697ada2ae",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/graph.index",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/local-2/graph.index"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      ],
+      "structural": {
+        "declared_max_degree": 10,
+        "local_node_count": 485609,
+        "observed_max_degree": 10,
+        "partition_id": 2,
+        "source_partition_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449"
+      },
+      "id_space": "local"
+    },
+    {
+      "reference": {
+        "aggregate_checksum": "4b213d1b2c35b8b4a5885ebd2c4d9981840ffbb00bed31fbc285b9ae246a6f22",
+        "artifact_type": "global_graph",
+        "format_version": "global-graph-artifact/v1",
+        "metadata_path": "kmeans-sift1m-k3-20261013-01/merge/artifact.json"
+      },
+      "metadata_file": {
+        "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/artifact.json",
+        "sha256": "d309ab1e722b7b00360a60c49daf31ff1047f3f27c0a8c2bc00d821ac5885726",
+        "byte_length": 2443
+      },
+      "payloads": [
+        {
+          "byte_length": 42603388,
+          "media_type": "application/vnd.diskann.cpp-main.global-graph;version=1",
+          "path": "global.index",
+          "role": "global_graph",
+          "sha256": "7ea62d3339de72ae3c4ab8ed447918b5645a5287cbb439888a9c8f017b467429",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/global.index",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/global.index"
+        },
+        {
+          "byte_length": 20,
+          "media_type": "application/vnd.diskann.cpp-main.uint32-medoids;version=1",
+          "path": "medoids.bin",
+          "role": "medoids",
+          "sha256": "cddd78d6d39daf0618d2d5e46c656c4c6a433a0aac677d3c7ceded7ecf3f1e3e",
+          "absolute_host_path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/medoids.bin",
+          "repository_path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/merge/medoids.bin"
+        }
+      ],
+      "source_artifacts": [
+        {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        },
+        {
+          "aggregate_checksum": "b6ff6d235595b240023660d2364e6a174d22bb964e6ca515ed24cf88a28ba31e",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1"
+        },
+        {
+          "aggregate_checksum": "dc1605762c2f5f671bfcb0c5d0b5f7df23939d4f889e2de7068eb44f19c1b676",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1"
+        },
+        {
+          "aggregate_checksum": "b131487f38f8829d748e799ad7e7b9e5041650b034c8b850ed031f025623ce4a",
+          "artifact_type": "local_graph",
+          "format_version": "local-graph-artifact/v1"
+        }
+      ],
+      "structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 1000000,
+        "observed_max_degree": 10,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "b6ff6d235595b240023660d2364e6a174d22bb964e6ca515ed24cf88a28ba31e",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "dc1605762c2f5f671bfcb0c5d0b5f7df23939d4f889e2de7068eb44f19c1b676",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "b131487f38f8829d748e799ad7e7b9e5041650b034c8b850ed031f025623ce4a",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "048139c8c8f2661ccbe63ff34973e7489daf53125697fc23f1a5fb4217476449",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "id_space": "global"
+    }
+  ],
+  "evaluation_report": {
+    "path": "build/kmeans-partition-sift1m-20261013-k3-01/workspace/reports/kmeans-sift1m-k3-20261013-01-evaluation.json",
+    "sha256": "275884b50e0bc5242bdee1581a23f680ebfceef1ee728595786f15008ae10736",
+    "byte_length": 730
+  },
+  "structural_findings": {
+    "declared_max_degree": 16,
+    "graph_integrity": "VALID",
+    "invalid_neighbor_count": 0,
+    "logical_node_count": 1000000,
+    "observed_max_degree": 10,
+    "passed": true
+  },
+  "provenance_notes": [
+    "Partition subordinate output is the original temporary candidate identity. Pipeline moved it to normal; aggregate checksum matches parent final reference.",
+    "B0 and M0 use existing parent stage BuildManifests; they do not emit separate subordinate execution manifests. No new manifests were fabricated.",
+    "B0 frozen top-level R=16 yields native local max_degree=floor(2R/3)=10.",
+    "Configured wrapper dirty_source_checksum belongs to the reused small-test build; current per-file sources and binary were separately matched."
+  ]
+}
