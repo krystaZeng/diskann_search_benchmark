@@ -1,0 +1,1619 @@
+{
+  "generated_at": "2026-10-13T01:58:15.149286+00:00",
+  "scope": "Only query alignment and frozen runner build identity admission; historical metric recomputation; no new certification.",
+  "historical_workspace": "build/framework-baseline-certification-formal-sift1m-8cd16925",
+  "certification_path": "reports/certification/framework-baseline-certification-l100-200-8cd16925-v2.json",
+  "baseline": {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "dirty_worktree": false
+  },
+  "method": {
+    "entry_point": "one-off read-only Python review; full evaluate_observation_directory is never called",
+    "functions": [
+      "normalize_search_protocol",
+      "_load_evaluation_ground_truth",
+      "_admit_observation_set",
+      "_observation_exclusion_reason",
+      "_query_alignment_exclusion_reason",
+      "_verified_observation_environment",
+      "evaluate_raw_point",
+      "_median"
+    ],
+    "original_exclusion_policy": "Only previously quality-eligible observations passing current checks are recomputed; all original exclusions are retained.",
+    "metric_comparison": "Exact numeric equality with stored per-observation quality metrics and median_eligible aggregates; no tolerance widening.",
+    "performance_limit": "Informational performance metrics can be recomputed, but values absent from original reports cannot be compared and are not promoted to formal evidence.",
+    "binary_policy": "Compare retained source_build SHA values to the run-specific frozen protocol; do not run or substitute any binary.",
+    "invocation": ".venv/bin/python /tmp/diskann_search_review_20261013.py",
+    "script_sha256": "d33f554d780d240d0d2194fcf9aa7c83db6872101ca741f4155c50ae612542e2",
+    "evaluator_path": "harness/python/diskann_harness/diskann_search_evaluation.py",
+    "evaluator_sha256": "09da8a180e0a42ee8c4fed0ad1afcb04104e18da92771a278a8a84ecbab8ca30"
+  },
+  "reports": [
+    {
+      "role": "framework",
+      "evaluation_report": {
+        "byte_length": 7920,
+        "path": "reports/search-evaluation/sift1m-cert-framework-zero-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "3e9279d7ecb144b9a8c0f536f480c791a359b54a03e4b23d628c2f471c32b609"
+      },
+      "observations": [
+        {
+          "observation_id": "sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r0.json",
+          "sha256": "3bb333f5b67a48b8b45bbe95268cd83d84e5326b195227b1d4a5c2050aab436e",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 40.33421400358003,
+            "mean_latency_us_k100": 148509.38341862845,
+            "p99_9_latency_us_k100": 1095375.0,
+            "mean_ios_k100": 111.88229273285567
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r1.json",
+          "sha256": "4c6442098c277b396b597d6b829f3fb2feb7d61640777a02a2fea4b9dbb5b6bb",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 33.60829089085494,
+            "mean_latency_us_k100": 178265.02272262026,
+            "p99_9_latency_us_k100": 1182116.0,
+            "mean_ios_k100": 111.88229273285567
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r2.json",
+          "sha256": "bf3bf6e3664cdf591fda4c2fc614a027ec6d78e264a6f32b1a5f2d3d2d3ef58b",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 40.5533788726609,
+            "mean_latency_us_k100": 147673.19222108496,
+            "p99_9_latency_us_k100": 1145896.0,
+            "mean_ios_k100": 111.88229273285567
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r0.json",
+          "sha256": "5e2578a8d96bc9ebfab8a489de3eb8931fe965da43acb4bf42157d713ae94107",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 21.036167726476837,
+            "mean_latency_us_k100": 284828.15803480044,
+            "p99_9_latency_us_k100": 1263714.0,
+            "mean_ios_k100": 210.23091095189355
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r1.json",
+          "sha256": "ffa076917c58bc6cbcf914bfb8c024cf9bf264b87d6b80558b34088c9edf50ba",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 19.90763306536002,
+            "mean_latency_us_k100": 300938.7862845445,
+            "p99_9_latency_us_k100": 1286726.0,
+            "mean_ios_k100": 210.23091095189355
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r2.json",
+          "sha256": "5c243a28775ec58c726dfb2d4894393d6237b3637ad0ef90a1e109ac2533e5f5",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 17.171331031137655,
+            "mean_latency_us_k100": 349067.4630501535,
+            "p99_9_latency_us_k100": 1369092.0,
+            "mean_ios_k100": 210.23091095189355
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        }
+      ],
+      "protocol": {
+        "byte_length": 6525,
+        "path": "protocols/sift1m-cert-framework-zero-l100-200-8cd16925-v2.json",
+        "sha256": "b56a4af6cf9afbea934db85283fed3c536783df60670cd03a0265970e1b29597"
+      },
+      "runner_build": {
+        "binary_path": "build/diskann-search-evaluation-materializer-clean-8cd16925/src/search/diskann/diskann_search_evaluation_runner",
+        "binary_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
+        "build_manifest_path": "manifests/sift1m-reference-disk-layout-8cd16925.json",
+        "build_manifest_sha256": "095a84718c4b4b2b846dd43e4818fc178a073ab43d58702c4c995aba57a87f34",
+        "project_branch": "feature/framework-baseline-certification",
+        "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+        "project_dirty": false,
+        "project_repository": "https://github.com/krystaZeng/diskann_search_benchmark.git"
+      },
+      "query_count": 4885,
+      "ground_truth_declared_rows": 4885,
+      "ground_truth_actual_rows": 4885,
+      "original_aggregates": {
+        "performance": [],
+        "quality": [
+          {
+            "L_search": 100,
+            "aggregation": "median_eligible",
+            "cache_mode": "zero",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 89.8935516888434,
+              "recall_at_100": 70.51545547594678
+            }
+          },
+          {
+            "L_search": 200,
+            "aggregation": "median_eligible",
+            "cache_mode": "zero",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 94.98874104401229,
+              "recall_at_100": 87.31606960081884
+            }
+          }
+        ]
+      },
+      "recomputed_aggregates": {
+        "quality": [
+          {
+            "cache_mode": "zero",
+            "L_search": 100,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 89.8935516888434,
+              "recall_at_100": 70.51545547594678
+            }
+          },
+          {
+            "cache_mode": "zero",
+            "L_search": 200,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 94.98874104401229,
+              "recall_at_100": 87.31606960081884
+            }
+          }
+        ],
+        "performance": []
+      },
+      "aggregates_equal": true
+    },
+    {
+      "role": "framework",
+      "evaluation_report": {
+        "byte_length": 7985,
+        "path": "reports/search-evaluation/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "ef211d8722027a8616fab04f0c505a356d281c547369fcbb7467938bf6b5d26b"
+      },
+      "observations": [
+        {
+          "observation_id": "sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r0.json",
+          "sha256": "581995078a38e71653d7fbffce0705c750f187fb920b21cea7542b9adfeccb9b",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 34.1934458394997,
+            "mean_latency_us_k100": 175169.40716479017,
+            "p99_9_latency_us_k100": 1183207.0,
+            "mean_ios_k100": 103.92876151484136
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r1.json",
+          "sha256": "3690a1bc7b2a7344f79321aaf2b4cb1d106366fc2cd41f8350c8731977c21786",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 38.849886836681726,
+            "mean_latency_us_k100": 154168.97789150462,
+            "p99_9_latency_us_k100": 1091287.0,
+            "mean_ios_k100": 103.92876151484136
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r2.json",
+          "sha256": "1f921a94c93f64f814ffedb2c18619974d4cd67f5d2a734adecb428d2ccbea8e",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 89.8935516888434,
+            "recall_at_100": 70.51545547594678
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 37.00321470446093,
+            "mean_latency_us_k100": 161847.8110542477,
+            "p99_9_latency_us_k100": 1147635.0,
+            "mean_ios_k100": 103.92876151484136
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r0.json",
+          "sha256": "05c953b91432e9dfff9ca02b297c94c39473111f33bb15fc8f428f32825b0013",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 18.69601120122618,
+            "mean_latency_us_k100": 320466.91279426817,
+            "p99_9_latency_us_k100": 1443134.0,
+            "mean_ios_k100": 201.5439099283521
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r1.json",
+          "sha256": "80024bd47eedb3ecd802890dcf72ffa60950ae3b8a445e454615886d9c20f3ab",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 20.269618624656708,
+            "mean_latency_us_k100": 295541.0131013306,
+            "p99_9_latency_us_k100": 1330918.0,
+            "mean_ios_k100": 201.5439099283521
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r2.json",
+          "sha256": "66219d27a722c3e1502b607e8aa6e8b430ff9957dacc5634584b39620d89b4c6",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 94.98874104401229,
+            "recall_at_100": 87.31606960081884
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 19.298552109239303,
+            "mean_latency_us_k100": 310413.8423746162,
+            "p99_9_latency_us_k100": 1379479.0,
+            "mean_ios_k100": 201.5439099283521
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        }
+      ],
+      "protocol": {
+        "byte_length": 6580,
+        "path": "protocols/sift1m-cert-framework-fixed-l100-200-8cd16925-v2.json",
+        "sha256": "8f37a3cb30086f841236a8399fc7b7d14880aef436d8f56ad54cf44021b71eed"
+      },
+      "runner_build": {
+        "binary_path": "build/diskann-search-evaluation-materializer-clean-8cd16925/src/search/diskann/diskann_search_evaluation_runner",
+        "binary_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
+        "build_manifest_path": "manifests/sift1m-reference-disk-layout-8cd16925.json",
+        "build_manifest_sha256": "095a84718c4b4b2b846dd43e4818fc178a073ab43d58702c4c995aba57a87f34",
+        "project_branch": "feature/framework-baseline-certification",
+        "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+        "project_dirty": false,
+        "project_repository": "https://github.com/krystaZeng/diskann_search_benchmark.git"
+      },
+      "query_count": 4885,
+      "ground_truth_declared_rows": 4885,
+      "ground_truth_actual_rows": 4885,
+      "original_aggregates": {
+        "performance": [],
+        "quality": [
+          {
+            "L_search": 100,
+            "aggregation": "median_eligible",
+            "cache_mode": "fixed_bfs",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 89.8935516888434,
+              "recall_at_100": 70.51545547594678
+            }
+          },
+          {
+            "L_search": 200,
+            "aggregation": "median_eligible",
+            "cache_mode": "fixed_bfs",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 94.98874104401229,
+              "recall_at_100": 87.31606960081884
+            }
+          }
+        ]
+      },
+      "recomputed_aggregates": {
+        "quality": [
+          {
+            "cache_mode": "fixed_bfs",
+            "L_search": 100,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 89.8935516888434,
+              "recall_at_100": 70.51545547594678
+            }
+          },
+          {
+            "cache_mode": "fixed_bfs",
+            "L_search": 200,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 94.98874104401229,
+              "recall_at_100": 87.31606960081884
+            }
+          }
+        ],
+        "performance": []
+      },
+      "aggregates_equal": true
+    },
+    {
+      "role": "reference",
+      "evaluation_report": {
+        "byte_length": 7934,
+        "path": "reports/search-evaluation/sift1m-cert-reference-zero-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "eaf30bb84097e105cb78b1c5b9a48ab38e8555d533f5a93eeaa602ee5392d0d6"
+      },
+      "observations": [
+        {
+          "observation_id": "sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r0.json",
+          "sha256": "670cd3b0457c7116810ca52008862544dea42e2cd8d9895e652aebf14216e5e7",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 21.728437173771812,
+            "mean_latency_us_k100": 275701.1850562948,
+            "p99_9_latency_us_k100": 1353658.0,
+            "mean_ios_k100": 112.97011258955988
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r1.json",
+          "sha256": "62f1b4c6512f071239d7047f24da9d6046485e0967f12f804b176ab9a201c605",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 25.38234383171322,
+            "mean_latency_us_k100": 236023.29600818834,
+            "p99_9_latency_us_k100": 1240302.0,
+            "mean_ios_k100": 112.97011258955988
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r2.json",
+          "sha256": "798500480acf13cbb41f6590e8dfbfa04bb90c5c631ef39b96d086c21b684fdf",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 24.597370377459864,
+            "mean_latency_us_k100": 243547.82047082906,
+            "p99_9_latency_us_k100": 1244280.0,
+            "mean_ios_k100": 112.97011258955988
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r0.json",
+          "sha256": "080db957f7cca93a99c8ba5506cc15e07c4f8e589af7a525e0ee46ed2d2933ef",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 12.58609040425131,
+            "mean_latency_us_k100": 476082.2751279427,
+            "p99_9_latency_us_k100": 1638754.0,
+            "mean_ios_k100": 211.3914022517912
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r1.json",
+          "sha256": "0c307f3f659e339bb698ee46585c4d32785f3b7928cead3e403f8a0ecce3ed3d",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 13.034914743599144,
+            "mean_latency_us_k100": 459692.1029682702,
+            "p99_9_latency_us_k100": 1522050.0,
+            "mean_ios_k100": 211.3914022517912
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r2.json",
+          "sha256": "8cb4b5e81df4803d3ceab6b5f288d5bef1f98111dcb56d8a53f29abac0d18e45",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 17.74293706613638,
+            "mean_latency_us_k100": 337668.6360286592,
+            "p99_9_latency_us_k100": 1281544.0,
+            "mean_ios_k100": 211.3914022517912
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        }
+      ],
+      "protocol": {
+        "byte_length": 6559,
+        "path": "protocols/sift1m-cert-reference-zero-l100-200-8cd16925-v2.json",
+        "sha256": "a6b9ff6aeb7b929f4c2e7680c2e18d24366d73a64d89984f2225c729f89d28d9"
+      },
+      "runner_build": {
+        "binary_path": "build/diskann-search-evaluation-materializer-clean-8cd16925/src/search/diskann/diskann_search_evaluation_runner",
+        "binary_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
+        "build_manifest_path": "manifests/sift1m-reference-disk-layout-8cd16925.json",
+        "build_manifest_sha256": "095a84718c4b4b2b846dd43e4818fc178a073ab43d58702c4c995aba57a87f34",
+        "project_branch": "feature/framework-baseline-certification",
+        "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+        "project_dirty": false,
+        "project_repository": "https://github.com/krystaZeng/diskann_search_benchmark.git"
+      },
+      "query_count": 4885,
+      "ground_truth_declared_rows": 4885,
+      "ground_truth_actual_rows": 4885,
+      "original_aggregates": {
+        "performance": [],
+        "quality": [
+          {
+            "L_search": 100,
+            "aggregation": "median_eligible",
+            "cache_mode": "zero",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 90.3152507676561,
+              "recall_at_100": 70.60102354145343
+            }
+          },
+          {
+            "L_search": 200,
+            "aggregation": "median_eligible",
+            "cache_mode": "zero",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 95.38792221084954,
+              "recall_at_100": 87.43684749232344
+            }
+          }
+        ]
+      },
+      "recomputed_aggregates": {
+        "quality": [
+          {
+            "cache_mode": "zero",
+            "L_search": 100,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 90.3152507676561,
+              "recall_at_100": 70.60102354145343
+            }
+          },
+          {
+            "cache_mode": "zero",
+            "L_search": 200,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 95.38792221084954,
+              "recall_at_100": 87.43684749232344
+            }
+          }
+        ],
+        "performance": []
+      },
+      "aggregates_equal": true
+    },
+    {
+      "role": "reference",
+      "evaluation_report": {
+        "byte_length": 7970,
+        "path": "reports/search-evaluation/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "a85b2d49bd595a04f4725c4cf2adb371c5bd7c0e3a04636f66d7f2fd48f6cebd"
+      },
+      "observations": [
+        {
+          "observation_id": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r0.json",
+          "sha256": "c23310b347cb6e697c5abd67a37840b443a7b9cab3a2d6e00b716630d4bfa8f0",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 19.312570152614573,
+            "mean_latency_us_k100": 310214.67123848514,
+            "p99_9_latency_us_k100": 1410099.0,
+            "mean_ios_k100": 105.35516888433982
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r1.json",
+          "sha256": "7691ddd4a9d482a94d484bd0be6c60f44a1d594ebb11875da48e40faa34a3f82",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 27.266220167845717,
+            "mean_latency_us_k100": 219736.93019447286,
+            "p99_9_latency_us_k100": 1320104.0,
+            "mean_ios_k100": 105.35516888433982
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r2.json",
+          "sha256": "806c845d58e35e6a7790cd87cb50a37b3d480ff0c2a8f16e0a8ba7f7c17cd0d0",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 90.3152507676561,
+            "recall_at_100": 70.60102354145343
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 31.999865214078476,
+            "mean_latency_us_k100": 187195.75250767657,
+            "p99_9_latency_us_k100": 1200855.0,
+            "mean_ios_k100": 105.35516888433982
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r0",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r0.json",
+          "sha256": "74639767b1b119241f09dc9791124a6ae4b8d25d628914e585cd3c45194136a8",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 14.605486014888356,
+            "mean_latency_us_k100": 410250.1011258956,
+            "p99_9_latency_us_k100": 1616423.0,
+            "mean_ios_k100": 203.47103377686796
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        },
+        {
+          "observation_id": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r1",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r1.json",
+          "sha256": "96d733abb04dac3a0e490e59d80fad2471ab17c46da04cf6edbe150f02366ab3",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": false,
+          "review_quality_eligible": false,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": "invalid observation: per_query.3665.total_us: -73898.0 is less than the minimum of 0",
+          "retained_exclusion_reason": "invalid, incomplete, or identity-mismatched observation",
+          "original_certification_exclusion": {
+            "identity": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r1",
+            "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r1.json",
+            "reason": "invalid, incomplete, or identity-mismatched observation",
+            "sha256": "96d733abb04dac3a0e490e59d80fad2471ab17c46da04cf6edbe150f02366ab3",
+            "terminal_status": "EXCLUDED"
+          }
+        },
+        {
+          "observation_id": "sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r2",
+          "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r2.json",
+          "sha256": "1f3dd8406c6e3dde01987eca1dc7a0f3a490834100f468799311ade093198636",
+          "terminal_status": "SUCCEEDED",
+          "original_quality_eligible": true,
+          "review_quality_eligible": true,
+          "original_performance_eligible": false,
+          "query_count": 4885,
+          "completed_query_count": 4885,
+          "actual_record_count": 4885,
+          "checks": {
+            "query_alignment_reason": null,
+            "binary_sha256_matches": true,
+            "build_manifest_sha256_matches": true,
+            "implementation_matches": true,
+            "diskann_commit_matches": true
+          },
+          "current_exclusion_reason": null,
+          "original_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "recomputed_quality_metrics": {
+            "recall_at_10": 95.38792221084954,
+            "recall_at_100": 87.43684749232344
+          },
+          "quality_metrics_equal": true,
+          "quality_metric_deltas": {
+            "recall_at_10": 0.0,
+            "recall_at_100": 0.0
+          },
+          "recomputed_display_metrics": {
+            "qps_k100": 18.12273062650324,
+            "mean_latency_us_k100": 330705.68045035825,
+            "p99_9_latency_us_k100": 1314952.0,
+            "mean_ios_k100": 203.47103377686796
+          },
+          "performance_classification": "informational_non_formal",
+          "performance_comparison": "not_available_in_original_report"
+        }
+      ],
+      "protocol": {
+        "byte_length": 6614,
+        "path": "protocols/sift1m-cert-reference-fixed-l100-200-8cd16925-v2.json",
+        "sha256": "98bf8d135f7ce11091fdf28c11c5ca368c04b8f2cd5d229a7bdf0a9338400a50"
+      },
+      "runner_build": {
+        "binary_path": "build/diskann-search-evaluation-materializer-clean-8cd16925/src/search/diskann/diskann_search_evaluation_runner",
+        "binary_sha256": "4c711fdb2f68249f4b8051744f9f5c6278eae1c0f2862d0a8292244e5aec1b7d",
+        "build_manifest_path": "manifests/sift1m-reference-disk-layout-8cd16925.json",
+        "build_manifest_sha256": "095a84718c4b4b2b846dd43e4818fc178a073ab43d58702c4c995aba57a87f34",
+        "project_branch": "feature/framework-baseline-certification",
+        "project_commit": "8cd169255c483999be0628e53045f2c3248b5b5e",
+        "project_dirty": false,
+        "project_repository": "https://github.com/krystaZeng/diskann_search_benchmark.git"
+      },
+      "query_count": 4885,
+      "ground_truth_declared_rows": 4885,
+      "ground_truth_actual_rows": 4885,
+      "original_aggregates": {
+        "performance": [],
+        "quality": [
+          {
+            "L_search": 100,
+            "aggregation": "median_eligible",
+            "cache_mode": "fixed_bfs",
+            "eligible_count": 3,
+            "median_quality_metrics": {
+              "recall_at_10": 90.3152507676561,
+              "recall_at_100": 70.60102354145343
+            }
+          },
+          {
+            "L_search": 200,
+            "aggregation": "median_eligible",
+            "cache_mode": "fixed_bfs",
+            "eligible_count": 2,
+            "median_quality_metrics": {
+              "recall_at_10": 95.38792221084954,
+              "recall_at_100": 87.43684749232344
+            }
+          }
+        ]
+      },
+      "recomputed_aggregates": {
+        "quality": [
+          {
+            "cache_mode": "fixed_bfs",
+            "L_search": 100,
+            "eligible_count": 3,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 90.3152507676561,
+              "recall_at_100": 70.60102354145343
+            }
+          },
+          {
+            "cache_mode": "fixed_bfs",
+            "L_search": 200,
+            "eligible_count": 2,
+            "aggregation": "median_eligible",
+            "median_quality_metrics": {
+              "recall_at_10": 95.38792221084954,
+              "recall_at_100": 87.43684749232344
+            }
+          }
+        ],
+        "performance": []
+      },
+      "aggregates_equal": true
+    }
+  ],
+  "incomplete_items": [],
+  "summary": {
+    "certification_referenced_observation_count": 24,
+    "reviewed_observation_count": 24,
+    "original_quality_eligible_count": 23,
+    "review_quality_eligible_count": 23,
+    "retained_exclusion_count": 1,
+    "newly_excluded_count": 0,
+    "new_checks_pass_count": 24,
+    "quality_metric_changed_count": 0,
+    "aggregate_changed_count": 0,
+    "original_formal_performance_eligible_count": 0,
+    "search_build_or_ground_truth_executed": false,
+    "certification_reissued_or_expanded": false
+  },
+  "historical_input_integrity": {
+    "checked_file_count": 55,
+    "changed_paths": [],
+    "inputs": [
+      {
+        "path": "reports/certification/framework-baseline-certification-l100-200-8cd16925-v2.json",
+        "sha256": "914069624fd61d2a81856ae68b8c8d80d32326abdec0615055d3a6807889c35c",
+        "byte_length": 19637
+      },
+      {
+        "path": "manifests/reference/sift1m-native-reference-8cd16925.json",
+        "sha256": "527ebcfb9ba65fe3d16db125d2a4ef7938a04147ab200f6eb558455fad7c67bd",
+        "byte_length": 9780
+      },
+      {
+        "path": "manifests/cpp-main-sift1m-20260807T023200Z/stages/merge.json",
+        "sha256": "219ae6f5741f32bb9676a8ed9b1081ded0693046b5e4b445c1509a9a9be1da7c",
+        "byte_length": 3269
+      },
+      {
+        "path": "manifests/sift1m-pq-generation-a8fee168.json",
+        "sha256": "efa9fdceae14c3377a3b1606a64a5d0b0a1a51c1ac656dd2c4d829108c790eac",
+        "byte_length": 2596
+      },
+      {
+        "path": "manifests/sift1m-reference-disk-layout-8cd16925.json",
+        "sha256": "095a84718c4b4b2b846dd43e4818fc178a073ab43d58702c4c995aba57a87f34",
+        "byte_length": 2965
+      },
+      {
+        "path": "manifests/sift1m-disk-layout-a8fee168.json",
+        "sha256": "a84856d7b189890f487c638542e1e38018baeaffc58089e9abd4531e296bee78",
+        "byte_length": 2903
+      },
+      {
+        "path": "manifests/sift1m-query-set-0feabe69-macos-host-v2.json",
+        "sha256": "028c72830a6f6bd0a122a522a43d8c2fee6a7fbf68dc28f620e8607ff809c017",
+        "byte_length": 1822
+      },
+      {
+        "path": "manifests/sift1m-ground-truth-exact-l2-width-200-0feabe69-linux.json",
+        "sha256": "ced5da13a08ffd4c6e1811338f32d366a6b93f946829e28d1b4c71c9c9b5ed57",
+        "byte_length": 4091
+      },
+      {
+        "path": "manifests/sift1m-cert-reference-zero-l100-200-8cd16925-v2-search.json",
+        "sha256": "824ed5cb33d66628fc49a651fed3ad45255d90d70fce28429674f8066631097f",
+        "byte_length": 8458
+      },
+      {
+        "path": "manifests/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-search.json",
+        "sha256": "c38d025921b0e71c83978cd075b199d9803f07e953f7661db885c8776002c2b0",
+        "byte_length": 8521
+      },
+      {
+        "path": "manifests/sift1m-cert-framework-zero-l100-200-8cd16925-v2-search.json",
+        "sha256": "4ee36b09039c39796b5192442e2d864098f19c389766cc0e182e6feb8fb3f6b0",
+        "byte_length": 8410
+      },
+      {
+        "path": "manifests/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-search.json",
+        "sha256": "86df568f186595d2173091f1f2e78d8c24c02e7dc4eb8ad04e973c8f1f8328cf",
+        "byte_length": 8473
+      },
+      {
+        "path": "manifests/sift1m-cert-reference-zero-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "aea159bee20977e4c7b67dd288d1b3b7d408ed1a1feaef04f00724ab0ce99bae",
+        "byte_length": 4102
+      },
+      {
+        "path": "manifests/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "30c9598a5db73faf0a10de9115fc6f3fd7c9da4ca7bb78bcb64806900cce4826",
+        "byte_length": 4117
+      },
+      {
+        "path": "manifests/sift1m-cert-framework-zero-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "ebe56695e6a003f3833cd345f611d4f5c471e9e91ff5ef193bd7cc155ae0f06a",
+        "byte_length": 4088
+      },
+      {
+        "path": "manifests/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "0b1b97a4d3a7986c9b6d46420ffca85f0dc818c6b1ae749c889e214a3db660cc",
+        "byte_length": 4103
+      },
+      {
+        "path": "inputs/sift1m-selected-query-0f9c1c0d-exact-l2-width-200-reference.json",
+        "sha256": "75131eb425dc54cf6052ad34b46e1521276e6a13ade084ce35fe4c0cb3f30bf6",
+        "byte_length": 1084
+      },
+      {
+        "path": "inputs/sift1m-selected-query-0f9c1c0d-macos-host-0feabe69-v2-reference.json",
+        "sha256": "57aeef1e3350be7fbe8a754905ec40d1154d24c2e48181de6a7a1ed80b84060f",
+        "byte_length": 1140
+      },
+      {
+        "path": "reports/search-evaluation/sift1m-cert-framework-zero-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "3e9279d7ecb144b9a8c0f536f480c791a359b54a03e4b23d628c2f471c32b609",
+        "byte_length": 7920
+      },
+      {
+        "path": "protocols/sift1m-cert-framework-zero-l100-200-8cd16925-v2.json",
+        "sha256": "b56a4af6cf9afbea934db85283fed3c536783df60670cd03a0265970e1b29597",
+        "byte_length": 6525
+      },
+      {
+        "path": "inputs/sift1m-selected-query-0f9c1c0d-exact-l2-width-200.bin",
+        "sha256": "d0548f012d0b0c7982b748f0dceaf5a55ab4fcd71c51d1acf7a51652d677c761",
+        "byte_length": 7816008
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r0.json",
+        "sha256": "3bb333f5b67a48b8b45bbe95268cd83d84e5326b195227b1d4a5c2050aab436e",
+        "byte_length": 7872300
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r1.json",
+        "sha256": "4c6442098c277b396b597d6b829f3fb2feb7d61640777a02a2fea4b9dbb5b6bb",
+        "byte_length": 7872309
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L100-r2.json",
+        "sha256": "bf3bf6e3664cdf591fda4c2fc614a027ec6d78e264a6f32b1a5f2d3d2d3ef58b",
+        "byte_length": 7872305
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r0.json",
+        "sha256": "5e2578a8d96bc9ebfab8a489de3eb8931fe965da43acb4bf42157d713ae94107",
+        "byte_length": 7869652
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r1.json",
+        "sha256": "ffa076917c58bc6cbcf914bfb8c024cf9bf264b87d6b80558b34088c9edf50ba",
+        "byte_length": 7869651
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-zero-l100-200-8cd16925-v2/sift1m-cert-framework-zero-l100-200-8cd16925-v2-L200-r2.json",
+        "sha256": "5c243a28775ec58c726dfb2d4894393d6237b3637ad0ef90a1e109ac2533e5f5",
+        "byte_length": 7869658
+      },
+      {
+        "path": "reports/environment/sift1m-cert-framework-zero-l100-200-8cd16925-v2.json",
+        "sha256": "243d5ecdf8d0b84b6b6c31d6ad629e47165f158d103e7c6520bc4f0330dd2606",
+        "byte_length": 62
+      },
+      {
+        "path": "reports/search-evaluation/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "ef211d8722027a8616fab04f0c505a356d281c547369fcbb7467938bf6b5d26b",
+        "byte_length": 7985
+      },
+      {
+        "path": "protocols/sift1m-cert-framework-fixed-l100-200-8cd16925-v2.json",
+        "sha256": "8f37a3cb30086f841236a8399fc7b7d14880aef436d8f56ad54cf44021b71eed",
+        "byte_length": 6580
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r0.json",
+        "sha256": "581995078a38e71653d7fbffce0705c750f187fb920b21cea7542b9adfeccb9b",
+        "byte_length": 7871620
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r1.json",
+        "sha256": "3690a1bc7b2a7344f79321aaf2b4cb1d106366fc2cd41f8350c8731977c21786",
+        "byte_length": 7871610
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L100-r2.json",
+        "sha256": "1f921a94c93f64f814ffedb2c18619974d4cd67f5d2a734adecb428d2ccbea8e",
+        "byte_length": 7871623
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r0.json",
+        "sha256": "05c953b91432e9dfff9ca02b297c94c39473111f33bb15fc8f428f32825b0013",
+        "byte_length": 7869678
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r1.json",
+        "sha256": "80024bd47eedb3ecd802890dcf72ffa60950ae3b8a445e454615886d9c20f3ab",
+        "byte_length": 7869684
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-framework-fixed-l100-200-8cd16925-v2/sift1m-cert-framework-fixed-l100-200-8cd16925-v2-L200-r2.json",
+        "sha256": "66219d27a722c3e1502b607e8aa6e8b430ff9957dacc5634584b39620d89b4c6",
+        "byte_length": 7869702
+      },
+      {
+        "path": "reports/environment/sift1m-cert-framework-fixed-l100-200-8cd16925-v2.json",
+        "sha256": "243d5ecdf8d0b84b6b6c31d6ad629e47165f158d103e7c6520bc4f0330dd2606",
+        "byte_length": 62
+      },
+      {
+        "path": "reports/search-evaluation/sift1m-cert-reference-zero-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "eaf30bb84097e105cb78b1c5b9a48ab38e8555d533f5a93eeaa602ee5392d0d6",
+        "byte_length": 7934
+      },
+      {
+        "path": "protocols/sift1m-cert-reference-zero-l100-200-8cd16925-v2.json",
+        "sha256": "a6b9ff6aeb7b929f4c2e7680c2e18d24366d73a64d89984f2225c729f89d28d9",
+        "byte_length": 6559
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r0.json",
+        "sha256": "670cd3b0457c7116810ca52008862544dea42e2cd8d9895e652aebf14216e5e7",
+        "byte_length": 7871626
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r1.json",
+        "sha256": "62f1b4c6512f071239d7047f24da9d6046485e0967f12f804b176ab9a201c605",
+        "byte_length": 7871613
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L100-r2.json",
+        "sha256": "798500480acf13cbb41f6590e8dfbfa04bb90c5c631ef39b96d086c21b684fdf",
+        "byte_length": 7871636
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r0.json",
+        "sha256": "080db957f7cca93a99c8ba5506cc15e07c4f8e589af7a525e0ee46ed2d2933ef",
+        "byte_length": 7869531
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r1.json",
+        "sha256": "0c307f3f659e339bb698ee46585c4d32785f3b7928cead3e403f8a0ecce3ed3d",
+        "byte_length": 7869538
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-zero-l100-200-8cd16925-v2/sift1m-cert-reference-zero-l100-200-8cd16925-v2-L200-r2.json",
+        "sha256": "8cb4b5e81df4803d3ceab6b5f288d5bef1f98111dcb56d8a53f29abac0d18e45",
+        "byte_length": 7869483
+      },
+      {
+        "path": "reports/environment/sift1m-cert-reference-zero-l100-200-8cd16925-v2.json",
+        "sha256": "243d5ecdf8d0b84b6b6c31d6ad629e47165f158d103e7c6520bc4f0330dd2606",
+        "byte_length": 62
+      },
+      {
+        "path": "reports/search-evaluation/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-evaluation.json",
+        "sha256": "a85b2d49bd595a04f4725c4cf2adb371c5bd7c0e3a04636f66d7f2fd48f6cebd",
+        "byte_length": 7970
+      },
+      {
+        "path": "protocols/sift1m-cert-reference-fixed-l100-200-8cd16925-v2.json",
+        "sha256": "98bf8d135f7ce11091fdf28c11c5ca368c04b8f2cd5d229a7bdf0a9338400a50",
+        "byte_length": 6614
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r0.json",
+        "sha256": "c23310b347cb6e697c5abd67a37840b443a7b9cab3a2d6e00b716630d4bfa8f0",
+        "byte_length": 7871391
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r1.json",
+        "sha256": "7691ddd4a9d482a94d484bd0be6c60f44a1d594ebb11875da48e40faa34a3f82",
+        "byte_length": 7871391
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L100-r2.json",
+        "sha256": "806c845d58e35e6a7790cd87cb50a37b3d480ff0c2a8f16e0a8ba7f7c17cd0d0",
+        "byte_length": 7871381
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r0.json",
+        "sha256": "74639767b1b119241f09dc9791124a6ae4b8d25d628914e585cd3c45194136a8",
+        "byte_length": 7869558
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r1.json",
+        "sha256": "96d733abb04dac3a0e490e59d80fad2471ab17c46da04cf6edbe150f02366ab3",
+        "byte_length": 7869542
+      },
+      {
+        "path": "reports/evaluation-inputs/sift1m-cert-reference-fixed-l100-200-8cd16925-v2/sift1m-cert-reference-fixed-l100-200-8cd16925-v2-L200-r2.json",
+        "sha256": "1f3dd8406c6e3dde01987eca1dc7a0f3a490834100f468799311ade093198636",
+        "byte_length": 7869529
+      },
+      {
+        "path": "reports/environment/sift1m-cert-reference-fixed-l100-200-8cd16925-v2.json",
+        "sha256": "243d5ecdf8d0b84b6b6c31d6ad629e47165f158d103e7c6520bc4f0330dd2606",
+        "byte_length": 62
+      }
+    ]
+  },
+  "status": "COMPLETE"
+}

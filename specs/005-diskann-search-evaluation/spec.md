@@ -363,6 +363,9 @@ observation and GroundTruth.
 - **FR-037**: Each SearchObservation MUST bind its observation/run and implementation identities,
   reproduction mode, SearchProtocol reference/identity, search-execution identity/checksum,
   PQArtifact, DiskLayoutArtifact, QuerySet identity/checksum, and complete source/build identity.
+  Offline admission compares `source_build.binary_sha256` and `build_manifest_sha256` with the
+  frozen `search_execution.runner_build` values; paths or a current binary cannot substitute for
+  these historical content identities.
 - **FR-038**: Every raw search point MUST record L, effective beamwidth, cache mode and effective
   cache state, repetition index, declared/completed query counts, canonical batch wall-clock time,
   and terminal status.
@@ -379,6 +382,9 @@ observation and GroundTruth.
   top-100 result data; partial, missing, wrong-count, duplicate, out-of-range, non-finite,
   identity-mismatched, or incomplete core QueryStats evidence MUST make it invalid for formal
   evaluation.
+  Offline admission requires `query_count` to equal the frozen QuerySet count, completed count
+  and `per_query` length to equal that count, and each `per_query[i].query_row_index` to equal `i`.
+  No sorting, deduplication, row completion, or partial-query metric calculation is permitted.
 - **FR-043**: Failed, invalid, cancelled, identity-mismatched, or otherwise excluded raw evidence
   MUST be retained, and SearchEvaluationReport MUST preserve its observation identity, path,
   checksum, terminal status, and exclusion reason as audit/exclusion references. Such references
@@ -387,6 +393,9 @@ observation and GroundTruth.
   `performance_eligible`.
 - **FR-044**: GroundTruth mismatch MUST NOT retroactively invalidate an otherwise complete raw
   search observation, but MUST block evaluation with that GroundTruth.
+  The frozen QuerySet count, declared GroundTruth count, and actual GroundTruth rows MUST agree
+  before observation metric admission; a mismatch is an evaluation failure, not a raw terminal
+  status change.
 - **FR-045**: When a newly requested metric requires raw information absent from the retained
   SearchObservation, the system MUST declare that a new search execution is required rather than
   infer the metric from unrelated aggregates.

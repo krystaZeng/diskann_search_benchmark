@@ -351,16 +351,29 @@ def _percentile_999(values: list[float]) -> float:
     return ordered[rank]
 
 
+def _query_alignment_exclusion_reason(
+    point: dict[str, Any], queries: list[dict[str, Any]], query_count: int,
+) -> str | None:
+    if point.get("query_count") != query_count:
+        return f"query_count differs from frozen QuerySet: expected {query_count}, got {point.get('query_count')}"
+    if not (point.get("completed_query_count") == point["query_count"] == len(queries)):
+        return "incomplete raw observation: completed_query_count, query_count and per_query length differ"
+    for row, query in enumerate(queries):
+        if query.get("query_row_index") != row:
+            return f"invalid query_row_index at per_query[{row}]: expected {row}, got {query.get('query_row_index')}"
+    return None
+
+
 def evaluate_raw_point(
     observation: dict[str, Any], *, ground_truth: list[list[int]],
     quality_compatible: bool, performance_admitted: bool,
     ground_truth_distances: list[list[float]] | None = None,
 ) -> dict[str, Any]:
     queries = observation.get("per_query", [])
+    alignment_reason = _query_alignment_exclusion_reason(observation, queries, len(ground_truth))
     complete = (
         observation.get("status") == "SUCCEEDED"
-        and observation.get("completed_query_count") == observation.get("query_count")
-        and len(queries) == observation.get("query_count") == len(ground_truth)
+        and alignment_reason is None
         and all(len(item.get("result_ids", [])) == 100 and len(item.get("result_distances", [])) == 100 for item in queries)
     )
     if not complete:
@@ -369,7 +382,7 @@ def evaluate_raw_point(
             path=observation.get("path", "observations/invalid.json"),
             checksum=observation.get("checksum", "0" * 64),
             status=observation.get("status", "INVALID_OUTPUT"),
-            reason="incomplete or invalid raw observation",
+            reason=alignment_reason or "incomplete or invalid raw observation",
         )
     if ground_truth_distances is not None and len(ground_truth_distances) != len(ground_truth):
         raise SearchEvaluationError("GroundTruth distance rows are incompatible")
@@ -661,16 +674,34 @@ def _read_ground_truth(
     path: Path, expected_count: int, expected_width: int,
 ) -> tuple[list[list[int]], list[list[float]]]:
     payload = path.read_bytes()
+    if len(payload) < 8:
+        raise SearchEvaluationError("GroundTruth header is incomplete")
     count, width = struct.unpack_from("<II", payload)
     if count != expected_count or width != expected_width:
         raise SearchEvaluationError("GroundTruth identity is incompatible")
     item_count = count * width
+    if len(payload) != 8 + item_count * 8:
+        raise SearchEvaluationError("GroundTruth payload row count/byte length is incompatible")
     ids = struct.unpack_from(f"<{item_count}I", payload, 8)
     distances = struct.unpack_from(f"<{item_count}f", payload, 8 + item_count * 4)
     return (
         [list(ids[row * width : (row + 1) * width]) for row in range(count)],
         [list(distances[row * width : (row + 1) * width]) for row in range(count)],
     )
+
+
+def _load_evaluation_ground_truth(
+    root: Path, protocol: dict[str, Any],
+) -> tuple[list[list[int]], list[list[float]]]:
+    # FR-044: incompatible truth blocks evaluation, not raw search validity.
+    query_count = protocol["search_execution"]["query_set"]["query_count"]
+    truth_ref = protocol["evaluation"]["ground_truth"]
+    if truth_ref["query_count"] != query_count:
+        raise SearchEvaluationError("GroundTruth query_count differs from frozen QuerySet")
+    truth_path = root / truth_ref["payload"]["path"]
+    if _sha256(truth_path) != truth_ref["payload"]["sha256"]:
+        raise SearchEvaluationError("GroundTruth checksum mismatch")
+    return _read_ground_truth(truth_path, query_count, truth_ref["width"])
 
 
 def _median(values: list[float]) -> float:
@@ -772,7 +803,7 @@ def _admit_observation_set(
 
 def _observation_exclusion_reason(
     document: dict[str, Any], validator: Draft202012Validator, *,
-    identity_compatible: bool, query_count: int,
+    identity_compatible: bool, execution: dict[str, Any],
 ) -> str | None:
     if not identity_compatible:
         return "observation belongs to a different protocol"
@@ -783,8 +814,18 @@ def _observation_exclusion_reason(
     point = document["raw_search_point"]
     if point["status"] != "SUCCEEDED":
         return f"retained terminal observation: {point['status']}"
-    if not (point["completed_query_count"] == point["query_count"] == len(document["per_query"]) == query_count):
-        return "incomplete raw observation"
+    if document["implementation"] != execution["implementation"]:
+        return "observation implementation differs from frozen SearchProtocol"
+    if document["source_build"]["diskann_commit"] != execution["diskann_source_commit"]:
+        return "observation diskann_commit differs from frozen SearchProtocol"
+    for field in ("binary_sha256", "build_manifest_sha256"):
+        if document["source_build"][field] != execution["runner_build"][field]:
+            return f"observation source_build.{field} differs from frozen runner_build.{field}"
+    alignment_reason = _query_alignment_exclusion_reason(
+        point, document["per_query"], execution["query_set"]["query_count"],
+    )
+    if alignment_reason is not None:
+        return alignment_reason
     if point["batch_wall_clock_us"] <= 0:
         return "batch timing is invalid"
     return None
@@ -826,12 +867,7 @@ def _evaluate_observation_directory(
         raise SearchEvaluationError("frozen SearchProtocol checksum/identity mismatch")
     execution = protocol["search_execution"]
     truth_ref = protocol["evaluation"]["ground_truth"]
-    truth_path = root / truth_ref["payload"]["path"]
-    if _sha256(truth_path) != truth_ref["payload"]["sha256"]:
-        raise SearchEvaluationError("GroundTruth checksum mismatch")
-    ground_truth, ground_truth_distances = _read_ground_truth(
-        truth_path, truth_ref["query_count"], truth_ref["width"]
-    )
+    ground_truth, ground_truth_distances = _load_evaluation_ground_truth(root, protocol)
     observation_dir = Path(observations_path).resolve()
     documents: list[tuple[Path, dict[str, Any]]] = []
     file_checksums: dict[Path, str] = {}
@@ -862,7 +898,7 @@ def _evaluate_observation_directory(
         file_checksum = file_checksums[path]
         exclusion_reason = _observation_exclusion_reason(
             document, validator, identity_compatible=path in admitted,
-            query_count=len(ground_truth),
+            execution=execution,
         )
         relative = path.relative_to(root).as_posix()
         if exclusion_reason is not None:

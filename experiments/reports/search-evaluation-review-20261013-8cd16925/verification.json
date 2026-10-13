@@ -1,0 +1,165 @@
+{
+  "scope": "Query row alignment, QuerySet/GroundTruth counts and frozen runner build SHA binding only.",
+  "test_runs": [
+    {
+      "phase": "initial targeted baseline attempt",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_diskann_search_evaluation.py -k 'query_and_build_binding or ground_truth_query_count' --tb=short",
+      "exit_code": 1,
+      "passed": 0,
+      "failed": 15,
+      "teardown_errors": 15,
+      "deselected": 96,
+      "interpretation": "Not usable as gap evidence: isolated macOS platform.platform() lazy subprocess hit the offline-only fixture guard. Fixed only fixture host fingerprint setup before enabling guard; subprocess bans remained active throughout evaluation."
+    },
+    {
+      "phase": "before production fix, corrected fixture",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_diskann_search_evaluation.py -k 'query_and_build_binding or ground_truth_query_count' --tb=short",
+      "exit_code": 1,
+      "passed": 4,
+      "failed": 11,
+      "deselected": 96,
+      "failure_breakdown": {
+        "incorrectly_admitted_observations": [
+          "duplicate_row",
+          "out_of_range_row",
+          "reordered_rows",
+          "binary_sha256",
+          "build_manifest_sha256"
+        ],
+        "already_excluded_but_reason_too_generic": [
+          "declared_count",
+          "coherent_wrong_count"
+        ],
+        "ground_truth_failures": [
+          "declared_count: misclassified as no valid observation",
+          "query_set_count: evaluation incorrectly succeeds",
+          "truncated_rows: leaks struct.error",
+          "extra_rows: trailing rows ignored"
+        ]
+      }
+    },
+    {
+      "phase": "after production fix",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_diskann_search_evaluation.py -k 'query_and_build_binding or ground_truth_query_count' --tb=short",
+      "exit_code": 0,
+      "passed": 15,
+      "failed": 0,
+      "deselected": 96
+    },
+    {
+      "phase": "final targeted regression including admitted and non-admitted performance environments",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_diskann_search_evaluation.py -k 'query_and_build_binding or ground_truth_query_count' --tb=short",
+      "exit_code": 0,
+      "passed": 25,
+      "failed": 0,
+      "deselected": 96,
+      "seconds": 9.22
+    },
+    {
+      "phase": "complete search evaluation suite",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_diskann_search_evaluation.py",
+      "exit_code": 0,
+      "passed": 120,
+      "failed": 0,
+      "skipped": 1,
+      "seconds": 32.18
+    },
+    {
+      "phase": "complete baseline certification suite",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_framework_baseline_certification.py",
+      "exit_code": 0,
+      "passed": 83,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 98.9
+    }
+  ],
+  "not_executed": [
+    {
+      "test": "test_small_real_linux_ground_truth_search_evaluate_and_parity",
+      "reason": "Existing opt-in DISKANN_SEARCH_REAL_FIXTURE_ROOT is unset; current host is macOS.",
+      "remaining_risk": "No new real Linux SSD/search-runner parity execution was performed; only offline Python behavior and retained historical metrics were verified."
+    },
+    {
+      "test": "New graph construction, SIFT1M search or GroundTruth generation, larger-scale experiments",
+      "reason": "Not part of this minimal offline evaluation fix; explicitly excluded by the requested historical review.",
+      "remaining_risk": "This work does not establish new algorithm, runtime or larger-scale experimental claims."
+    }
+  ],
+  "files_changed": {
+    "harness/python/diskann_harness/diskann_search_evaluation.py": "Shared query alignment gate; frozen build identity binding before metrics; separate GroundTruth compatibility failure with payload row-length validation.",
+    "tests/python/test_diskann_search_evaluation.py": "Targeted checksums-valid counterexamples; distinct per-query GroundTruth; original aggregation assertions retained; parity fixture binary SHA bound to its protocol; isolated macOS host fingerprint setup fixed without relaxing execution bans.",
+    "specs/005-diskann-search-evaluation/spec.md": "Clarify FR-037, FR-042 and FR-044 using existing fields and formats."
+  },
+  "unchanged_contracts": [
+    "search-protocol.schema.json",
+    "search-observation.schema.json",
+    "all format versions"
+  ],
+  "existing_coverage_reused": [
+    "FAILED/INVALID_OUTPUT/CANCELLED audit retention",
+    "completed_query_count mismatch",
+    "missing/duplicate logical trials",
+    "zero eligible group or batch",
+    "median_eligible with one/two/three valid records",
+    "offline subprocess and materialization bans",
+    "immutable input/report checks",
+    "environment identity and search runner parity admission"
+  ],
+  "baseline": {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "gitlink_unchanged": true,
+    "worktree_clean": true
+  },
+  "user_untracked_files_preserved": [
+    "1010_pipeline_Inout_analysis.md",
+    "1012_整体架构.md",
+    "architecture_eval_0920.md",
+    "docs/architecture/figures/",
+    "next_steps_0920.md",
+    "output/"
+  ],
+  "commit_or_push_performed": false,
+  "historical_review": {
+    "command": ".venv/bin/python /tmp/diskann_search_review_20261013.py",
+    "exit_code": 0,
+    "report": "experiments/reports/search-evaluation-review-20261013-8cd16925/historical-review.json",
+    "status": "COMPLETE",
+    "summary": {
+      "certification_referenced_observation_count": 24,
+      "reviewed_observation_count": 24,
+      "original_quality_eligible_count": 23,
+      "review_quality_eligible_count": 23,
+      "retained_exclusion_count": 1,
+      "newly_excluded_count": 0,
+      "new_checks_pass_count": 24,
+      "quality_metric_changed_count": 0,
+      "aggregate_changed_count": 0,
+      "original_formal_performance_eligible_count": 0,
+      "search_build_or_ground_truth_executed": false,
+      "certification_reissued_or_expanded": false
+    },
+    "historical_inputs_checked_before_and_after": 55,
+    "historical_inputs_changed": [],
+    "incomplete_items": []
+  },
+  "repository_checks": {
+    "git diff --check": {
+      "exit_code": 0
+    },
+    "git -C upstream/diskann-cpp-main status --porcelain=v1 --untracked-files=all": {
+      "exit_code": 0,
+      "output": ""
+    },
+    "git -C upstream/diskann-cpp-main rev-parse HEAD": {
+      "exit_code": 0,
+      "output": "78256bbab4685e1774e78d331e081a153be26823"
+    },
+    "git ls-files --stage upstream/diskann-cpp-main": {
+      "exit_code": 0,
+      "output": "160000 78256bbab4685e1774e78d331e081a153be26823 0\tupstream/diskann-cpp-main"
+    }
+  }
+}

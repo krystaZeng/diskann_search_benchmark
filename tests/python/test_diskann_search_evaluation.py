@@ -889,7 +889,7 @@ def _offline_fixture(
     truth["query_count"] = 2
     truth_path = tmp_path / truth["payload"]["path"]
     truth_path.parent.mkdir(parents=True)
-    truth_ids = list(range(101)) * 2
+    truth_ids = list(range(202))
     truth_distances = [float(index) for index in range(101)] * 2
     truth_path.write_bytes(
         struct.pack("<II", 2, 101)
@@ -911,7 +911,6 @@ def _offline_fixture(
     )
     observations = tmp_path / "reports/observations"
     observations.mkdir()
-    ids = list(range(100))
     for repetition in range(protocol["search_execution"]["repetition_count"]):
         for l_search in lengths:
             point_id = f"{cache_mode}-L{l_search}-r{repetition}"
@@ -932,7 +931,7 @@ def _offline_fixture(
                 "raw_search_point": {"point_id": point_id, "L_search": l_search, "K": 100, "beamwidth": 2, "cache": {"mode": cache_mode, "requested_nodes": protocol["search_execution"]["cache"]["requested_nodes"], "effective_nodes": 0, "primary_payload_bytes": 0}, "repetition_index": repetition, "query_count": 2, "completed_query_count": 2, "batch_wall_clock_us": 2000, "status": "SUCCEEDED"},
                 "environment": {"fingerprint_path": environment_path.relative_to(tmp_path).as_posix(), "fingerprint_sha256": search._sha256(environment_path)},
                 "per_query": [
-                    {"query_row_index": row, "source_query_id": f"opaque-{row}", "result_ids": ids, "result_distances": [float(index) for index in ids], "total_us": 10.0 + row * 20, "n_ios": 2 + row * 2}
+                    {"query_row_index": row, "source_query_id": f"opaque-{row}", "result_ids": list(range(row * 101, row * 101 + 100)), "result_distances": [float(index) for index in range(100)], "total_us": 10.0 + row * 20, "n_ios": 2 + row * 2}
                     for row in range(2)
                 ],
             }
@@ -965,6 +964,10 @@ def test_offline_evaluator_reuses_complete_observations_without_search(
 @pytest.fixture
 def offline_only(monkeypatch: pytest.MonkeyPatch):
     calls: list[str] = []
+    # Resolve the host fingerprint before forbidding subprocesses: on macOS,
+    # platform.platform() can lazily invoke uname in an isolated test run.
+    host_platform = search.platform.platform()
+    monkeypatch.setattr(search.platform, "platform", lambda: host_platform)
 
     def forbidden(*args, **kwargs):
         calls.append("execution")
@@ -983,6 +986,16 @@ def _save_observation(path: Path, document: dict) -> None:
     document.pop("observation_checksum", None)
     document["observation_checksum"] = search._canonical_digest(document)
     path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+
+
+def _save_protocol_and_rebind_observations(path: Path, protocol: dict, observations: Path) -> None:
+    protocol = search.normalize_search_protocol(protocol)
+    path.write_text(json.dumps(protocol), encoding="utf-8")
+    for observation_path in observations.glob("*.json"):
+        document = json.loads(observation_path.read_text())
+        document["protocol"]["protocol_checksum"] = protocol["protocol_checksum"]
+        document["search_execution"]["canonical_checksum"] = protocol["search_execution_checksum"]
+        _save_observation(observation_path, document)
 
 
 def _offline_call(root: Path, protocol: Path, observations: Path, entry: str) -> dict:
@@ -1026,6 +1039,118 @@ def _assert_audit(result: dict, path: Path, root: Path) -> None:
     assert result["quality_eligible"] is result["performance_eligible"] is False
     assert result["quality_eligibility_reason"] and result["performance_eligibility_reason"]
     assert "quality_metrics" not in result and "performance_metrics" not in result
+
+
+@pytest.mark.parametrize("performance_admitted", [False, True])
+@pytest.mark.parametrize("case,reason", [
+    ("duplicate_row", "query_row_index"), ("missing_index", "query_row_index"),
+    ("out_of_range_row", "query_row_index"), ("reordered_rows", "query_row_index"),
+    ("declared_count", "query_count"), ("missing_row", "incomplete raw observation"),
+    ("extra_row", "incomplete raw observation"), ("coherent_wrong_count", "query_count"),
+    ("binary_sha256", "binary_sha256"), ("build_manifest_sha256", "build_manifest_sha256"),
+])
+def test_offline_admission_query_and_build_binding(
+    tmp_path: Path, offline_only, case: str, reason: str, performance_admitted: bool,
+) -> None:
+    protocol, observations = _offline_fixture(tmp_path, lengths=(100,))
+    if performance_admitted:
+        environment = tmp_path / "reports/environment.json"
+        environment.write_text('{"performance_admitted":true}')
+        parity = tmp_path / "reports/search-parity/small-zero.json"
+        parity.parent.mkdir()
+        parity.write_text('{"result":"PASS"}')
+        for observation_path in observations.glob("*.json"):
+            document = json.loads(observation_path.read_text())
+            document["environment"]["fingerprint_sha256"] = search._sha256(environment)
+            _save_observation(observation_path, document)
+    path = observations / "zero-L100-r2.json"
+    document = json.loads(path.read_text())
+    point, queries = document["raw_search_point"], document["per_query"]
+    assert queries[0]["result_ids"] != queries[1]["result_ids"]
+    if case == "duplicate_row":
+        queries[1]["query_row_index"] = 0
+    elif case == "missing_index":
+        del queries[1]["query_row_index"]
+    elif case == "out_of_range_row":
+        queries[1]["query_row_index"] = 2
+    elif case == "reordered_rows":
+        queries.reverse()
+    elif case == "declared_count":
+        point["query_count"] = 3
+    elif case == "missing_row":
+        queries.pop()
+    elif case == "extra_row":
+        queries.append(dict(queries[1], query_row_index=2))
+    elif case == "coherent_wrong_count":
+        queries.pop()
+        point.update(query_count=1, completed_query_count=1)
+    else:
+        document["source_build"][case] = "b" * 64
+    _save_observation(path, document)
+    report = _offline_call(tmp_path, protocol, observations, "python")
+    assert len(report["observation_results"]) == 3
+    excluded = next(item for item in report["observation_results"] if item["observation_id"] == document["observation_id"])
+    _assert_audit(excluded, path, tmp_path)
+    assert reason in excluded["quality_eligibility_reason"]
+    assert excluded["performance_eligibility_reason"] == excluded["quality_eligibility_reason"]
+    assert report["aggregates"]["quality"] == [{
+        "cache_mode": "zero", "L_search": 100, "eligible_count": 2,
+        "aggregation": "median_eligible",
+        "median_quality_metrics": {"recall_at_10": 100.0, "recall_at_100": 100.0},
+    }]
+    if performance_admitted:
+        assert report["aggregates"]["performance"] == [{
+            "cache_mode": "zero", "L_search": 100, "eligible_count": 2,
+            "aggregation": "median_eligible",
+            "median_performance_metrics": {
+                "qps_k100": 1000.0, "mean_latency_us_k100": 20.0,
+                "p99_9_latency_us_k100": 30.0, "mean_ios_k100": 3.0,
+            },
+        }]
+    else:
+        assert report["aggregates"]["performance"] == []
+    if case in {"duplicate_row", "missing_index", "out_of_range_row", "reordered_rows"}:
+        truth, distances = search._load_evaluation_ground_truth(tmp_path, json.loads(protocol.read_text()))
+        raw = search.evaluate_raw_point(
+            {**point, "per_query": queries}, ground_truth=truth,
+            ground_truth_distances=distances, quality_compatible=True,
+            performance_admitted=performance_admitted,
+        )
+        assert raw["quality_eligible"] is raw["performance_eligible"] is False
+        assert "quality_metrics" not in raw and "display_metrics" not in raw
+
+
+@pytest.mark.parametrize("case", ["declared_count", "query_set_count", "actual_count", "truncated_rows", "extra_rows"])
+def test_offline_ground_truth_query_count_blocks_evaluation(
+    tmp_path: Path, offline_only, case: str,
+) -> None:
+    protocol_path, observations = _offline_fixture(tmp_path, lengths=(100,))
+    protocol = json.loads(protocol_path.read_text())
+    truth = protocol["evaluation"]["ground_truth"]
+    truth_path = tmp_path / truth["payload"]["path"]
+    payload = truth_path.read_bytes()
+    if case == "declared_count":
+        truth["query_count"] = 3
+        truth_path.write_bytes(
+            struct.pack("<II", 3, 101)
+            + struct.pack("<303I", *(list(range(101)) * 3))
+            + struct.pack("<303f", *([float(index) for index in range(101)] * 3))
+        )
+    elif case == "query_set_count":
+        protocol["search_execution"]["query_set"]["query_count"] = 3
+    elif case == "actual_count":
+        truth_path.write_bytes(struct.pack("<II", 1, 101) + payload[8:412] + payload[816:1220])
+    elif case == "truncated_rows":
+        truth_path.write_bytes(payload[:-404])
+    else:
+        truth_path.write_bytes(payload + bytes(808))
+    truth["payload"].update(byte_length=truth_path.stat().st_size, sha256=search._sha256(truth_path))
+    _save_protocol_and_rebind_observations(protocol_path, protocol, observations)
+    with pytest.raises(search.SearchEvaluationError, match="GroundTruth"):
+        _offline_call(tmp_path, protocol_path, observations, "python")
+    _assert_evaluation_failure(tmp_path, protocol_path, observations, "GroundTruth")
+    assert all(json.loads(path.read_text())["raw_search_point"]["status"] == "SUCCEEDED"
+               for path in observations.glob("*.json"))
 
 
 @pytest.mark.parametrize("entry", ["python", "cli"])
@@ -1204,7 +1329,7 @@ def test_offline_admission_preserves_eligible_medians(
             document["per_query"] = []
         elif repetition != 0:
             for query in document["per_query"]:
-                query["result_ids"] = list(range(101, 201))
+                query["result_ids"] = list(range(101, 201)) if query["query_row_index"] == 0 else list(range(100))
         _save_observation(path, document)
     report = _offline_call(tmp_path, protocol, observations, "python")
     assert len(report["observation_results"]) == 3
@@ -1411,7 +1536,7 @@ def test_parity_compares_real_output_contract_and_retains_oracle_manifests(
                     "format_version": "search-observation/v1", "observation_id": point_id,
                     "run_id": "protocol-zero-search", "generated_at": "2026-08-21T00:00:00Z",
                     "implementation": {"implementation_id": "cpp_main_pqflash_search_instrumented_v1", "version": "1.0.0", "reproduction_mode": "instrumented"},
-                    "source_build": {"diskann_repository": "https://github.com/microsoft/DiskANN.git", "diskann_branch": "cpp_main", "diskann_commit": "78256bbab4685e1774e78d331e081a153be26823", "binary_path": "bin/runner", "binary_sha256": "a" * 64, "build_manifest_path": protocol["search_execution"]["runner_build"]["build_manifest_path"], "build_manifest_sha256": protocol["search_execution"]["runner_build"]["build_manifest_sha256"]},
+                    "source_build": {"diskann_repository": "https://github.com/microsoft/DiskANN.git", "diskann_branch": "cpp_main", "diskann_commit": "78256bbab4685e1774e78d331e081a153be26823", "binary_path": "bin/runner", "binary_sha256": protocol["search_execution"]["runner_build"]["binary_sha256"], "build_manifest_path": protocol["search_execution"]["runner_build"]["build_manifest_path"], "build_manifest_sha256": protocol["search_execution"]["runner_build"]["build_manifest_sha256"]},
                     "protocol": {"path": "protocols/protocol-zero.json", "protocol_id": protocol["protocol_id"], "protocol_checksum": protocol["protocol_checksum"]},
                     "search_execution": {"execution_id": protocol["search_execution"]["execution_id"], "canonical_checksum": protocol["search_execution_checksum"]},
                     "dataset_artifact": protocol["search_execution"]["dataset_artifact"], "global_graph_artifact": protocol["search_execution"]["global_graph_artifact"], "pq_artifact": protocol["search_execution"]["pq_artifact"], "disk_layout_artifact": protocol["search_execution"]["disk_layout_artifact"],
