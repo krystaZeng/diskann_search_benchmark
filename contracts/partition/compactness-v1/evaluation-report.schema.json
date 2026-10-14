@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/partition/compactness-v1/evaluation-report.schema.json",
+  "title": "Independent full-partition compactness report v1",
+  "description": "Evaluator-scoped complete disjoint float32/L2 partition quality. Does not change the public graph EvaluationReport or PartitionArtifact contracts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report_version", "status", "evaluator", "inputs", "parameters", "metric_definitions", "partition_count", "node_count", "partitions", "weighted_compactness", "input_validation", "execution"],
+  "properties": {
+    "report_version": {"const": "partition-compactness/v1"},
+    "status": {"const": "SUCCEEDED"},
+    "evaluator": {
+      "type": "object", "additionalProperties": false,
+      "required": ["implementation_id", "version", "source_path", "source_sha256"],
+      "properties": {
+        "implementation_id": {"const": "partition_full_mean_squared_l2_v1"},
+        "version": {"const": "1.0.0"},
+        "source_path": {"type": "string", "minLength": 1},
+        "source_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "inputs": {
+      "type": "object", "additionalProperties": false,
+      "required": ["workspace", "dataset", "partition", "dataset_identity", "dataset_content_sha256"],
+      "properties": {
+        "workspace": {"type": "string", "minLength": 1},
+        "dataset": {"allOf": [{"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/artifactRef"}, {"properties": {"artifact_type": {"const": "dataset"}, "format_version": {"const": "diskann-float32-dataset/v1"}}}]},
+        "partition": {"allOf": [{"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/artifactRef"}, {"properties": {"artifact_type": {"const": "partition"}, "format_version": {"const": "partition-artifact/v1"}}}]},
+        "dataset_identity": {"$ref": "https://diskann-repro.local/contracts/v1/common.schema.json#/$defs/datasetIdentity"},
+        "dataset_content_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "parameters": {
+      "type": "object", "additionalProperties": false,
+      "required": ["batch_rows", "passes", "accumulator"],
+      "properties": {
+        "batch_rows": {"type": "integer", "minimum": 1},
+        "passes": {"const": 2},
+        "accumulator": {"const": "float64_neumaier_and_math_fsum"}
+      }
+    },
+    "metric_definitions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mean", "per_partition", "overall", "distance", "training_centroids"],
+      "properties": {
+        "mean": {"const": "mu_j = sum(x for all nodes in partition j) / n_j"},
+        "per_partition": {"const": "C_j = sum(sum_d((x_d - mu_j_d)^2)) / n_j"},
+        "overall": {"const": "C = sum(n_j * C_j) / sum(n_j); sum(n_j) = dataset node count"},
+        "distance": {"const": "squared L2; no square root or division by dimension"},
+        "training_centroids": {"const": "validated when present; never used in compactness"}
+      }
+    },
+    "partition_count": {"type": "integer", "minimum": 1},
+    "node_count": {"type": "integer", "minimum": 1},
+    "partitions": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["partition_id", "node_count", "compactness"],
+        "properties": {
+          "partition_id": {"type": "integer", "minimum": 0},
+          "node_count": {"type": "integer", "minimum": 1},
+          "compactness": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "weighted_compactness": {"type": "number", "minimum": 0},
+    "input_validation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "scope", "checks", "files"],
+      "properties": {
+        "status": {"const": "VALID"},
+        "scope": {"const": "complete_disjoint_native_float32_l2"},
+        "checks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "files": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["path", "byte_length", "sha256"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "byte_length": {"type": "integer", "minimum": 0},
+              "sha256": {"$ref": "#/$defs/sha256"}
+            }
+          }
+        }
+      }
+    },
+    "execution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["started_at", "ended_at", "elapsed_seconds", "python", "platform", "ownership_map_bytes"],
+      "properties": {
+        "started_at": {"type": "string", "format": "date-time"},
+        "ended_at": {"type": "string", "format": "date-time"},
+        "elapsed_seconds": {"type": "number", "minimum": 0},
+        "python": {"type": "string", "minLength": 1},
+        "platform": {"type": "string", "minLength": 1},
+        "ownership_map_bytes": {"type": "integer", "minimum": 4}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

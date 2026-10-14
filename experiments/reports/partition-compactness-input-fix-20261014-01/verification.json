@@ -1,0 +1,104 @@
+{
+  "record_kind": "partition_compactness_input_validation_fix",
+  "created_at": "2026-10-14T01:31:21.788821+00:00",
+  "repository": {
+    "branch": "codex/kmeans-partition",
+    "head": "84b6b805d8b029c2aaafd33a3d270cc5f0c6415e",
+    "staged": false,
+    "committed": false,
+    "pushed": false
+  },
+  "changes": [
+    "Only _artifact: require metadata.dataset to be an object before identity.get; preserve unsupported-input/schema order and the CLI exception list.",
+    "Only _artifact: after schema validation and before aggregate checksum, require nonempty string capabilities in strictly increasing order. Required capabilities remain schema-enforced; no normalization.",
+    "Tests: insert the normal centroid capability in order; add 11 focused cases covering both gaps and existing required-capability schema rejection. Rebind checksums/ArtifactRefs/source references for unordered, duplicate and empty-string cases; directly edit ill-typed metadata."
+  ],
+  "files": {
+    "harness/python/diskann_harness/partition_compactness.py": {
+      "before_sha256": "448869cbd601ceafa3537c741ffdbfbb5f65e792545078a681e89684c6ba674f",
+      "after_sha256": "62a60bffe49685f6ae2d4a9578e653ceea57c604c5595a3ce3cc60490f350422",
+      "before_copy": "/private/tmp/compactness-input-fix-jsk3zc19/partition_compactness.py"
+    },
+    "tests/python/test_partition_compactness.py": {
+      "before_sha256": "431b8ecc219a977adf197ac311341adbdc52651fa58f4a896800f5dbf40dd9bc",
+      "after_sha256": "f9d94f74bc934851a2ba0f2aebda977a3c02955abe86530e708b7dc88c43a204",
+      "before_copy": "/private/tmp/compactness-input-fix-jsk3zc19/test_partition_compactness.py"
+    }
+  },
+  "tests": [
+    {
+      "phase": "before_production_fix",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_partition_compactness.py -k 'capabilities_admission_cli_failure or required_capability_still_rejected_by_schema or metadata_dataset_type_cli_failure' --tb=short",
+      "exit_code": 1,
+      "passed": 2,
+      "failed": 9,
+      "skipped": 0,
+      "deselected": 59,
+      "elapsed_seconds": 1.18,
+      "evaluator_sha256": "448869cbd601ceafa3537c741ffdbfbb5f65e792545078a681e89684c6ba674f",
+      "test_sha256": "f9d94f74bc934851a2ba0f2aebda977a3c02955abe86530e708b7dc88c43a204",
+      "failure_breakdown": {
+        "illegal_capability_declarations_accepted_as_success": 4,
+        "nonstring_capability_wrong_failure_reason": 1,
+        "illegal_dataset_type_uncaught_AttributeError": 4
+      },
+      "passing_cases": "Missing required Dataset/Partition capability was already rejected by schema."
+    },
+    {
+      "phase": "after_fix_full_test_file",
+      "command": ".venv/bin/python -m pytest -q tests/python/test_partition_compactness.py --tb=short",
+      "exit_code": 0,
+      "passed": 70,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "elapsed_seconds": 3.89
+    }
+  ],
+  "historical_sift1m": {
+    "evaluation_rerun": false,
+    "check_scope": "Read-only metadata checks for the two added predicates only; no payload validation or compactness recomputation. This does not establish a SIFT1M evaluation by the repaired implementation.",
+    "metadata": [
+      {
+        "artifact_type": "dataset",
+        "path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/datasets/sift1m/artifact.json",
+        "sha256": "5e1b85355a63ad56a29f3fdd54a0c94297216791833675b36dab11b38b5cc63e",
+        "new_input_checks": "passed"
+      },
+      {
+        "artifact_type": "partition",
+        "path": "/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-sift1m-20261013-k3-01/workspace/normal/kmeans-sift1m-k3-20261013-01/partition/artifact.json",
+        "sha256": "b0c6fa27968efc31204d50ff046d9171c21b5415721996cd93bc863f17fd91db",
+        "new_input_checks": "passed"
+      }
+    ],
+    "historical_report": "experiments/reports/partition-compactness-sift1m-20261013-k3-01/compactness.json",
+    "historical_report_sha256": "dad7547dff94beecd6df3ebf0dff9d64739ee77c43fb197249a85d88292f3234",
+    "historical_evaluator_sha256_unchanged": "448869cbd601ceafa3537c741ffdbfbb5f65e792545078a681e89684c6ba674f"
+  },
+  "preservation": {
+    "protected_files_sha256_checked": 26,
+    "changed_protected_files": [],
+    "existing_workspace_files_size_mtime_ctime_checked": 65,
+    "changed_workspace_files": [],
+    "all_evaluator_top_level_nodes_except_artifact_unchanged": true,
+    "tracked_diff_empty": true,
+    "index_empty": true,
+    "git_diff_check": "passed",
+    "modified_untracked_files_whitespace_check": "passed; no-index exit 1 denotes differences",
+    "before_snapshot": "/private/tmp/compactness-input-fix-jsk3zc19/snapshot.json"
+  },
+  "upstream": {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "head": "78256bbab4685e1774e78d331e081a153be26823",
+    "gitlink": "78256bbab4685e1774e78d331e081a153be26823",
+    "clean": true
+  },
+  "not_executed": [
+    "No SIFT1M compactness rerun; historical source SHA and reports retain their original meaning.",
+    "No partition, graph construction, Merge, Search, SIFT10M or other experiments.",
+    "No repeat of unrelated broad regression suites; this change is confined to evaluator input validation and its focused test file."
+  ],
+  "failures_remaining": []
+}
