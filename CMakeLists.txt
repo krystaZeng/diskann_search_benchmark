@@ -30,6 +30,12 @@ option(
   OFF)
 option(DISKANN_KMEANS_PARTITION
        "Build configurable-K native DiskANN Partition (Linux)" OFF)
+option(DISKANN_MODULE_COMPOSITION
+       "Build the explicit configuration entry for existing real modules" OFF)
+if(DISKANN_MODULE_COMPOSITION AND
+   (NOT DISKANN_CPP_MAIN_BASELINE OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  message(FATAL_ERROR "DISKANN_MODULE_COMPOSITION requires Linux and DISKANN_CPP_MAIN_BASELINE=ON")
+endif()
 if(DISKANN_KMEANS_PARTITION AND
    (NOT DISKANN_CPP_MAIN_BASELINE OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux"))
   message(FATAL_ERROR "DISKANN_KMEANS_PARTITION requires Linux and DISKANN_CPP_MAIN_BASELINE=ON")
@@ -148,6 +154,10 @@ endif()
 
 if(DISKANN_KMEANS_PARTITION)
   add_subdirectory(src/partition/diskann_kmeans)
+endif()
+
+if(DISKANN_MODULE_COMPOSITION)
+  add_subdirectory(src/module_composition)
 endif()
 
 include(CTest)

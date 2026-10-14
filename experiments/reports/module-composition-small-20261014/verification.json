@@ -1,0 +1,3114 @@
+{
+  "report_version": "module-composition-small-verification/v1",
+  "generated_at": "2026-10-14T03:57:28.508647+00:00",
+  "scope": "Existing-module configuration entry; small native functionality and structure only; no certification",
+  "branch": "codex/configurable-module-composition",
+  "head": "be44189bf52604a27250836f49b96a4cf3d3787b",
+  "source_files": [
+    {
+      "path": "CMakeLists.txt",
+      "byte_length": 5754,
+      "sha256": "b92440e52947ed4719a39ff5839692ce2362ff2f7ef3b46fe3252d06fcd0b020"
+    },
+    {
+      "path": "tests/CMakeLists.txt",
+      "byte_length": 575,
+      "sha256": "c85274b9367e546298ba8e2fd9d9bae53897604da63d7c31d0b2f5161ee01aa5"
+    },
+    {
+      "path": "src/baseline/cpp_main/stage_bindings.hpp",
+      "byte_length": 2376,
+      "sha256": "19c5ac607cff99d7efcccc751aa978d176e92bccf0bee38e466f5ff5882ecf5b"
+    },
+    {
+      "path": "src/baseline/cpp_main/p0_partition.cpp",
+      "byte_length": 10676,
+      "sha256": "a0d2dc5ed81b0387e4d513898ef353e9faa060a804a6f287d72db699ffc7bf86"
+    },
+    {
+      "path": "src/baseline/cpp_main/b0_local_build.cpp",
+      "byte_length": 14334,
+      "sha256": "ae3f75c511f1267c6ed1cc8b261a8fb726e2c7940ce60968576068e54b6d156d"
+    },
+    {
+      "path": "src/baseline/cpp_main/m0_merge.cpp",
+      "byte_length": 20292,
+      "sha256": "aba0486fb96627688fabf7bcaa30a8a1fedc7928968b5e9668b7735e3fa5695f"
+    },
+    {
+      "path": "src/module_composition/CMakeLists.txt",
+      "byte_length": 2614,
+      "sha256": "907d81ec8e65cb6c8dc080b41e8d7021034c49f3beaa568841d891f30aa26202"
+    },
+    {
+      "path": "src/module_composition/runner.cpp",
+      "byte_length": 22158,
+      "sha256": "70614400098f1344975ca5860087ac0138692869ffb6b207262e77ab42011453"
+    },
+    {
+      "path": "tests/cpp/module_composition/CMakeLists.txt",
+      "byte_length": 1154,
+      "sha256": "5dd3ae0d739e68bd6ae269843b1f2c73b4c92df92657b346ae6a8e6fc78d0403"
+    },
+    {
+      "path": "tests/cpp/module_composition/test_module_composition.cpp",
+      "byte_length": 17151,
+      "sha256": "ca9601c7cc3be6c9a853b3fd14880b73ada1109d17b98fc0c5481eca5ccdd9d5"
+    },
+    {
+      "path": "docs/implementations/configurable-module-composition.md",
+      "byte_length": 9838,
+      "sha256": "8e743f6f9e7a3b869b98253ba28b282b0b404c4adb1a1a5dd8792a59013955b4"
+    },
+    {
+      "path": "experiments/configs/module-composition/p0-b0-m0.json",
+      "byte_length": 1359,
+      "sha256": "777d21bb080c9047bcf725c7a1e3cce0a850bfd76109d9e9d26bf5275d7cf1f8"
+    },
+    {
+      "path": "experiments/configs/module-composition/kmeans-b0-m1.json",
+      "byte_length": 1444,
+      "sha256": "6c8e6aed0abe675d130b136fb1437cf1ee0c4dd9faf9ccc74f40035a251ac5f5"
+    }
+  ],
+  "environment": {
+    "platform": "Linux-5.15.49-linuxkit-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "logical_cpus": 6,
+    "memory_info": "MemTotal:       20499480 kB\nMemFree:         6265912 kB\nMemAvailable:   16409144 kB\nBuffers:          204076 kB\nCached:         10233304 kB\nSwapCached:            0 kB\nActive:          3676952 kB\nInactive:        9997348 kB\nActive(anon):      85976 kB\nInactive(anon):  3493420 kB\nActive(file):    3590976 kB\nInactive(file):  6503928 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:       1048572 kB\nSwapFree:        1048572 kB\nDirty:               180 kB\nWriteback:             0 kB\nAnonPages:       3232432 kB\nMapped:           313460 kB\nShmem:            342432 kB\nKReclaimable:     416352 kB\nSlab:             461928 kB\nSReclaimable:     416352 kB\nSUnreclaim:        45576 kB\nKernelStack:       11504 kB\nPageTables:        12880 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    11298312 kB\nCommitted_AS:    8352348 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:       16040 kB\nVmallocChunk:          0 kB\nPercpu:             4896 kB\nAnonHugePages:     10240 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:         0 kB\nFilePmdMapped:         0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:      149504 kB\nDirectMap2M:     7190528 kB\nDirectMap1G:    15728640 kB\n",
+    "cgroup_memory_max": "max",
+    "cgroup_cpu_max": "max 100000",
+    "build_disk_usage": [
+      499963174912,
+      476766134272,
+      23197040640
+    ],
+    "OMP_NUM_THREADS": "6",
+    "MKL_NUM_THREADS": "6"
+  },
+  "environment_snapshot_scope": "Read-only container environment snapshot during validation, not stage-isolated resource measurement",
+  "docker_image_id": "sha256:d7e34358676d7098befc6daa6d63973670333108d2bbe7029483a055f6c1cabf",
+  "binaries": {
+    "all_modules": {
+      "path": "build/ogp-partition-adaptation/linux/src/module_composition/module_composition_runner",
+      "byte_length": 9544912,
+      "sha256": "f7b43521f882dc3e34374d525225cbfb660127488fe42047e289597b25fb2b2c"
+    },
+    "baseline_only": {
+      "path": "build/kmeans-partition-linux-20261013/src/module_composition/module_composition_runner",
+      "byte_length": 8689584,
+      "sha256": "2412806ec0c1493832dde7b624d2c658fb9fed7b0af981884bb8af23a91570aa"
+    }
+  },
+  "build_directories": {
+    "all_modules": "build/ogp-partition-adaptation/linux",
+    "baseline_only": "build/kmeans-partition-linux-20261013"
+  },
+  "commands": [
+    {
+      "label": "build-01",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "--build",
+        "/workspace/build/ogp-partition-adaptation",
+        "--target",
+        "module_composition_tests",
+        "--parallel",
+        "4"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/build-01.stdout",
+        "byte_length": 6665,
+        "sha256": "1e373732db0f0c3e3a3b95f44ca603eccd4c99db9f1fd479167bf64a0d7aa27e"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/build-01.stderr",
+        "byte_length": 1188,
+        "sha256": "526311215de423970ba6d77c02aeb8e3de28a6e3b140f47eadded149a6e94c61"
+      },
+      "exit_code": 0
+    },
+    {
+      "label": "build-02",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "--build",
+        "/workspace/build/ogp-partition-adaptation",
+        "--target",
+        "module_composition_tests",
+        "--parallel",
+        "4"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/build-02.stdout",
+        "byte_length": 5687,
+        "sha256": "87043412514161095774f1f38f54a5d0db469c7c8cf24a44362d3453a50b5ff4"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/build-02.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 151.91571283340454
+    },
+    {
+      "label": "build-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "--build",
+        "/workspace/build/ogp-partition-adaptation",
+        "--target",
+        "module_composition_tests",
+        "--parallel",
+        "4"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/build-final.stdout",
+        "byte_length": 5687,
+        "sha256": "2ec673b163b1045b55759d101ec8829701d994c746b41b1a5e9c4de84a638984"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/build-final.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 368.29580187797546
+    },
+    {
+      "label": "configure-01",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "-S",
+        "/workspace",
+        "-B",
+        "/workspace/build/ogp-partition-adaptation",
+        "-DDISKANN_MODULE_COMPOSITION=ON",
+        "-DDISKANN_KMEANS_PARTITION=ON",
+        "-DDISKANN_XN_DESCENT=ON",
+        "-DDISKANN_HNSW_MERGER=ON",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/configure-01.stdout",
+        "byte_length": 293,
+        "sha256": "a112dca972c91b1d38d6402a573724d41721bc55d346817695502ab932463e7f"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/configure-01.stderr",
+        "byte_length": 70673,
+        "sha256": "223dcb8683b2c81df18dd588245363a555bb46343c8dd9de5e092e00fa45da9a"
+      },
+      "exit_code": 1
+    },
+    {
+      "label": "configure-02",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "-S",
+        "/workspace",
+        "-B",
+        "/workspace/build/ogp-partition-adaptation",
+        "-DDISKANN_MODULE_COMPOSITION=ON",
+        "-DDISKANN_KMEANS_PARTITION=ON",
+        "-DDISKANN_XN_DESCENT=ON",
+        "-DDISKANN_HNSW_MERGER=ON",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+        "-DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/workspace/build/feature-001/_deps/nlohmann_json-src"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/configure-02.stdout",
+        "byte_length": 267,
+        "sha256": "34ca3b33edc4f38aab12867908acb2244157a5809a2756d0a33e4b5244aa6c24"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/configure-02.stderr",
+        "byte_length": 8370,
+        "sha256": "f047262d82b1f4a4398f4db1844530696ec02d1c1e62de1b9ad6e9a66c2368a2"
+      },
+      "exit_code": 0
+    },
+    {
+      "label": "configure-03",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "-S",
+        "/workspace",
+        "-B",
+        "/workspace/build/ogp-partition-adaptation",
+        "-DDISKANN_MODULE_COMPOSITION=ON",
+        "-DDISKANN_KMEANS_PARTITION=ON",
+        "-DDISKANN_XN_DESCENT=ON",
+        "-DDISKANN_HNSW_MERGER=ON",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+        "-DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/workspace/build/feature-001/_deps/nlohmann_json-src"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/configure-03.stdout",
+        "byte_length": 267,
+        "sha256": "34ca3b33edc4f38aab12867908acb2244157a5809a2756d0a33e4b5244aa6c24"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/configure-03.stderr",
+        "byte_length": 8370,
+        "sha256": "f047262d82b1f4a4398f4db1844530696ec02d1c1e62de1b9ad6e9a66c2368a2"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 25.848011016845703
+    },
+    {
+      "label": "configure-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "-S",
+        "/workspace",
+        "-B",
+        "/workspace/build/ogp-partition-adaptation",
+        "-DDISKANN_MODULE_COMPOSITION=ON",
+        "-DDISKANN_KMEANS_PARTITION=ON",
+        "-DDISKANN_XN_DESCENT=ON",
+        "-DDISKANN_HNSW_MERGER=ON",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+        "-DFETCHCONTENT_SOURCE_DIR_NLOHMANN_JSON=/workspace/build/feature-001/_deps/nlohmann_json-src"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/configure-final.stdout",
+        "byte_length": 267,
+        "sha256": "34ca3b33edc4f38aab12867908acb2244157a5809a2756d0a33e4b5244aa6c24"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/configure-final.stderr",
+        "byte_length": 8370,
+        "sha256": "f047262d82b1f4a4398f4db1844530696ec02d1c1e62de1b9ad6e9a66c2368a2"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 53.60484313964844
+    },
+    {
+      "label": "environment",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "python3",
+        "-c",
+        "import json,os,platform,shutil; from pathlib import Path; print(json.dumps({\"platform\":platform.platform(),\"machine\":platform.machine(),\"logical_cpus\":os.cpu_count(),\"memory_info\":Path(\"/proc/meminfo\").read_text(),\"cgroup_memory_max\":Path(\"/sys/fs/cgroup/memory.max\").read_text().strip(),\"cgroup_cpu_max\":Path(\"/sys/fs/cgroup/cpu.max\").read_text().strip(),\"build_disk_usage\":list(shutil.disk_usage(\"/workspace/build/ogp-partition-adaptation\")),\"OMP_NUM_THREADS\":os.getenv(\"OMP_NUM_THREADS\"),\"MKL_NUM_THREADS\":os.getenv(\"MKL_NUM_THREADS\")},indent=2))"
+      ]
+    },
+    {
+      "label": "minimal-build-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-linux-20261013,dst=/workspace/build/kmeans-partition-linux-20261013",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "--build",
+        "/workspace/build/kmeans-partition-linux-20261013",
+        "--target",
+        "module_composition_tests",
+        "--parallel",
+        "4"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/minimal-build-final.stdout",
+        "byte_length": 3688,
+        "sha256": "a29c5c161f6c97fb521b63506e73ca55332fc1a84c8abc80819500605365a394"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/minimal-build-final.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 360.6476528644562
+    },
+    {
+      "label": "minimal-build",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-linux-20261013,dst=/workspace/build/kmeans-partition-linux-20261013",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "--build",
+        "/workspace/build/kmeans-partition-linux-20261013",
+        "--target",
+        "module_composition_tests",
+        "--parallel",
+        "4"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/minimal-build.stdout",
+        "byte_length": 4116,
+        "sha256": "6d0b97f3382f50d3bc55c148875f42b81115a2f3f357b2e2be0ab3aa41a0b2fa"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/minimal-build.stderr",
+        "byte_length": 1713,
+        "sha256": "d3ae45a835c6cf1b04569e264d817a39f16707aaf0d0fc899551622345d319de"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 162.05772280693054
+    },
+    {
+      "label": "minimal-configure-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-linux-20261013,dst=/workspace/build/kmeans-partition-linux-20261013",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "-S",
+        "/workspace",
+        "-B",
+        "/workspace/build/kmeans-partition-linux-20261013",
+        "-DDISKANN_MODULE_COMPOSITION=ON",
+        "-DDISKANN_KMEANS_PARTITION=OFF",
+        "-DDISKANN_XN_DESCENT=OFF",
+        "-DDISKANN_HNSW_MERGER=OFF",
+        "-DDISKANN_GP_ANN_OGP=OFF",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/minimal-configure-final.stdout",
+        "byte_length": 287,
+        "sha256": "b4c4110f3f651de01fa1c1baadd63902afb34c30ea991c5bad827272b169f034"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/minimal-configure-final.stderr",
+        "byte_length": 8370,
+        "sha256": "f047262d82b1f4a4398f4db1844530696ec02d1c1e62de1b9ad6e9a66c2368a2"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 73.28797221183777
+    },
+    {
+      "label": "minimal-configure",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-linux-20261013,dst=/workspace/build/kmeans-partition-linux-20261013",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "-S",
+        "/workspace",
+        "-B",
+        "/workspace/build/kmeans-partition-linux-20261013",
+        "-DDISKANN_MODULE_COMPOSITION=ON",
+        "-DDISKANN_KMEANS_PARTITION=OFF",
+        "-DDISKANN_XN_DESCENT=OFF",
+        "-DDISKANN_HNSW_MERGER=OFF",
+        "-DDISKANN_GP_ANN_OGP=OFF",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/minimal-configure.stdout",
+        "byte_length": 287,
+        "sha256": "b4c4110f3f651de01fa1c1baadd63902afb34c30ea991c5bad827272b169f034"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/minimal-configure.stderr",
+        "byte_length": 8370,
+        "sha256": "f047262d82b1f4a4398f4db1844530696ec02d1c1e62de1b9ad6e9a66c2368a2"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 15.88805603981018
+    },
+    {
+      "label": "minimal-tests-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-linux-20261013,dst=/workspace/build/kmeans-partition-linux-20261013",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/kmeans-partition-linux-20261013",
+        "-R",
+        "^module_composition_",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/minimal-tests-final.stdout",
+        "byte_length": 454,
+        "sha256": "0d17cc9bab780ee4537bbb3309cbc78bcecedf76440ddaa65cb12571da724192"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/minimal-tests-final.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 55.23331809043884
+    },
+    {
+      "label": "minimal-tests",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/kmeans-partition-linux-20261013,dst=/workspace/build/kmeans-partition-linux-20261013",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/kmeans-partition-linux-20261013/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/kmeans-partition-linux-20261013",
+        "-R",
+        "^module_composition_",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/minimal-tests.stdout",
+        "byte_length": 454,
+        "sha256": "888bb5b3b5474ed4c1e3aa0335e02970215907a12b5d506cb5e9e2ea74863f7a"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/minimal-tests.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 24.186832904815674
+    },
+    {
+      "label": "native-01",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/ogp-partition-adaptation",
+        "-R",
+        "^module_composition_native$",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/native-01.stdout",
+        "byte_length": 328,
+        "sha256": "8191fd71d5118c0952f5999f916861e8cef77ca0293b5ba5e0be92aebab106df"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/native-01.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 32.16702389717102
+    },
+    {
+      "label": "native-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/ogp-partition-adaptation",
+        "-R",
+        "^module_composition_native$",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/native-final.stdout",
+        "byte_length": 328,
+        "sha256": "4ddacd83816576fed8131aa368c70c29a8dc1ab1ae731c3b8c4b92d8d4051913"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/native-final.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 52.57131314277649
+    },
+    {
+      "label": "regression-build",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "cmake",
+        "--build",
+        "/workspace/build/ogp-partition-adaptation",
+        "--target",
+        "registry_selection",
+        "compatibility_preflight",
+        "stage_source_provenance",
+        "pipeline_failure_gates",
+        "parameter_schema_gate",
+        "production_surface",
+        "fake_pipeline_e2e",
+        "cpp_main_descriptors_preflight",
+        "cpp_main_p0",
+        "cpp_main_b0",
+        "cpp_main_m0",
+        "cpp_main_pipeline",
+        "diskann_kmeans_tests",
+        "gp_ann_ogp_partition",
+        "gp_ann_ogp_pipeline",
+        "hnsw_merger_m1_semantics",
+        "hnsw_merger_m1_native_output",
+        "hnsw_merger_m1_pipeline",
+        "xn_descent_parameters_test",
+        "xn_descent_pipeline_test",
+        "--parallel",
+        "4"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/regression-build.stdout",
+        "byte_length": 9710,
+        "sha256": "d2e5375f596b71fcaa0b8c06e703bd09d64e184b5200748c26406495e5e20d69"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/regression-build.stderr",
+        "byte_length": 697,
+        "sha256": "9f41706308bb4645400629c0ab56cd3e400b745aa4e2304092e328902ff552b6"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 1132.9627587795258
+    },
+    {
+      "label": "regression-tests",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/ogp-partition-adaptation",
+        "-R",
+        "^(registry_selection|compatibility_preflight|stage_source_provenance|pipeline_failure_gates|parameter_schema_gate|production_surface|fake_pipeline_e2e|cpp_main_descriptors_preflight|cpp_main_p0|cpp_main_b0|cpp_main_m0|cpp_main_pipeline|diskann_kmeans_parameters_contract|diskann_kmeans_native_b0|gp_ann_ogp_partition|gp_ann_ogp_pipeline|hnsw_merger_m1_semantics|hnsw_merger_m1_native_output|hnsw_merger_m1_pipeline|xn_descent_parameters_test|xn_descent_pipeline_preflight_test|xn_descent_small_pipeline_test)$",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/regression-tests.stdout",
+        "byte_length": 3596,
+        "sha256": "0479df165fbe3f6da4026eb72941333d195238f0fcc4380698b24f02527b95e5"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/regression-tests.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 326.52351808547974
+    },
+    {
+      "label": "requests-01",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/ogp-partition-adaptation",
+        "-R",
+        "^module_composition_requests$",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/requests-01.stdout",
+        "byte_length": 4345,
+        "sha256": "6afaca8c82d36b1226ab8c20c69dba80b4054258d13a574e4d38b76bb305efe1"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/requests-01.stderr",
+        "byte_length": 27,
+        "sha256": "18e00877dc1071c85cd4f479d451bebeef8309022e46cf8c63b0bed5151984a4"
+      },
+      "exit_code": 8,
+      "elapsed_seconds": 22.128357887268066
+    },
+    {
+      "label": "requests-02",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/ogp-partition-adaptation",
+        "-R",
+        "^module_composition_requests$",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/requests-02.stdout",
+        "byte_length": 330,
+        "sha256": "385d2cd64c0a57d46476db78177b18a70badd5c975fe54747af3d7490f42133f"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/requests-02.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 32.80501699447632
+    },
+    {
+      "label": "requests-final",
+      "argv": [
+        "docker",
+        "run",
+        "--rm",
+        "--network",
+        "none",
+        "--read-only",
+        "--pull=never",
+        "--tmpfs",
+        "/tmp:rw,size=2g",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods,dst=/workspace,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux,dst=/workspace/build/ogp-partition-adaptation",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/gp-ann-formal-source,dst=/gpann-source,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/git,dst=/usr/local/bin/git,readonly",
+        "--mount",
+        "type=bind,src=/Users/krystal/Desktop/入职材料/Mirage 复现/向量数据库立项材料/0803_diskann_methods/build/ogp-partition-adaptation/linux/runtime-tools/libtbb.so.12.5,dst=/lib/x86_64-linux-gnu/libtbb.so.12,readonly",
+        "--env",
+        "OMP_NUM_THREADS=6",
+        "--env",
+        "MKL_NUM_THREADS=6",
+        "--env",
+        "COMPOSITION_TEST_OUTPUT_ROOT=/workspace/build/ogp-partition-adaptation/composition-validation",
+        "diskann-cpp-main-baseline-builder:jammy",
+        "ctest",
+        "--test-dir",
+        "/workspace/build/ogp-partition-adaptation",
+        "-R",
+        "^module_composition_requests$",
+        "--output-on-failure"
+      ],
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/requests-final.stdout",
+        "byte_length": 330,
+        "sha256": "713d77655c58c87a1834aa46e6762195c1ad3863bdf28f77c54c901ba3a58b29"
+      },
+      "stderr": {
+        "path": "build/module-composition-20261014/logs/requests-final.stderr",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 34.84393501281738
+    }
+  ],
+  "final_tests": {
+    "all_modules_requests": {
+      "ctest_passed": 1,
+      "negative_cases": 31
+    },
+    "all_modules_native": {
+      "ctest_passed": 1,
+      "successful_combinations": 5,
+      "expected_invalid_partition": 1
+    },
+    "baseline_only": {
+      "ctest_passed": 2,
+      "request_negative_cases": 28,
+      "successful_combinations": 1,
+      "optional_modules_compiled": false,
+      "gpann_source_and_extra_tbb_mounts": false
+    },
+    "existing_regression": {
+      "ctest_passed": 22,
+      "ctest_failed": 0,
+      "ctest_skipped": 0,
+      "stdout": {
+        "path": "build/module-composition-20261014/logs/regression-tests.stdout",
+        "byte_length": 3596,
+        "sha256": "0479df165fbe3f6da4026eb72941333d195238f0fcc4380698b24f02527b95e5"
+      },
+      "scope_note": "Run against final unchanged shared Baseline parameter helpers and existing module/executor code. Subsequent changes were confined to entry path admission/diagnostics and its tests; those were rebuilt and rerun in both final entry builds."
+    }
+  },
+  "native_validation_root": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980",
+  "native_runs": [
+    {
+      "combination": "invalid-partition",
+      "result": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/workspace/reports/result.json",
+        "byte_length": 2344,
+        "sha256": "70d19ac67bfc74f00be84ec525b8eb4f00b9142835393ce9c0dd1428a50307dc"
+      },
+      "request": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/request.json",
+        "byte_length": 1308,
+        "sha256": "83384f8b73d168856510fbf0da07c5ec12e7d819ef778a7f737d873b495650e8"
+      },
+      "command": "'/workspace/build/ogp-partition-adaptation/src/module_composition/module_composition_runner' execute --request '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/invalid-partition/request.json' --result '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/invalid-partition/workspace/reports/result.json' >'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/invalid-partition/stdout.log' 2>'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/invalid-partition/stderr.log'",
+      "stdout": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/stdout.log",
+        "byte_length": 745,
+        "sha256": "1f73e1d006e210cea5e856b8b1823d91b8b5ce0b343f73ed8e7ebcca0159ed43"
+      },
+      "stderr": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/stderr.log",
+        "byte_length": 1845,
+        "sha256": "c48048eec0c722bfa4282da5ea94d86b9a9e51f34f1d6272a4aaa35d2f64e4a7"
+      },
+      "outcome": "FAILED",
+      "stage_invocations": {
+        "local_build": 0,
+        "merge": 0,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/workspace/manifests/small/entry-build.json",
+        "byte_length": 201868,
+        "sha256": "1005e8eeba3e0240e16c337079653d920bdd6b49d093f633aef070de2df78417"
+      },
+      "cli_exit_code_asserted_by_passing_test": 4,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "0b3494e92aedc424cd3e28f5cdc982b269d184c8226373617fa499f19436b028",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "L": 32,
+            "R": 16,
+            "alpha": 1.2,
+            "build_pq_bytes": 0,
+            "max_occlusion_size": 750,
+            "num_threads": 6,
+            "saturation": false,
+            "use_opq": false
+          }
+        },
+        "merge": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "K": 2,
+            "max_k_means_reps": 15
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/invalid-partition/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/workspace/manifests/small/stages/partition.json",
+          "byte_length": 6002,
+          "sha256": "b49a39ab88ffab57286f733e20591d442a751d2eb42b9c8cfe62c40a0e9a1c34",
+          "implementation": {
+            "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "FAILED",
+          "stage": "partition",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/invalid-partition/workspace/manifests/small/stage-execution/partition.json",
+            "byte_length": 135696,
+            "sha256": "405212d5c878b9bcad726894fab4d5b1468357913f235f9831d0ad763a918ea0"
+          }
+        }
+      ],
+      "actual_training_sample_count": 96,
+      "stage_failure": {
+        "category": "mapping_incomplete",
+        "reason": "missing, empty or malformed native shard 1"
+      },
+      "validation_evidence": [],
+      "failure": {
+        "category": "internal",
+        "reason": "Partition implementation failed"
+      }
+    },
+    {
+      "combination": "kmeans-b0-m0",
+      "result": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/reports/result.json",
+        "byte_length": 5275,
+        "sha256": "4b46a6348b4d4b0517e0c0184224cf8dc934f6f5ca12fcb3c1ad24ccd65c60d4"
+      },
+      "request": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/request.json",
+        "byte_length": 1303,
+        "sha256": "00235b7b69458c2ec37cce214b4d1f053352826e962925f6f90bc76595db9b95"
+      },
+      "command": "'/workspace/build/ogp-partition-adaptation/src/module_composition/module_composition_runner' execute --request '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m0/request.json' --result '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m0/workspace/reports/result.json' >'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m0/stdout.log' 2>'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m0/stderr.log'",
+      "stdout": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/stdout.log",
+        "byte_length": 4714,
+        "sha256": "6ffa0c3df35098d8f8366ea2be727bd364c87ab999e6b16c9b04b30144fd9c3a"
+      },
+      "stderr": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/stderr.log",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "outcome": "SUCCEEDED",
+      "stage_invocations": {
+        "local_build": 3,
+        "merge": 1,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/entry-build.json",
+        "byte_length": 201863,
+        "sha256": "5416f9435beef43804396c8e2c1a67f7ce8dfbc5e7fef9eb45e9f470c26e139e"
+      },
+      "cli_exit_code_asserted_by_passing_test": 0,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "L": 32,
+            "R": 16,
+            "alpha": 1.2,
+            "build_pq_bytes": 0,
+            "max_occlusion_size": 750,
+            "num_threads": 6,
+            "saturation": false,
+            "use_opq": false
+          }
+        },
+        "merge": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "K": 3,
+            "max_k_means_reps": 15
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m0/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/stages/partition.json",
+          "byte_length": 6204,
+          "sha256": "a329baf32eeb10e920548f96da4a525e654f5de03e5b18f067e5da82badf4a4d",
+          "implementation": {
+            "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "partition",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/stage-execution/partition.json",
+            "byte_length": 135898,
+            "sha256": "7aeaf8f1276082b24f685e0f769b1d655ea43a0121016163c41d7726134842fc"
+          }
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/stages/local-0.json",
+          "byte_length": 6353,
+          "sha256": "b1b6966d294ef5f2c777b20b3a076b00dc6779fda495d3b6d39729eebb207e37",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/stages/local-1.json",
+          "byte_length": 6353,
+          "sha256": "622b1c3a66af07f7e5384ed1a7c3c83923ff195b0efa52fc43778e0cc727f49d",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/stages/local-2.json",
+          "byte_length": 6353,
+          "sha256": "e062b28ed6ff44b353462150d371af4e9764248bbab69e6ac8599a2ad7dbb92f",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/small/stages/merge.json",
+          "byte_length": 6659,
+          "sha256": "4992d0846a696fe6930960f7a87951c7ecb50998b3eb0d0633ba4bffd4295958",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "merge"
+        }
+      ],
+      "actual_training_sample_count": 96,
+      "validation_evidence": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/evidence/small-partition-valid.json",
+          "byte_length": 474,
+          "sha256": "e9878dd2dfa17cfaee5f65761e82d916f05e9084eb6b890545caf33e105f0872",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/evidence/small-local-0-valid.json",
+          "byte_length": 476,
+          "sha256": "5cd52ece4a8b08fdf809651ef162534b987d968388fa6464c1e7b37573a1ddfc",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/evidence/small-local-1-valid.json",
+          "byte_length": 476,
+          "sha256": "83df68a9fe63f4f2f680400836db5b40296df15a0b36c88f2be07c0057c9822b",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/evidence/small-local-2-valid.json",
+          "byte_length": 476,
+          "sha256": "5abccf0912b58a84a80c0f3bc478e098a1ea65a410ee7472e71e5ead83afdd5b",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/manifests/evidence/small-merge-valid.json",
+          "byte_length": 476,
+          "sha256": "3836626b4531d243e066e011cf225c8934c60c1b14161fa00dcdc0474c606d9d",
+          "result": "VALID"
+        }
+      ],
+      "dataset_identity": {
+        "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+        "dataset_id": "cpp-main-small-native-v1",
+        "distance_metric": "l2",
+        "global_node_count": 96,
+        "scalar_type": "float32",
+        "vector_dimension": 4
+      },
+      "partition_node_counts": [
+        62,
+        12,
+        22
+      ],
+      "artifacts": {
+        "partition": {
+          "aggregate_checksum": "9107b86e5bc3c978602b6a239210769718a7456a3a771d6407a3fe2d03dd55f2",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "small/partition/artifact.json"
+        },
+        "local_graphs": [
+          {
+            "aggregate_checksum": "6878557dd26543b47c215963944f46a0457be470c877cb800689a7ae240482bf",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-0/artifact.json"
+          },
+          {
+            "aggregate_checksum": "9bd805b8b90ebcc0082f599078db26f19e17f0ae52edf01f4357a7466e0c2a4a",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-1/artifact.json"
+          },
+          {
+            "aggregate_checksum": "976b4a809f445e018ada994db233b5d78c2f4d53a5f3b03ef309a7b21683cb65",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-2/artifact.json"
+          }
+        ],
+        "global_graph": {
+          "aggregate_checksum": "1639bf6b9a90cabafb8b32c5b3c16111c18d565e38ce8d538407e5fd372beeaa",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "small/merge/artifact.json"
+        }
+      },
+      "global_graph_structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 96,
+        "observed_max_degree": 10,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "6878557dd26543b47c215963944f46a0457be470c877cb800689a7ae240482bf",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "9bd805b8b90ebcc0082f599078db26f19e17f0ae52edf01f4357a7466e0c2a4a",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "976b4a809f445e018ada994db233b5d78c2f4d53a5f3b03ef309a7b21683cb65",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "9107b86e5bc3c978602b6a239210769718a7456a3a771d6407a3fe2d03dd55f2",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "evaluation_report": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m0/workspace/reports/small-evaluation.json",
+        "byte_length": 656,
+        "sha256": "5e8e81a34651da8d89ccf4bf00b77aab0c0951b9f0125e7845917c7537f55c80"
+      }
+    },
+    {
+      "combination": "kmeans-b0-m1",
+      "result": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/reports/result.json",
+        "byte_length": 5396,
+        "sha256": "af25b37da0a865387185517a3aeabed91cc8ef31a319aa3c1721bc38bdb2ebd5"
+      },
+      "request": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/request.json",
+        "byte_length": 1446,
+        "sha256": "625ed8336f02198ad119c410630c60bb231de07a948ea3ebd60f3f461e31c6c4"
+      },
+      "command": "'/workspace/build/ogp-partition-adaptation/src/module_composition/module_composition_runner' execute --request '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m1/request.json' --result '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m1/workspace/reports/result.json' >'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m1/stdout.log' 2>'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m1/stderr.log'",
+      "stdout": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/stdout.log",
+        "byte_length": 4676,
+        "sha256": "50f65e2b45fa6b515962bd111683e8082e6b023348b5e1cb50c35d511a2205c9"
+      },
+      "stderr": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/stderr.log",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "outcome": "SUCCEEDED",
+      "stage_invocations": {
+        "local_build": 3,
+        "merge": 1,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/entry-build.json",
+        "byte_length": 202157,
+        "sha256": "e2f792ada10d84a94f2c85e93d4e23be10229eff49f0806927bc859d1e63061e"
+      },
+      "cli_exit_code_asserted_by_passing_test": 0,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "L": 32,
+            "R": 16,
+            "alpha": 1.2,
+            "build_pq_bytes": 0,
+            "max_occlusion_size": 750,
+            "num_threads": 6,
+            "saturation": false,
+            "use_opq": false
+          }
+        },
+        "merge": {
+          "implementation_id": "hnsw_merger_vamana_merge_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "alpha": 1.2,
+            "lambda_policy": "paper_adaptive_log_v1",
+            "max_candidate_size": 750,
+            "metric": "l2",
+            "multi_shard_strategy": "large_first_pairwise_v1",
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "K": 3,
+            "max_k_means_reps": 15
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/kmeans-b0-m1/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stages/partition.json",
+          "byte_length": 6307,
+          "sha256": "3433d61d327193a72635515aecf90a130d0b5eef5602ee28e6cb909604918258",
+          "implementation": {
+            "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "partition",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stage-execution/partition.json",
+            "byte_length": 135898,
+            "sha256": "7a15fe0e3b49f326f5cfc8753d784165421bbc75349a2c2c9b1400a045472aa8"
+          }
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stages/local-0.json",
+          "byte_length": 6456,
+          "sha256": "0512e356ee78f7419b6f190da121a4ad71ae15c624218d86fd0c15fbb6db96f1",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stages/local-1.json",
+          "byte_length": 6456,
+          "sha256": "2086cfb18a8a9013bb4035d2e5e5196116b42117823598e9904ed4a986cd94b7",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stages/local-2.json",
+          "byte_length": 6456,
+          "sha256": "01b7124d2c75c93e76f6a584cd397af98267c0595c459de858dcab15555a91f0",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stages/merge.json",
+          "byte_length": 7159,
+          "sha256": "5b8e39db67359b86b01daa280ac13cd38a0cb57ca3a502dd22293db9f96ecdb4",
+          "implementation": {
+            "implementation_id": "hnsw_merger_vamana_merge_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "codex/configurable-module-composition",
+            "commit": "be44189bf52604a27250836f49b96a4cf3d3787b",
+            "dirty_source_checksum": "4e591c872bdad81da8b872857446aeade58a82f1563c80fad332dec9edfa006b",
+            "dirty_worktree": true,
+            "repository": "https://github.com/krystaZeng/diskann_search_benchmark.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "merge",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/small/stage-execution/merge.json",
+            "byte_length": 3627,
+            "sha256": "7d782127be75aaa3fd817db61763aa38bff93dfc48776a1f304f4cc17821a722"
+          }
+        }
+      ],
+      "actual_training_sample_count": 96,
+      "validation_evidence": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/evidence/small-partition-valid.json",
+          "byte_length": 474,
+          "sha256": "542724c9efa9ef0cf1300cc7d4612f3cc448ea2d8da6adb5be7867ffef2f8573",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/evidence/small-local-0-valid.json",
+          "byte_length": 476,
+          "sha256": "209b0bfe2513c1343ffcd26ae7a3a466770af5411567403b064a8b4e435b2f80",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/evidence/small-local-1-valid.json",
+          "byte_length": 476,
+          "sha256": "2b384cbeca3452e108ef28aa807dc9b7254236494a8e33f19b90a1f794e2f76c",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/evidence/small-local-2-valid.json",
+          "byte_length": 476,
+          "sha256": "7a46781a41e0fc48edcb76631011a72600d829eb871748a5010db12c08fbc072",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/manifests/evidence/small-merge-valid.json",
+          "byte_length": 476,
+          "sha256": "15d8fb009be33b90613c78e8546e7572d43716ca0c43c50a20ddbb8e0c180fa5",
+          "result": "VALID"
+        }
+      ],
+      "dataset_identity": {
+        "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+        "dataset_id": "cpp-main-small-native-v1",
+        "distance_metric": "l2",
+        "global_node_count": 96,
+        "scalar_type": "float32",
+        "vector_dimension": 4
+      },
+      "partition_node_counts": [
+        35,
+        23,
+        38
+      ],
+      "artifacts": {
+        "partition": {
+          "aggregate_checksum": "ea337fe1f9973259443d650fc057e3d80929de99118bbff95db2342032826401",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "small/partition/artifact.json"
+        },
+        "local_graphs": [
+          {
+            "aggregate_checksum": "4c0e6b37817a8bbb30c9ec4dff4efee1502685f938e4f419f074843c37c46c94",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-0/artifact.json"
+          },
+          {
+            "aggregate_checksum": "88f6f96b7c5de5b1b267c12576129f90dbdabddb371686300cdd04b995e8ba21",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-1/artifact.json"
+          },
+          {
+            "aggregate_checksum": "83591184937603a8af933f2ff073c751031bea5a18f1571188d66bfda66deebe",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-2/artifact.json"
+          }
+        ],
+        "global_graph": {
+          "aggregate_checksum": "35c7bba515ca858b0925a087122c7c7b7d93d2dd511a4191b09e5e5ed86058c6",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "small/merge/artifact.json"
+        }
+      },
+      "global_graph_structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 96,
+        "observed_max_degree": 16,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "4c0e6b37817a8bbb30c9ec4dff4efee1502685f938e4f419f074843c37c46c94",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "88f6f96b7c5de5b1b267c12576129f90dbdabddb371686300cdd04b995e8ba21",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "83591184937603a8af933f2ff073c751031bea5a18f1571188d66bfda66deebe",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "ea337fe1f9973259443d650fc057e3d80929de99118bbff95db2342032826401",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "evaluation_report": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/kmeans-b0-m1/workspace/reports/small-evaluation.json",
+        "byte_length": 656,
+        "sha256": "8dd3037b3eb7affc90b1ac456f649149859b15a7803653c6934c1aed962f289f"
+      }
+    },
+    {
+      "combination": "ogp-b0-m0",
+      "result": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/reports/result.json",
+        "byte_length": 6532,
+        "sha256": "2b6878eda10ef7f2a43a158b4b5ce1dd007a5d9f707481555ba9899f22f29400"
+      },
+      "request": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/request.json",
+        "byte_length": 1341,
+        "sha256": "f1d5fbaaaeb8ad9c6e641581e8cd742d03085d19398f64829fec42c0e591e4e0"
+      },
+      "command": "'/workspace/build/ogp-partition-adaptation/src/module_composition/module_composition_runner' execute --request '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/ogp-b0-m0/request.json' --result '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/ogp-b0-m0/workspace/reports/result.json' >'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/ogp-b0-m0/stdout.log' 2>'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/ogp-b0-m0/stderr.log'",
+      "stdout": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/stdout.log",
+        "byte_length": 6322,
+        "sha256": "87b7c4d2c9c3147d785d5ef3bfe9334aa4935e6a3e907bc5326e515e6e439bd7"
+      },
+      "stderr": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/stderr.log",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "outcome": "SUCCEEDED",
+      "stage_invocations": {
+        "local_build": 5,
+        "merge": 1,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/entry-build.json",
+        "byte_length": 201856,
+        "sha256": "8dc0cb2e1e2c285b451d7f679f4f982984fe2c9d05eee26b0f7c8d7274d8ae42"
+      },
+      "cli_exit_code_asserted_by_passing_test": 0,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "L": 32,
+            "R": 16,
+            "alpha": 1.2,
+            "build_pq_bytes": 0,
+            "max_occlusion_size": 750,
+            "num_threads": 6,
+            "saturation": false,
+            "use_opq": false
+          }
+        },
+        "merge": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "gp_ann_ogp_partition_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "partitioning_mode": "default",
+            "requested_num_clusters": 4,
+            "requested_overlap": 0.2
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/ogp-b0-m0/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/partition.json",
+          "byte_length": 6209,
+          "sha256": "4a76d6532f87984fa93b5489f370a5c8707903572a84f824c001de09cc2ad30c",
+          "implementation": {
+            "implementation_id": "gp_ann_ogp_partition_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "main",
+            "commit": "df5efb4a6b303011c795666ed267f29d994b558c",
+            "dirty_worktree": false,
+            "repository": "https://github.com/larsgottesbueren/gp-ann.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "partition",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stage-execution/partition.json",
+            "byte_length": 3375,
+            "sha256": "d22353a01689fd54b915373406f6cc0669d5e6ef551a0669575db4590dc88a0b"
+          }
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/local-0.json",
+          "byte_length": 6353,
+          "sha256": "c82086b514ede20a6b9f3d6115c2c30f13afad0bf2bd2b554191c3a6273e7ea5",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/local-1.json",
+          "byte_length": 6353,
+          "sha256": "a7726f52ab011f1103f34cdc0995aa0855b0daa5da6e148a1ddc44e58536392f",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/local-2.json",
+          "byte_length": 6353,
+          "sha256": "b24c9810d10dc9c567f9c5ff566d988de5628aa708ebf38f8cef4b67191f89d8",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/local-3.json",
+          "byte_length": 6353,
+          "sha256": "cdce1b91427bf76092e8b2b15ee79194438c523a433ff5d29c6a992f7918fd03",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/local-4.json",
+          "byte_length": 6353,
+          "sha256": "01fbf652a7bef044d81a82448025494b719feb9fbdd1fa295d1a2dae0d3541cf",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/small/stages/merge.json",
+          "byte_length": 7077,
+          "sha256": "192578d8512f197f076b268e6bc16bf74113097dff30b58c7dd20750b3211d11",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "merge"
+        }
+      ],
+      "validation_evidence": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-partition-valid.json",
+          "byte_length": 474,
+          "sha256": "e4c5497402163af7e3ceee6bb7f362bc31c07e013d852f38c76a8c3965906288",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-local-0-valid.json",
+          "byte_length": 476,
+          "sha256": "3c32bed0b37d02f8ad3260825b35a3bed83638526b6d1e5e4108995784c271d8",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-local-1-valid.json",
+          "byte_length": 476,
+          "sha256": "4c0264a938684748275b4f53231693dc76f15d032fc277c934b760fcb866a368",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-local-2-valid.json",
+          "byte_length": 476,
+          "sha256": "1581a3f2388fa6cb8d3f32cd64c5ac74c0e5fd122cc0ea835ab0fd4de8da1dbd",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-local-3-valid.json",
+          "byte_length": 476,
+          "sha256": "9e795808179fe71f84cbb50a2919264a93ad9026f2c69aba5ffa497e12da52c5",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-local-4-valid.json",
+          "byte_length": 476,
+          "sha256": "2d5e208414e0ccd85a7f2b768a6fb290c7d99e57576b26cdb9e7ac28c8d42f0f",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/manifests/evidence/small-merge-valid.json",
+          "byte_length": 476,
+          "sha256": "7cc17ec3315e30498b4653cc92ae4856576734205c609f0319bacba8556f0001",
+          "result": "VALID"
+        }
+      ],
+      "dataset_identity": {
+        "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+        "dataset_id": "cpp-main-small-native-v1",
+        "distance_metric": "l2",
+        "global_node_count": 96,
+        "scalar_type": "float32",
+        "vector_dimension": 4
+      },
+      "partition_node_counts": [
+        23,
+        22,
+        24,
+        21,
+        25
+      ],
+      "artifacts": {
+        "partition": {
+          "aggregate_checksum": "87f7cb65b94d8e18cbe92133d4d5b487535cb27409c9ce859eed97f031c64af6",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "small/partition/artifact.json"
+        },
+        "local_graphs": [
+          {
+            "aggregate_checksum": "dcce2d24eaf5c47c9a0061b6147e1b77de79f2b14c7f557114de3cf723916f28",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-0/artifact.json"
+          },
+          {
+            "aggregate_checksum": "a7e809a33f8fb2d8937dd394ac44a0b98586d05bc7444d2fe6b0f6a54625e3bb",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-1/artifact.json"
+          },
+          {
+            "aggregate_checksum": "9d732d2c281f6bdf9001e498a713306b6f9d025ff73b88174aee179ef792d844",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-2/artifact.json"
+          },
+          {
+            "aggregate_checksum": "cfda0b54f72090bb85d6db27182c15405d63c6e35c5646eb13ddfa0a203b6859",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-3/artifact.json"
+          },
+          {
+            "aggregate_checksum": "4b120104f090b48aba7d4887e707bac00cd6c935374d1b4af3b10c6fda5897fb",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-4/artifact.json"
+          }
+        ],
+        "global_graph": {
+          "aggregate_checksum": "79222b54f6b877fc33a62f48853a3c9332adb9e08c8967822e87e91f947e7f16",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "small/merge/artifact.json"
+        }
+      },
+      "global_graph_structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 96,
+        "observed_max_degree": 11,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "dcce2d24eaf5c47c9a0061b6147e1b77de79f2b14c7f557114de3cf723916f28",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "a7e809a33f8fb2d8937dd394ac44a0b98586d05bc7444d2fe6b0f6a54625e3bb",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "9d732d2c281f6bdf9001e498a713306b6f9d025ff73b88174aee179ef792d844",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "cfda0b54f72090bb85d6db27182c15405d63c6e35c5646eb13ddfa0a203b6859",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "4b120104f090b48aba7d4887e707bac00cd6c935374d1b4af3b10c6fda5897fb",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "87f7cb65b94d8e18cbe92133d4d5b487535cb27409c9ce859eed97f031c64af6",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "evaluation_report": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/ogp-b0-m0/workspace/reports/small-evaluation.json",
+        "byte_length": 656,
+        "sha256": "341ecf89bd89ce49c43903803c5cf55a2662f1d6a1e656cb74a1bd0f8c819b01"
+      }
+    },
+    {
+      "combination": "p0-b0-m0",
+      "result": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/reports/result.json",
+        "byte_length": 5206,
+        "sha256": "c6feb468379c7d170be491f8527b810a58ef5f83f0a5e355d7f8099579c8514a"
+      },
+      "request": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/request.json",
+        "byte_length": 1391,
+        "sha256": "35c4ecdb7a0183b92dff0e2a3641f6f1433b91d0645563afd0c8bd889a3dbd9b"
+      },
+      "command": "'/workspace/build/ogp-partition-adaptation/src/module_composition/module_composition_runner' execute --request '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b0-m0/request.json' --result '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b0-m0/workspace/reports/result.json' >'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b0-m0/stdout.log' 2>'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b0-m0/stderr.log'",
+      "stdout": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/stdout.log",
+        "byte_length": 5000,
+        "sha256": "0bacbcfaf021bbe2ddbb86e045c4aef1738fbfd5a495d3b2365e005be5f82795"
+      },
+      "stderr": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/stderr.log",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "outcome": "SUCCEEDED",
+      "stage_invocations": {
+        "local_build": 3,
+        "merge": 1,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/small/entry-build.json",
+        "byte_length": 201717,
+        "sha256": "b4bbfeea80741d05885aae09b0d3ba749b7b88f20a0bafa213f68d1163259860"
+      },
+      "cli_exit_code_asserted_by_passing_test": 0,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "L": 32,
+            "R": 16,
+            "alpha": 1.2,
+            "build_pq_bytes": 0,
+            "max_occlusion_size": 750,
+            "num_threads": 6,
+            "saturation": false,
+            "use_opq": false
+          }
+        },
+        "merge": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "build_DRAM_budget_gib": 0.6,
+            "replication_factor": 2,
+            "sample_probability": 1.0
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b0-m0/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/small/stages/partition.json",
+          "byte_length": 6131,
+          "sha256": "ec02ccdb6c66617fc65464ddadb90545a237ca5aa13d8720ff5c7734e629d5c4",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "partition"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/small/stages/local-0.json",
+          "byte_length": 6395,
+          "sha256": "2572268d86ed6bf9ef0b09dd5cd6cd92f009cac87a771455520646d06daba96a",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/small/stages/local-1.json",
+          "byte_length": 6395,
+          "sha256": "4176d7f272873d014186ad1551119c5b5b90a76a51cea9c37497af055da0b56b",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/small/stages/local-2.json",
+          "byte_length": 6395,
+          "sha256": "46694a8cfb40d2f1413063b1c22f7ee32878b7cfdbb1f30edf1c28a2e5d0a69f",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/small/stages/merge.json",
+          "byte_length": 6701,
+          "sha256": "9822715f642caf6ae310f816288d2452925fec44330fb2384df38f6fafb873a4",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "merge"
+        }
+      ],
+      "validation_evidence": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/evidence/small-partition-valid.json",
+          "byte_length": 474,
+          "sha256": "a1e44181bd849a9c3c93736649bb3f9e1296c4e167a49171992543e12e34f5ff",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/evidence/small-local-0-valid.json",
+          "byte_length": 476,
+          "sha256": "9068af42ad7270309dde8a000b7d247c774e47f0e0d0a31134f77bbd01eafcc8",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/evidence/small-local-1-valid.json",
+          "byte_length": 476,
+          "sha256": "a00b0860361b08e730827088922b6860b976c5a4eab8801ce844d54b072bf894",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/evidence/small-local-2-valid.json",
+          "byte_length": 476,
+          "sha256": "772086a9db1e6e0c3b496585390214aea31df243c1ecf4f4ad5af599d4e585a2",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/manifests/evidence/small-merge-valid.json",
+          "byte_length": 476,
+          "sha256": "b5543a649a075f917f2b3401ee8fc4b6046617c9575a55074d886fa7a17c8c6c",
+          "result": "VALID"
+        }
+      ],
+      "dataset_identity": {
+        "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+        "dataset_id": "cpp-main-small-native-v1",
+        "distance_metric": "l2",
+        "global_node_count": 96,
+        "scalar_type": "float32",
+        "vector_dimension": 4
+      },
+      "partition_node_counts": [
+        85,
+        34,
+        73
+      ],
+      "artifacts": {
+        "partition": {
+          "aggregate_checksum": "827dac6498d5f96cf01889128d520dfc04ffba01a18e7fd7960a6e21a14b2248",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "small/partition/artifact.json"
+        },
+        "local_graphs": [
+          {
+            "aggregate_checksum": "f8ea43f2def6e889512c0ccb0f886a773dd4121260b54eaa169124dad87e27a7",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-0/artifact.json"
+          },
+          {
+            "aggregate_checksum": "dfaf17c34aa49d40bd2de0fa88f7a1ee02a5bca2c5c2f8005d76f646113b2515",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-1/artifact.json"
+          },
+          {
+            "aggregate_checksum": "72e3da924ed72d03e42a8df1c62feaf7a3df7629778c3d8dcc305e5cf2a302d4",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-2/artifact.json"
+          }
+        ],
+        "global_graph": {
+          "aggregate_checksum": "500e0f568e2ddb52ad84ca49f7173a8c2c75399cdbf222cf618cfcd6a83f4f69",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "small/merge/artifact.json"
+        }
+      },
+      "global_graph_structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 96,
+        "observed_max_degree": 15,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "f8ea43f2def6e889512c0ccb0f886a773dd4121260b54eaa169124dad87e27a7",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "dfaf17c34aa49d40bd2de0fa88f7a1ee02a5bca2c5c2f8005d76f646113b2515",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "72e3da924ed72d03e42a8df1c62feaf7a3df7629778c3d8dcc305e5cf2a302d4",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "827dac6498d5f96cf01889128d520dfc04ffba01a18e7fd7960a6e21a14b2248",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "evaluation_report": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b0-m0/workspace/reports/small-evaluation.json",
+        "byte_length": 656,
+        "sha256": "0856cf89c814f668fbc8154bb087b9bcf195544687954b8d8aa4623b079e4552"
+      }
+    },
+    {
+      "combination": "p0-b1-m0",
+      "result": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/reports/result.json",
+        "byte_length": 5603,
+        "sha256": "a03f8d9bd17238c6a9309bd194246123598d6cb3bf8c44d0ab9c73c5932e2d4d"
+      },
+      "request": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/request.json",
+        "byte_length": 1867,
+        "sha256": "f4ec0563f7446507f001ca2a9d3c2bbdf8755299009abfbb08061b92afdcc418"
+      },
+      "command": "'/workspace/build/ogp-partition-adaptation/src/module_composition/module_composition_runner' execute --request '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b1-m0/request.json' --result '/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b1-m0/workspace/reports/result.json' >'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b1-m0/stdout.log' 2>'/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b1-m0/stderr.log'",
+      "stdout": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/stdout.log",
+        "byte_length": 2067,
+        "sha256": "0fa88df3ca050affb4b3bd976766ce4a425f973a516c07449557e6ade61b91de"
+      },
+      "stderr": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/stderr.log",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "outcome": "SUCCEEDED",
+      "stage_invocations": {
+        "local_build": 3,
+        "merge": 1,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/entry-build.json",
+        "byte_length": 202321,
+        "sha256": "f40d4703af323edd4e4ac4ccf429a5c70c42bafca33fb307461b825ecfaadac2"
+      },
+      "cli_exit_code_asserted_by_passing_test": 0,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "xn_graph_xn_descent_local_build_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "alpha": 1.2,
+            "convergence_rule": "full-state-fixed-point-or-three-round-c-g-stability-v1",
+            "distance_implementation": "squared-l2/v1",
+            "entry_point_rule": "local-centroid-nearest-v1",
+            "iteration_cap": 100,
+            "lambda": 16,
+            "omega": 8,
+            "prng_policy": "mt19937_64-splitmix64-per-node-v1",
+            "reproduction_mode": "faithful_adaptation",
+            "round_model": "deterministic-synchronous-round-v1",
+            "sampling_policy": "unbiased-rejection-unique-nonself-v1",
+            "schema_version": "xn-descent-parameters/v1",
+            "seed": 42,
+            "tie_break_policy": "squared-distance-then-local-id-v1",
+            "validation_profile": "pipeline-compatible"
+          }
+        },
+        "merge": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "build_DRAM_budget_gib": 0.6,
+            "replication_factor": 2,
+            "sample_probability": 1.0
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/ogp-partition-adaptation/composition-validation/93060002414980/p0-b1-m0/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stages/partition.json",
+          "byte_length": 6551,
+          "sha256": "2b244acf1ed38454ac8b5eacf4a44b6ba6afee0cac61ec6c517862ce0ebf94a9",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "partition"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stages/local-0.json",
+          "byte_length": 7483,
+          "sha256": "a40ac936d06623cb64c534f1c5983495cf71b7a4e7272949b3695b7b6c5979ee",
+          "implementation": {
+            "implementation_id": "xn_graph_xn_descent_local_build_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "codex/configurable-module-composition",
+            "commit": "be44189bf52604a27250836f49b96a4cf3d3787b",
+            "dirty_source_checksum": "4e591c872bdad81da8b872857446aeade58a82f1563c80fad332dec9edfa006b",
+            "dirty_worktree": true,
+            "repository": "/workspace"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stage-execution/local-0.json",
+            "byte_length": 10859,
+            "sha256": "535af8262436712124b5e84fe37b199068a592f4425679687dc959ae77d7e78d"
+          }
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stages/local-1.json",
+          "byte_length": 7483,
+          "sha256": "f3a8233317986d8a957dc8850714ca3efaa20d42661f1f0afb46f451e0e75dde",
+          "implementation": {
+            "implementation_id": "xn_graph_xn_descent_local_build_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "codex/configurable-module-composition",
+            "commit": "be44189bf52604a27250836f49b96a4cf3d3787b",
+            "dirty_source_checksum": "4e591c872bdad81da8b872857446aeade58a82f1563c80fad332dec9edfa006b",
+            "dirty_worktree": true,
+            "repository": "/workspace"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stage-execution/local-1.json",
+            "byte_length": 10853,
+            "sha256": "b58da65850ba6ee8cc7235c8a5190a41e08a7ac0010b5291a7caf8511189167d"
+          }
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stages/local-2.json",
+          "byte_length": 7483,
+          "sha256": "aed18ce8125bf804e9a066dcb080f2e9ff8eefc491ff205d9c7125444dc4dd81",
+          "implementation": {
+            "implementation_id": "xn_graph_xn_descent_local_build_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "codex/configurable-module-composition",
+            "commit": "be44189bf52604a27250836f49b96a4cf3d3787b",
+            "dirty_source_checksum": "4e591c872bdad81da8b872857446aeade58a82f1563c80fad332dec9edfa006b",
+            "dirty_worktree": true,
+            "repository": "/workspace"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build",
+          "stage_execution_manifest": {
+            "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stage-execution/local-2.json",
+            "byte_length": 10857,
+            "sha256": "32d09ba17096d10de47585634a509557ca82d61aa2938f1cba5c2bb0f48bb741"
+          }
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/small/stages/merge.json",
+          "byte_length": 7121,
+          "sha256": "2f11ca093f006a213ddb5edbb0b84c1c8a1c34f30e1b1b0fd2c522c4b5ba27b1",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "merge"
+        }
+      ],
+      "validation_evidence": [
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/evidence/small-partition-valid.json",
+          "byte_length": 474,
+          "sha256": "d7e7c1c12aef7a7fcc62cf6e714727937a49711f8492c3658918fc475865ee65",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/evidence/small-local-0-valid.json",
+          "byte_length": 476,
+          "sha256": "934a4690b0ccc5de07c0f470008b090fb40c44d604680de36f93208c65b80b68",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/evidence/small-local-1-valid.json",
+          "byte_length": 476,
+          "sha256": "435135fe483d1d6d16c13d6b3ef7dcad38ac427668982f1a477a9d3349c22a0c",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/evidence/small-local-2-valid.json",
+          "byte_length": 476,
+          "sha256": "f83fbcc4bcf5d0ce7e2b135c1530f1a2462c0bde3bd9b5a0cdd8933ac697aa9d",
+          "result": "VALID"
+        },
+        {
+          "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/manifests/evidence/small-merge-valid.json",
+          "byte_length": 476,
+          "sha256": "fce5ffc7cedc2c110d3dce79459411f716bac2cb6113953274b5a0c3891c4666",
+          "result": "VALID"
+        }
+      ],
+      "dataset_identity": {
+        "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+        "dataset_id": "cpp-main-small-native-v1",
+        "distance_metric": "l2",
+        "global_node_count": 96,
+        "scalar_type": "float32",
+        "vector_dimension": 4
+      },
+      "partition_node_counts": [
+        83,
+        46,
+        63
+      ],
+      "artifacts": {
+        "partition": {
+          "aggregate_checksum": "99f668b627a8fdcdcb82fcf609ea69f77e480a49795d1ca9a91bbab92f212ec2",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "small/partition/artifact.json"
+        },
+        "local_graphs": [
+          {
+            "aggregate_checksum": "b9e120445b070c6b176c8d34bfb52544165fbde2d01e2a10bb20ea5b92a9b15d",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-0/artifact.json"
+          },
+          {
+            "aggregate_checksum": "8e31f7dd3bb60b390709fde85750c6f4110eb735d10d7ba1254dd385403347ed",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-1/artifact.json"
+          },
+          {
+            "aggregate_checksum": "daf3c7c58532f9a76218e16b4a0a17a02e190ed537f91bb901502b81348e2780",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-2/artifact.json"
+          }
+        ],
+        "global_graph": {
+          "aggregate_checksum": "72c53a22111238ae2b058d8fea6b7f07a98262394388996150ff752c4ef2a078",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "small/merge/artifact.json"
+        }
+      },
+      "global_graph_structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 96,
+        "observed_max_degree": 11,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "b9e120445b070c6b176c8d34bfb52544165fbde2d01e2a10bb20ea5b92a9b15d",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "8e31f7dd3bb60b390709fde85750c6f4110eb735d10d7ba1254dd385403347ed",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "daf3c7c58532f9a76218e16b4a0a17a02e190ed537f91bb901502b81348e2780",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "99f668b627a8fdcdcb82fcf609ea69f77e480a49795d1ca9a91bbab92f212ec2",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "evaluation_report": {
+        "path": "build/ogp-partition-adaptation/linux/composition-validation/93060002414980/p0-b1-m0/workspace/reports/small-evaluation.json",
+        "byte_length": 656,
+        "sha256": "4eab377871864cbba8d3652d86f6ccfc9201a4b55da8df033df17f884ab47377"
+      }
+    }
+  ],
+  "baseline_only_validation_root": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303",
+  "baseline_only_runs": [
+    {
+      "combination": "p0-b0-m0",
+      "result": {
+        "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/reports/result.json",
+        "byte_length": 5213,
+        "sha256": "3663eafd5540281a37655aeb2bfb12fbe00aba14fde9f36c113f945ba6a8c357"
+      },
+      "request": {
+        "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/request.json",
+        "byte_length": 1398,
+        "sha256": "7038b3c76461425645086aefdebc752c5d72fa5c1bcfb97c83fd91a93b557de3"
+      },
+      "command": "'/workspace/build/kmeans-partition-linux-20261013/src/module_composition/module_composition_runner' execute --request '/workspace/build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/request.json' --result '/workspace/build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/reports/result.json' >'/workspace/build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/stdout.log' 2>'/workspace/build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/stderr.log'",
+      "stdout": {
+        "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/stdout.log",
+        "byte_length": 5123,
+        "sha256": "431cdf0c245902bc243c41ca0199ea156b0dc84376280f9b1c833018455dd51b"
+      },
+      "stderr": {
+        "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/stderr.log",
+        "byte_length": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "outcome": "SUCCEEDED",
+      "stage_invocations": {
+        "local_build": 3,
+        "merge": 1,
+        "partition": 1
+      },
+      "entry_build_manifest": {
+        "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/small/entry-build.json",
+        "byte_length": 174363,
+        "sha256": "28f5e08d437b03a95ecf4946f2448a81716be780d1375710ce8f8c6e8e563e80"
+      },
+      "cli_exit_code_asserted_by_passing_test": 0,
+      "effective_config": {
+        "config_version": "module-composition-run/v1",
+        "dataset": {
+          "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+          "artifact_type": "dataset",
+          "format_version": "diskann-float32-dataset/v1",
+          "metadata_path": "dataset/artifact.json"
+        },
+        "local_build": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "L": 32,
+            "R": 16,
+            "alpha": 1.2,
+            "build_pq_bytes": 0,
+            "max_occlusion_size": 750,
+            "num_threads": 6,
+            "saturation": false,
+            "use_opq": false
+          }
+        },
+        "merge": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "use_filters": false
+          }
+        },
+        "partition": {
+          "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+          "implementation_version": "1.0.0",
+          "parameters": {
+            "R": 16,
+            "build_DRAM_budget_gib": 0.6,
+            "replication_factor": 2,
+            "sample_probability": 1.0
+          }
+        },
+        "run_id": "small",
+        "workspace": {
+          "memory_budget_bytes": 1073741824,
+          "root": "/workspace/build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace",
+          "thread_budget": 6
+        }
+      },
+      "build_manifests": [
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/small/stages/partition.json",
+          "byte_length": 5184,
+          "sha256": "87cb220ea575b2795886fab052316612a934fad8dc4a2f6902930f675b53744b",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "partition"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/small/stages/local-0.json",
+          "byte_length": 5448,
+          "sha256": "453b21978e0735488fd2e50be4484cb231440bca90c7c4f0a89c1c7c533e8d80",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/small/stages/local-1.json",
+          "byte_length": 5448,
+          "sha256": "ab915342e4b8ef69b39b54a065de21a24130c46c98eb55e9c2840f8fcb7696c4",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/small/stages/local-2.json",
+          "byte_length": 5448,
+          "sha256": "7da12fa28233f9405186cc84664b1e24bc405188c7bef52be1478649b01833d2",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "local_build"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/small/stages/merge.json",
+          "byte_length": 5754,
+          "sha256": "7f3b17bf5f2b60453020f470b201f4900d3579f6689e5a52cd4b9147ede5ce31",
+          "implementation": {
+            "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+            "implementation_version": "1.0.0"
+          },
+          "source": {
+            "branch": "cpp_main",
+            "commit": "78256bbab4685e1774e78d331e081a153be26823",
+            "dirty_worktree": false,
+            "repository": "https://github.com/microsoft/DiskANN.git"
+          },
+          "status": "SUCCEEDED",
+          "stage": "merge"
+        }
+      ],
+      "validation_evidence": [
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/evidence/small-partition-valid.json",
+          "byte_length": 474,
+          "sha256": "bd707a5d6d6e59852eeb0664319e6f9bb86753ad7f48cd301121ec6b5ad5a0c7",
+          "result": "VALID"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/evidence/small-local-0-valid.json",
+          "byte_length": 476,
+          "sha256": "b1a4193ffd35c717800b65e973daa6270c7b27b310eeaa505a7fc1bba7e6e2aa",
+          "result": "VALID"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/evidence/small-local-1-valid.json",
+          "byte_length": 476,
+          "sha256": "354925f181c1838a4ca9cb3cc824b32cb3234b665961b93ac09d93a7f5da9940",
+          "result": "VALID"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/evidence/small-local-2-valid.json",
+          "byte_length": 476,
+          "sha256": "17409cc3df278e5cdffdfd241628754ffcf04436df5ae91a0c06c6f131ce9e7b",
+          "result": "VALID"
+        },
+        {
+          "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/manifests/evidence/small-merge-valid.json",
+          "byte_length": 476,
+          "sha256": "ace901c62ec2dee7465f6cd0ca0e9d54f0ac68442583d6a2d4b46d9fab9c638f",
+          "result": "VALID"
+        }
+      ],
+      "dataset_identity": {
+        "dataset_checksum": "0dfa71a676568fe9f433265a774d2bde6ff5c9d1e0357ea6381ef310c627213f",
+        "dataset_id": "cpp-main-small-native-v1",
+        "distance_metric": "l2",
+        "global_node_count": 96,
+        "scalar_type": "float32",
+        "vector_dimension": 4
+      },
+      "partition_node_counts": [
+        73,
+        84,
+        35
+      ],
+      "artifacts": {
+        "partition": {
+          "aggregate_checksum": "8fdd0c6596752f5118b5715a17f103eb7e33d7fb5d10a02075f59b8c2ea9b128",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1",
+          "metadata_path": "small/partition/artifact.json"
+        },
+        "local_graphs": [
+          {
+            "aggregate_checksum": "1f4e421f64998c66c218ab23f92dfe66501cc15fea15a210699877dadd4a8f4f",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-0/artifact.json"
+          },
+          {
+            "aggregate_checksum": "04be69d383b72bb4ff6361a0ab2d647644fb17f8ad55971d58dfa04a7f8a2bfb",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-1/artifact.json"
+          },
+          {
+            "aggregate_checksum": "f178979b4d1a1e0645b9558423dc7cc111544a151d7e35a14b63b4f12a35b674",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1",
+            "metadata_path": "small/local-2/artifact.json"
+          }
+        ],
+        "global_graph": {
+          "aggregate_checksum": "c827117279a447468e8692aa2eba11c9a434cfa8f85e9fccf69eb5a895c18970",
+          "artifact_type": "global_graph",
+          "format_version": "global-graph-artifact/v1",
+          "metadata_path": "small/merge/artifact.json"
+        }
+      },
+      "global_graph_structural": {
+        "declared_max_degree": 16,
+        "global_node_count": 96,
+        "observed_max_degree": 15,
+        "source_local_graph_artifacts": [
+          {
+            "aggregate_checksum": "1f4e421f64998c66c218ab23f92dfe66501cc15fea15a210699877dadd4a8f4f",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "04be69d383b72bb4ff6361a0ab2d647644fb17f8ad55971d58dfa04a7f8a2bfb",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          },
+          {
+            "aggregate_checksum": "f178979b4d1a1e0645b9558423dc7cc111544a151d7e35a14b63b4f12a35b674",
+            "artifact_type": "local_graph",
+            "format_version": "local-graph-artifact/v1"
+          }
+        ],
+        "source_partition_artifact": {
+          "aggregate_checksum": "8fdd0c6596752f5118b5715a17f103eb7e33d7fb5d10a02075f59b8c2ea9b128",
+          "artifact_type": "partition",
+          "format_version": "partition-artifact/v1"
+        }
+      },
+      "evaluation_report": {
+        "path": "build/kmeans-partition-linux-20261013/composition-validation/92182904939303/p0-b0-m0/workspace/reports/small-evaluation.json",
+        "byte_length": 656,
+        "sha256": "6f320f8560fe663840af9ede17b431c13ccdf7bd6fb567aeea7d6cdf7b9e441c"
+      }
+    }
+  ],
+  "preliminary_records": {
+    "requests_01": {
+      "outcome": "FAILED_TEST_ASSERTIONS",
+      "assertions_failed": 25,
+      "cause": "23 temporary-JSON-reference lifetime assertions and 2 incorrect Registry error-text expectations in new tests; production failures were already structured FAILED JSON. Fixed assertions and preserved logs."
+    },
+    "configure_01": {
+      "outcome": "FAILED_CONFIGURE",
+      "cause": "Reused Linux build lacked nlohmann/json source cache. Explicit existing local source override resolved configuration without network/download."
+    },
+    "earlier_native_directory": "build/ogp-partition-adaptation/linux/composition-validation/90604892836768",
+    "earlier_native_outcome": "Five combinations passed before final entry path admission/diagnostic corrections; retained but not used as proof for final binary."
+  },
+  "checks": {
+    "all_five_combinations_executed_through_new_cli": true,
+    "fresh_cpp_artifact_validation": true,
+    "manifest_reference_checksums_rechecked": true,
+    "parent_and_stage_owned_source_identities_match": true,
+    "entry_record_source_files_match_current_files": true,
+    "entry_binary_sha256_matches_executed_binary": true,
+    "no_certified_status_inferred": true
+  },
+  "limitations": [
+    "Only listed 96x4 configurations underwent native composition validation; other combinations/configurations are not validated.",
+    "SIFT1M and SIFT10M not run; entry rejects declared N > 1000000.",
+    "No Search, Recall/QPS, PQ, disk layout or automatic compactness evaluation.",
+    "No performance comparison/certification. CTest wall times include fixture, admission, execution and checks; stage timings retain their existing scopes. No new independent RSS measurement.",
+    "Memory budget is not allocator/cgroup hard isolation. StageContext budgets preserve module behavior; P0 OpenMP/MKL settings come from environment, both explicitly 6 in these executions.",
+    "Only Linux/amd64 GNU C++ and Unix Makefiles were validated.",
+    "Human diff review remains pending; no staging, commit, push or PR."
+  ],
+  "upstream": {
+    "repository": "https://github.com/microsoft/DiskANN.git",
+    "branch": "cpp_main",
+    "commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "status": "",
+    "gitlink": "160000 78256bbab4685e1774e78d331e081a153be26823 0\tupstream/diskann-cpp-main"
+  }
+}

@@ -322,12 +322,8 @@ class CppMainM0 final : public GraphMerger {
         return {StageStatus::kCancelled, std::nullopt, {}};
       }
       const auto parameters = read_json(stage_manifest_path);
-      detail::require_object_shape(parameters, {"R", "use_filters"});
+      validate_m0_parameters(parameters.dump());
       const auto r = parse_merge_degree(parameters);
-      if (parameters.at("use_filters").get<bool>()) {
-        throw PipelineError(ErrorCategory::kSchemaInvalid,
-                            "M0 filtered merge is unsupported");
-      }
       const auto partition =
           load_partition(context.workspace, partition_artifact);
       if (local_graphs.size() != partition.count) {
@@ -460,6 +456,16 @@ class CppMainM0 final : public GraphMerger {
 };
 
 }  // namespace
+
+void validate_m0_parameters(const std::string& json) {
+  const auto parameters = detail::parse_json_strict(json);
+  detail::require_object_shape(parameters, {"R", "use_filters"});
+  static_cast<void>(parse_merge_degree(parameters));
+  if (parameters.at("use_filters").get<bool>()) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "M0 filtered merge is unsupported");
+  }
+}
 
 std::unique_ptr<GraphMerger> make_m0_merge() {
   return std::make_unique<CppMainM0>();

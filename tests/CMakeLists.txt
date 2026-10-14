@@ -1,6 +1,10 @@
 add_subdirectory(cpp/fakes)
 add_subdirectory(cpp)
 
+if(DISKANN_MODULE_COMPOSITION)
+  add_subdirectory(cpp/module_composition)
+endif()
+
 if(DISKANN_KMEANS_PARTITION)
   add_subdirectory(cpp/partition)
 endif()

@@ -94,27 +94,11 @@ class CppMainP0 final : public PartitionStrategy {
       }
       CppMainVectorAccessor binding(context.workspace, dataset);
       const auto parameters = read_json(stage_manifest_path);
-      detail::require_object_shape(
-          parameters,
-          {"R", "build_DRAM_budget_gib", "replication_factor",
-           "sample_probability"});
+      validate_p0_parameters(parameters.dump(), binding.dataset_identity().global_node_count);
       const auto r = parameters.at("R").get<std::uint32_t>();
-      const auto budget =
-          parameters.at("build_DRAM_budget_gib").get<double>();
-      const auto replication =
-          parameters.at("replication_factor").get<std::uint32_t>();
-      const auto probability =
-          parameters.at("sample_probability").get<double>();
-      const auto expected_probability = std::min(
-          1.0, 256000.0 /
-                   static_cast<double>(
-                       binding.dataset_identity().global_node_count));
-      if (r != 16 || std::abs(budget - 0.6) > 1e-12 || replication != 2 ||
-          probability <= 0.0 || probability > 1.0 ||
-          std::abs(probability - expected_probability) > 1e-12) {
-        throw PipelineError(ErrorCategory::kSchemaInvalid,
-                            "P0 parameters differ from the approved Profile derivation");
-      }
+      const auto budget = parameters.at("build_DRAM_budget_gib").get<double>();
+      const auto replication = parameters.at("replication_factor").get<std::uint32_t>();
+      const auto probability = parameters.at("sample_probability").get<double>();
       if (cancelled(context)) {
         return {StageStatus::kCancelled, std::nullopt, {}};
       }
@@ -237,6 +221,31 @@ class CppMainP0 final : public PartitionStrategy {
 };
 
 }  // namespace
+
+void validate_p0_parameters(const std::string& json, NodeCount global_node_count) {
+  const auto parameters = detail::parse_json_strict(json);
+  detail::require_object_shape(
+      parameters,
+      {"R", "build_DRAM_budget_gib", "replication_factor",
+       "sample_probability"});
+  const auto r = parameters.at("R").get<std::uint32_t>();
+  const auto budget =
+      parameters.at("build_DRAM_budget_gib").get<double>();
+  const auto replication =
+      parameters.at("replication_factor").get<std::uint32_t>();
+  const auto probability =
+      parameters.at("sample_probability").get<double>();
+  const auto expected_probability = std::min(
+      1.0, 256000.0 /
+               static_cast<double>(
+                   global_node_count));
+  if (r != 16 || std::abs(budget - 0.6) > 1e-12 || replication != 2 ||
+      probability <= 0.0 || probability > 1.0 ||
+      std::abs(probability - expected_probability) > 1e-12) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "P0 parameters differ from the approved Profile derivation");
+  }
+}
 
 std::unique_ptr<PartitionStrategy> make_p0_partition() {
   return std::make_unique<CppMainP0>();

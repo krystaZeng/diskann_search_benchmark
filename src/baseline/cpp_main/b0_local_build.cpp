@@ -330,6 +330,10 @@ class CppMainB0 final : public LocalGraphBuilder {
 
 }  // namespace
 
+void validate_b0_parameters(const std::string& json) {
+  validate_parameters(detail::parse_json_strict(json));
+}
+
 std::unique_ptr<LocalGraphBuilder> make_b0_local_build() {
   return std::make_unique<CppMainB0>();
 }

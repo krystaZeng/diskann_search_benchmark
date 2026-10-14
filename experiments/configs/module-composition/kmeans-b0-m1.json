@@ -1,0 +1,50 @@
+{
+  "config_version": "module-composition-run/v1",
+  "dataset": {
+    "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+    "artifact_type": "dataset",
+    "format_version": "diskann-float32-dataset/v1",
+    "metadata_path": "dataset/artifact.json"
+  },
+  "local_build": {
+    "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {
+      "L": 32,
+      "R": 16,
+      "alpha": 1.2,
+      "build_pq_bytes": 0,
+      "max_occlusion_size": 750,
+      "num_threads": 6,
+      "saturation": false,
+      "use_opq": false
+    }
+  },
+  "merge": {
+    "implementation_id": "hnsw_merger_vamana_merge_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {
+      "R": 16,
+      "alpha": 1.2,
+      "max_candidate_size": 750,
+      "metric": "l2",
+      "use_filters": false,
+      "multi_shard_strategy": "large_first_pairwise_v1",
+      "lambda_policy": "paper_adaptive_log_v1"
+    }
+  },
+  "partition": {
+    "implementation_id": "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {
+      "K": 3,
+      "max_k_means_reps": 15
+    }
+  },
+  "run_id": "composition-kmeans-b0-m1",
+  "workspace": {
+    "memory_budget_bytes": 1073741824,
+    "root": "/workspace/build/module-composition-demo/workspace",
+    "thread_budget": 6
+  }
+}

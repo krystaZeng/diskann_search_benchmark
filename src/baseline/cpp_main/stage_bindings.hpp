@@ -17,6 +17,11 @@ inline constexpr const char* kB0ImplementationId =
 inline constexpr const char* kM0ImplementationId =
     "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1";
 
+// Shared preflight uses the same frozen rules as the native stage.
+void validate_p0_parameters(const std::string& json, NodeCount global_node_count);
+void validate_b0_parameters(const std::string& json);
+void validate_m0_parameters(const std::string& json);
+
 ImplementationDescriptor p0_descriptor();
 ImplementationDescriptor b0_descriptor();
 ImplementationDescriptor m0_descriptor();
