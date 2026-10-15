@@ -168,11 +168,18 @@
       }
     },
     "evaluator": {
-      "const": {
-        "implementation_id": "cpp_main_search_metrics_evaluator_v1",
-        "version": "1.0.0",
-        "reproduction_mode": "instrumented"
-      }
+      "enum": [
+        {
+          "implementation_id": "cpp_main_search_metrics_evaluator_v1",
+          "version": "1.0.0",
+          "reproduction_mode": "instrumented"
+        },
+        {
+          "implementation_id": "cpp_main_search_metrics_evaluator_v2",
+          "version": "2.0.0",
+          "reproduction_mode": "instrumented"
+        }
+      ]
     },
     "eligibility": {
       "type": "object",

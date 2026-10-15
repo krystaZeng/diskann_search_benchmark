@@ -1,5 +1,57 @@
 # Feature 005 materialize/search/evaluate boundary
 
+## Explicit measured-performance evaluation (revision 1.1)
+
+The existing `evaluate` command selects behavior from the immutable protocol; there is no implicit
+upgrade, new runner flag, condition-declaration interface, or environment probe. Protocol 1.0.0
+keeps the v1 behavior documented below. To select v2, create a new protocol identity with:
+
+```json
+{
+  "protocol_version": "1.1.0",
+  "evaluation": {
+    "evaluator": {
+      "implementation_id": "cpp_main_search_metrics_evaluator_v2",
+      "version": "2.0.0",
+      "reproduction_mode": "instrumented"
+    },
+    "performance_eligibility_policy": "complete_valid_measurement_single_invocation_v2"
+  }
+}
+```
+
+This is a field-change illustration, not a complete protocol. Retain all required fields and the
+exact original search_execution; use the existing normalizer and immutable writer to publish a new
+protocol. Only protocol identity/evaluation and their document checksum change. Never rebind or
+rewrite the original SearchObservation files. Incompatible GroundTruth or execution changes fail.
+
+```bash
+.venv/bin/python -m diskann_harness.diskann_search_evaluation evaluate \
+  --protocol <new-frozen-protocol-1.1.json> \
+  --observations <existing-observation-directory> \
+  --workspace <existing-workspace>
+```
+
+Every otherwise valid observation retains the existing Recall/performance values in report v2;
+CLI performance values equal persisted values. Native Linux is not a measurement-validity gate.
+Search Manifest membership and absence of recorded condition conflicts control single-call
+performance medians. Missing, unreadable, malformed or unbound search Manifest evidence keeps
+values with an explicit non-aggregation reason.
+Unknown environment facts limit interpretation, not measurement storage. Existing fingerprint
+files still must be readable, valid JSON and match their declared checksums.
+
+Parity is consumed offline without launching oracle/search. Missing or incomplete verification is
+reported; actual semantic errors still exclude affected points. Corrupt/foreign evidence or missing
+auxiliary files keeps valid measurements and records UNRESOLVED with the cause; affected aggregates
+are withheld (all performance aggregates when scope is unknown). Previously confirmed errors remain
+excluded. A report that cannot be read/parsed, or has no valid result, is INVALID_EVIDENCE rather
+than MISSING/NOT_REACHED/PASS. No synthetic NOT_REACHED file is created by the v2 evaluator.
+Existing report/Manifest targets remain exclusive-create. Re-evaluation needs a new protocol_id
+and preserves all old inputs, reports and evaluation manifests.
+
+The old preflight `performance_admitted` declaration remains a legacy v1 classification, never a
+v2 validity grant. Paper-main-experiment selection is separate and no selection engine is added.
+
 ## Scope
 
 The implementation exposes one fixed Feature runner and one Feature-specific Python Harness

@@ -968,6 +968,10 @@ def offline_only(monkeypatch: pytest.MonkeyPatch):
     # platform.platform() can lazily invoke uname in an isolated test run.
     host_platform = search.platform.platform()
     monkeypatch.setattr(search.platform, "platform", lambda: host_platform)
+    monkeypatch.setattr(search, "_git_source_identity", lambda root: {
+        "repository": "https://example.invalid/current-evaluator.git", "branch": "evaluator-test",
+        "commit": "e" * 40, "dirty_worktree": True, "dirty_source_checksum": "f" * 64,
+    })
 
     def forbidden(*args, **kwargs):
         calls.append("execution")
@@ -986,6 +990,613 @@ def _save_observation(path: Path, document: dict) -> None:
     document.pop("observation_checksum", None)
     document["observation_checksum"] = search._canonical_digest(document)
     path.write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+
+
+def _v2_protocol(root: Path, original: Path) -> Path:
+    document = json.loads(original.read_text())
+    document["protocol_version"] = "1.1.0"
+    document["protocol_id"] += "-reevaluation"
+    document["evaluation"]["evaluator"] = {
+        "implementation_id": "cpp_main_search_metrics_evaluator_v2",
+        "version": "2.0.0", "reproduction_mode": "instrumented",
+    }
+    document["evaluation"]["performance_eligibility_policy"] = "complete_valid_measurement_single_invocation_v2"
+    path = root / "protocols" / f"{document['protocol_id']}.json"
+    path.write_text(json.dumps(search.normalize_search_protocol(document)))
+    return path
+
+
+def _search_manifest(root: Path, protocol_path: Path, observations: Path) -> Path:
+    protocol = json.loads(protocol_path.read_text())
+    execution = protocol["search_execution"]
+    dataset = json.loads((root / "normal/dataset/artifact.json").read_text())["dataset"]
+    documents = [(p, json.loads(p.read_text())) for p in sorted(observations.glob("*.json"))]
+    run_id = documents[0][1]["run_id"]
+    value = {
+        "manifest_version": "1.0.0", "run_id": run_id, "stage": "search",
+        "implementation": {"implementation_id": execution["implementation"]["implementation_id"], "implementation_version": "1.0.0"},
+        "source": dict(search._PINNED_DISKANN_SOURCE),
+        "toolchain": search._python_harness_toolchain(), "dataset": dataset,
+        "parameters": {"protocol_id": protocol["protocol_id"], "protocol_checksum": protocol["protocol_checksum"],
+                       "search_execution_checksum": protocol["search_execution_checksum"], "search_execution": execution,
+                       "observation_references": [{"path": p.relative_to(root).as_posix(), "sha256": search._sha256(p)} for p, _ in documents]},
+        "resource_budget": {"memory_budget_bytes": 1024, "thread_budget": 6},
+        "input_artifacts": [execution[k] for k in ("dataset_artifact", "global_graph_artifact", "pq_artifact", "disk_layout_artifact")],
+        "output_artifacts": [], "status": "SUCCEEDED",
+        "started_at": "2026-08-21T00:00:00Z", "ended_at": "2026-08-21T00:00:01Z",
+    }
+    path = root / "manifests" / f"{run_id}.json"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps(value))
+    return path
+
+
+@pytest.mark.parametrize("os_name", ["Darwin", "Linux", "Linux-container"])
+def test_v2_persists_measurements_and_single_invocation(tmp_path: Path, offline_only, os_name: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    environment = tmp_path / "reports/environment.json"
+    environment.write_text(json.dumps({"os": os_name}))
+    for path in observations.glob("*.json"):
+        value = json.loads(path.read_text())
+        value["environment"]["fingerprint_sha256"] = search._sha256(environment)
+        _save_observation(path, value)
+    manifest = _search_manifest(tmp_path, original, observations)
+    protocol = _v2_protocol(tmp_path, original)
+    before = {p: p.read_bytes() for p in observations.glob("*.json")}
+    output = search.evaluate_observation_directory(protocol_path=protocol, observations_path=observations, workspace=tmp_path)
+    report = output["report"]
+    assert report["report_version"] == "search-evaluation-report/v2"
+    metrics = {"qps_k100": 1000.0, "mean_latency_us_k100": 20.0, "p99_9_latency_us_k100": 30.0, "mean_ios_k100": 3.0}
+    assert all(p.read_bytes() == data for p, data in before.items())
+    for result, display in zip(report["observation_results"], output["display"]):
+        assert result["performance_valid"] is True
+        assert result["performance_metrics"] == metrics
+        assert all(display[key] == val for key, val in metrics.items())
+        assert "performance_eligible" not in result
+        assert result["original_protocol"]["protocol_id"] == "protocol-zero"
+    aggregate = report["aggregates"]["performance"][0]
+    assert aggregate["median_performance_metrics"] == metrics
+    assert aggregate["eligible_count"] == 3
+    assert aggregate["scope"]["search_manifest"]["sha256"] == search._sha256(manifest)
+    assert report["search_runner_parity"]["assessment"] == "NOT_VERIFIED"
+    assert aggregate["scope"]["limitations"]
+
+
+def test_v2_no_manifest_keeps_values_without_aggregation(tmp_path: Path, offline_only) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    protocol = _v2_protocol(tmp_path, original)
+    report = _offline_call(tmp_path, protocol, observations, "python")
+    assert all(r["performance_valid"] for r in report["observation_results"])
+    assert report["aggregates"]["performance"] == []
+    assert "manifest" in report["performance_aggregation_reason"]
+
+
+def _parity_fixture(root: Path, original: Path, observations: Path) -> Path:
+    manifest_path = _search_manifest(root, original, observations)
+    template = json.loads(manifest_path.read_text())
+    protocol = json.loads(original.read_text())
+    execution = protocol["search_execution"]
+    build = execution["runner_build"]
+    build_manifest = json.loads(json.dumps(template))
+    build_manifest.update(stage="build", run_id="runner-build", source={
+        "repository": build["project_repository"], "branch": build["project_branch"],
+        "commit": build["project_commit"], "dirty_worktree": False,
+    }, parameters={"binary_sha256": build["binary_sha256"], "diskann_source": dict(search._PINNED_DISKANN_SOURCE)})
+    build_path = root / build["build_manifest_path"]
+    build_path.write_text(json.dumps(build_manifest))
+    build["build_manifest_sha256"] = search._sha256(build_path)
+    _save_protocol_and_rebind_observations(original, protocol, observations)
+    for path in observations.glob("*.json"):
+        d = json.loads(path.read_text())
+        d["source_build"]["build_manifest_sha256"] = build["build_manifest_sha256"]
+        _save_observation(path, d)
+    _search_manifest(root, original, observations)
+    protocol = json.loads(original.read_text())
+    points = []
+    for path in sorted(observations.glob("*.json")):
+        d = json.loads(path.read_text()); point = d["raw_search_point"]
+        l_search, repetition = point["L_search"], point["repetition_index"]
+        run_id = f"{execution['execution_id']}-oracle-L{l_search}-r{repetition}"
+        oracle = json.loads(json.dumps(template))
+        oracle.update(run_id=run_id, implementation={"implementation_id": "cpp_main_search_disk_index_oracle_v1", "implementation_version": "1.0.0"})
+        refs = []
+        for suffix in ("stdout", "stderr", "ids", "distances"):
+            f = root / "reports" / f"{run_id}.{suffix}"; f.write_bytes(b"offline-fixture")
+            refs.append({"path": f.relative_to(root).as_posix(), "sha256": search._sha256(f), "byte_length": f.stat().st_size})
+        oracle["parameters"] = {
+            "protocol_id": protocol["protocol_id"], "protocol_checksum": protocol["protocol_checksum"],
+            "search_execution_checksum": protocol["search_execution_checksum"],
+            "oracle_binary": {"path": "bin/oracle", "sha256": "c" * 64},
+            "stdout": refs[0], "stderr": refs[1], "result_files": refs[2:],
+            "argv": ["oracle", "--recall_at", "100", "--search_list", str(l_search), "--beamwidth", "2", "--num_threads", "6", "--num_nodes_to_cache", "0", "--search_io_limit", "4294967295"],
+        }
+        oracle_path = root / "manifests" / f"{run_id}.json"; oracle_path.write_text(json.dumps(oracle))
+        points.append({"L_search": l_search, "repetition_index": repetition, "result": "PASS",
+                       "ordered_ids_equal": True, "distances_within_tolerance": True, "mean_ios_equal": True,
+                       "query_stats_mapping": "total_us_and_n_ios_direct", "qps_formula": "query_count/canonical_batch_wall_clock_seconds",
+                       "latency_formula": "pinned_QueryStats_total_us", "timing_boundary": execution["timing_boundary"], "persistence_outside_timing": True,
+                       "oracle_manifest_path": oracle_path.relative_to(root).as_posix(), "oracle_manifest_sha256": search._sha256(oracle_path),
+                       "observation_path": path.relative_to(root).as_posix(), "observation_sha256": search._sha256(path)})
+    evidence = {"result": "PASS", "instrumented_exit_code": 0,
+                "controls": {"search_execution_checksum": protocol["search_execution_checksum"], **{k: execution[k] for k in ("K", "beamwidth", "thread_count", "cache", "io_limit", "warmup_policy")}}, "points": points}
+    path = root / "reports/search-parity" / f"{execution['execution_id']}.json"
+    path.parent.mkdir(exist_ok=True); path.write_text(json.dumps(evidence))
+    return path
+
+
+@pytest.mark.parametrize("case", ["pass", "not_reached", "staging", "oracle_process", "oracle_outputs", "semantic", "timing", "unresolved", "fail_all_pass", "fail_missing_point", "fail_no_comparison", "execution", "runner", "observation_sha", "oracle_sha", "simple_pass", "corrupt"])
+def test_v2_parity_applicability(tmp_path: Path, offline_only, case: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    parity_path = _parity_fixture(tmp_path, original, observations)
+    evidence = json.loads(parity_path.read_text())
+    if case == "not_reached":
+        evidence = {"result": "NOT_REACHED"}
+    elif case == "staging":
+        evidence = {"result": "FAIL", "instrumented_exit_code": 0, "points": [], "reason": "text is intentionally irrelevant"}
+    elif case in {"oracle_process", "oracle_outputs"}:
+        evidence["result"] = "FAIL"
+        for point in evidence["points"]:
+            point["result"] = "FAIL"
+            oracle_path = tmp_path / point["oracle_manifest_path"]
+            oracle = json.loads(oracle_path.read_text())
+            oracle["parameters"]["result_files"] = []
+            if case == "oracle_process":
+                oracle.update(status="FAILED", failure={"category": "process_failed", "reason": "arbitrary", "exit_code": 2})
+            oracle_path.write_text(json.dumps(oracle))
+            point["oracle_manifest_sha256"] = search._sha256(oracle_path)
+            for key in list(point):
+                if key not in {"result", "L_search", "repetition_index", "oracle_manifest_path", "oracle_manifest_sha256"}:
+                    del point[key]
+    elif case in {"semantic", "timing", "unresolved"}:
+        evidence["result"] = "FAIL"; evidence["points"][0]["result"] = "FAIL"
+        if case != "unresolved":
+            evidence["points"][0]["ordered_ids_equal" if case == "semantic" else "persistence_outside_timing"] = False
+    elif case in {"fail_all_pass", "fail_missing_point", "fail_no_comparison"}:
+        evidence["result"] = "FAIL"
+        if case == "fail_missing_point":
+            evidence["points"].pop()
+        elif case == "fail_no_comparison":
+            evidence["points"] = []
+            evidence["instrumented_exit_code"] = 1
+    elif case == "execution":
+        evidence["controls"]["search_execution_checksum"] = "b" * 64
+    elif case == "runner":
+        build = tmp_path / "manifests/build.json"; build.write_text("{}")
+    elif case == "observation_sha":
+        evidence["points"][0]["observation_sha256"] = "b" * 64
+    elif case == "oracle_sha":
+        evidence["points"][0]["oracle_manifest_sha256"] = "b" * 64
+    elif case == "simple_pass":
+        evidence = {"result": "PASS"}
+    parity_path.write_text("{" if case == "corrupt" else json.dumps(evidence))
+    protocol = _v2_protocol(tmp_path, original)
+    report = _offline_call(tmp_path, protocol, observations, "python")
+    valid = [r for r in report["observation_results"] if r["performance_valid"]]
+    assert len(valid) == (2 if case in {"semantic", "timing"} else 3)
+    if case in {"unresolved", "fail_all_pass", "fail_missing_point", "fail_no_comparison", "execution", "runner", "observation_sha", "oracle_sha", "simple_pass", "corrupt"}:
+        assert report["aggregates"]["performance"] == []
+        assert "unresolved" in report["performance_aggregation_reason"]
+        assert report["search_runner_parity"]["assessment"] != "PASS"
+        assert any(r["parity"]["assessment"] == "UNRESOLVED" for r in valid)
+    else:
+        assert report["aggregates"]["performance"][0]["eligible_count"] == len(valid)
+    if case in {"staging", "oracle_process", "oracle_outputs", "not_reached"}:
+        assert report["search_runner_parity"]["assessment"] == "NOT_VERIFIED"
+    if case == "corrupt":
+        assert report["search_runner_parity"]["result"] == "INVALID_EVIDENCE"
+    else:
+        assert report["search_runner_parity"]["result"] == evidence["result"]
+
+
+@pytest.mark.parametrize("case", ["missing", "unreadable", "json", "json_array", "schema", "identity", "references", "reference_type", "duplicate_reference", "null_reference"])
+def test_v2_aux_manifest_failure_keeps_measurements(tmp_path: Path, offline_only, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    manifest_path = _search_manifest(tmp_path, original, observations)
+    manifest = json.loads(manifest_path.read_text())
+    if case == "missing":
+        manifest_path.unlink()
+    elif case == "unreadable":
+        sha256 = search._sha256
+
+        def denied(path):
+            if path == manifest_path:
+                raise PermissionError("fixture manifest unreadable")
+            return sha256(path)
+
+        monkeypatch.setattr(search, "_sha256", denied)
+    elif case == "json":
+        manifest_path.write_text("{")
+    elif case == "json_array":
+        manifest_path.write_text("[]")
+    else:
+        if case == "schema":
+            del manifest["source"]
+        elif case == "identity":
+            manifest["parameters"]["search_execution_checksum"] = "c" * 64
+        elif case == "references":
+            manifest["parameters"]["observation_references"] = "invalid"
+        elif case == "reference_type":
+            manifest["parameters"]["observation_references"][0]["path"] = []
+        elif case == "null_reference":
+            manifest["parameters"]["observation_references"][0]["path"] += "\x00invalid"
+        else:
+            manifest["parameters"]["observation_references"].append(manifest["parameters"]["observation_references"][0])
+        manifest_path.write_text(json.dumps(manifest))
+    report = _offline_call(tmp_path, _v2_protocol(tmp_path, original), observations, "cli")
+    assert len(report["observation_results"]) == 3
+    assert all(r["performance_valid"] and r["performance_metrics"]["qps_k100"] == 1000.0 for r in report["observation_results"])
+    assert all(r["quality_metrics"]["recall_at_100"] == 100.0 for r in report["observation_results"])
+    assert report["aggregates"]["performance"] == []
+    assert "manifest" in report["performance_aggregation_reason"]
+    if case == "null_reference":
+        assert "null character" in report["performance_aggregation_reason"]
+
+
+@pytest.mark.parametrize("case", ["unreadable", "json_array", "integer_limit", "json_depth", "symlink_oracle", "symlink_log", "symlink_result", "invalid_result", "invalid_point", "invalid_slot", "invalid_check_type", "missing_log", "log_checksum", "result_checksum", "malformed_reference", "oracle_binding", "null_oracle", "null_log", "null_result", "null_observation"])
+def test_v2_aux_parity_failure_scope(tmp_path: Path, offline_only, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100, 200))
+    parity_path = _parity_fixture(tmp_path, original, observations)
+    evidence = json.loads(parity_path.read_text())
+    point = next(p for p in evidence["points"] if (p["L_search"], p["repetition_index"]) == (200, 1))
+    oracle_path = tmp_path / point["oracle_manifest_path"]
+    oracle = json.loads(oracle_path.read_text())
+    unscoped = case in {"unreadable", "json_array", "integer_limit", "json_depth", "invalid_result", "invalid_point", "invalid_slot"}
+    if case == "unreadable":
+        sha256 = search._sha256
+
+        def denied(path):
+            if path == parity_path:
+                raise PermissionError("fixture parity unreadable")
+            return sha256(path)
+
+        monkeypatch.setattr(search, "_sha256", denied)
+    elif case == "json_array":
+        evidence = []
+    elif case == "invalid_result":
+        evidence["result"] = []
+    elif case == "invalid_point":
+        evidence["points"].append("invalid")
+    elif case == "invalid_slot":
+        point["L_search"] = []
+    elif case == "invalid_check_type":
+        point["ordered_ids_equal"] = []
+    elif case == "missing_log":
+        (tmp_path / oracle["parameters"]["stdout"]["path"]).unlink()
+    elif case == "log_checksum":
+        (tmp_path / oracle["parameters"]["stderr"]["path"]).write_bytes(b"changed")
+    elif case == "result_checksum":
+        (tmp_path / oracle["parameters"]["result_files"][0]["path"]).write_bytes(b"changed")
+    elif case == "null_oracle":
+        point["oracle_manifest_path"] += "\x00invalid"
+    elif case == "null_observation":
+        point["observation_path"] += "\x00invalid"
+    elif case.startswith("symlink_"):
+        loop = tmp_path / "reports/auxiliary-loop"
+        loop.symlink_to(loop.name)
+        relative = loop.relative_to(tmp_path).as_posix()
+        if case == "symlink_oracle":
+            point["oracle_manifest_path"] = relative
+        else:
+            reference = oracle["parameters"]["stdout"] if case == "symlink_log" else oracle["parameters"]["result_files"][0]
+            reference["path"] = relative
+            oracle_path.write_text(json.dumps(oracle))
+            point["oracle_manifest_sha256"] = search._sha256(oracle_path)
+    elif case not in {"integer_limit", "json_depth"}:
+        if case == "malformed_reference":
+            oracle["parameters"]["stdout"] = []
+        elif case == "null_log":
+            oracle["parameters"]["stderr"]["path"] += "\x00invalid"
+        elif case == "null_result":
+            oracle["parameters"]["result_files"][0]["path"] += "\x00invalid"
+        else:
+            oracle["parameters"]["search_execution_checksum"] = "b" * 64
+        oracle_path.write_text(json.dumps(oracle))
+        point["oracle_manifest_sha256"] = search._sha256(oracle_path)
+    if case == "integer_limit":
+        limit = sys.get_int_max_str_digits()
+        if limit == 0:
+            pytest.skip("Python integer parsing limit is disabled")
+        # Append a numeric literal without constructing a Python integer.
+        parity_path.write_text(json.dumps(evidence)[:-1] + ', "integer_limit": ' + "9" * (limit + 1) + "}")
+    elif case == "json_depth":
+        # Trigger the parser limit without constructing nested Python objects.
+        parity_path.write_text(json.dumps(evidence)[:-1] + ', "extra": ' + "[" * 16384 + "0" + "]" * 16384 + "}")
+    else:
+        parity_path.write_text(json.dumps(evidence))
+    protocol = _v2_protocol(tmp_path, original)
+    report = _offline_call(tmp_path, protocol, observations, "python")
+    assert len(report["observation_results"]) == 6
+    assert all(r["performance_valid"] and r["performance_metrics"]["qps_k100"] == 1000.0 for r in report["observation_results"])
+    assert all(r["quality_metrics"]["recall_at_100"] == 100.0 for r in report["observation_results"])
+    assert {g["L_search"] for g in report["aggregates"]["performance"]} == (set() if unscoped else {100})
+    affected = [r for r in report["observation_results"] if r["parity"]["assessment"] == "UNRESOLVED"]
+    assert affected and all(r["parity"]["reason"] for r in affected)
+    if not unscoped:
+        assert {(r["L_search"], r["repetition_index"]) for r in affected} == {(200, 1)}
+    if case.startswith("null_"):
+        assert "null character" in affected[0]["parity"]["reason"]
+    if case.startswith("symlink_"):
+        assert "symbolic link" in affected[0]["parity"]["reason"]
+        assert loop.is_symlink() and loop.readlink() == Path(loop.name)
+    if case in {"unreadable", "json_array", "integer_limit", "json_depth", "invalid_result"}:
+        assert report["search_runner_parity"]["result"] == "INVALID_EVIDENCE"
+    else:
+        assert report["search_runner_parity"]["result"] == "PASS"
+    assert report["search_runner_parity"]["assessment"] != "PASS"
+    if case in {"integer_limit", "json_depth"}:
+        assert report["search_runner_parity"]["assessment"] == "UNRESOLVED"
+        assert "invalid Parity evidence:" in affected[0]["parity"]["reason"]
+        assert ("integer string conversion" if case == "integer_limit" else "recursion") in affected[0]["parity"]["reason"]
+    if case in {"integer_limit", "json_depth"} or case.startswith("symlink_"):
+        protocol_id = json.loads(protocol.read_text())["protocol_id"]
+        assert json.loads((tmp_path / f"reports/search-evaluation/{protocol_id}-evaluation.json").read_text()) == report
+
+
+@pytest.mark.parametrize("unscoped", [False, True])
+def test_v2_aux_failure_preserves_confirmed_error(tmp_path: Path, offline_only, unscoped: bool) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100, 200))
+    parity_path = _parity_fixture(tmp_path, original, observations)
+    evidence = json.loads(parity_path.read_text())
+    evidence["result"] = "FAIL"
+    wrong = evidence["points"][0]
+    wrong.update(result="FAIL", ordered_ids_equal=False)
+    if unscoped:
+        evidence["points"].append({"L_search": 9999, "repetition_index": 0})
+    else:
+        later = next(p for p in evidence["points"] if (p["L_search"], p["repetition_index"]) == (200, 1))
+        oracle = json.loads((tmp_path / later["oracle_manifest_path"]).read_text())
+        (tmp_path / oracle["parameters"]["stderr"]["path"]).unlink()
+    parity_path.write_text(json.dumps(evidence))
+    report = _offline_call(tmp_path, _v2_protocol(tmp_path, original), observations, "python")
+    excluded = [r for r in report["observation_results"] if not r["performance_valid"]]
+    assert len(excluded) == 1
+    assert excluded[0]["parity"]["assessment"] == "ERROR"
+    assert excluded[0]["quality_eligible"] is False
+    assert "performance_metrics" not in excluded[0]
+    assert {g["L_search"] for g in report["aggregates"]["performance"]} == (set() if unscoped else {100})
+    if not unscoped:
+        assert report["aggregates"]["performance"][0]["eligible_count"] == 2
+
+
+@pytest.mark.parametrize("case", ["checksum", "query", "runner", "timing"])
+def test_v2_aux_failure_does_not_hide_observation_errors(tmp_path: Path, offline_only, case: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    path = observations / "zero-L100-r0.json"
+    d = json.loads(path.read_text())
+    if case == "checksum":
+        d["observation_checksum"] = "b" * 64
+        path.write_text(json.dumps(d))
+    else:
+        if case == "query": d["per_query"][0]["query_row_index"] = 1
+        elif case == "runner": d["source_build"]["binary_sha256"] = "b" * 64
+        else: d["raw_search_point"]["batch_wall_clock_us"] = 0
+        _save_observation(path, d)
+    _search_manifest(tmp_path, original, observations)
+    parity = tmp_path / "reports/search-parity/small-zero.json"
+    parity.parent.mkdir(); parity.write_text("{")
+    protocol = _v2_protocol(tmp_path, original)
+    if case == "checksum":
+        with pytest.raises(search.SearchEvaluationError, match="observation checksum"):
+            _offline_call(tmp_path, protocol, observations, "python")
+        _assert_evaluation_failure(tmp_path, protocol, observations, "observation checksum")
+    else:
+        report = _offline_call(tmp_path, protocol, observations, "python")
+        assert len([r for r in report["observation_results"] if r["performance_valid"]]) == 2
+        excluded = next(r for r in report["observation_results"] if not r["performance_valid"])
+        assert not excluded["quality_eligible"] and "performance_metrics" not in excluded
+        assert report["aggregates"]["performance"] == []
+
+
+@pytest.mark.parametrize("label", ["search manifest", "Parity evidence"])
+def test_v2_aux_boundary_does_not_swallow_unexpected_error(tmp_path: Path, offline_only, monkeypatch: pytest.MonkeyPatch, label: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    _parity_fixture(tmp_path, original, observations)
+    bound_json = search._bound_json
+
+    def broken(root, reference, actual_label, **kwargs):
+        if actual_label == label:
+            raise RuntimeError("unexpected implementation error")
+        return bound_json(root, reference, actual_label, **kwargs)
+
+    monkeypatch.setattr(search, "_bound_json", broken)
+    protocol = _v2_protocol(tmp_path, original)
+    with pytest.raises(RuntimeError, match="unexpected implementation error"):
+        _offline_call(tmp_path, protocol, observations, "python")
+    _assert_evaluation_failure(tmp_path, protocol, observations, "unexpected implementation error")
+
+
+@pytest.mark.parametrize("label", ["search manifest", "runner build manifest", "oracle manifest"])
+@pytest.mark.parametrize("location", ["factory", "validate"])
+@pytest.mark.parametrize("error_type", [RuntimeError, ValueError, RecursionError])
+def test_v2_aux_wrapped_validator_error_fails_evaluation(
+    tmp_path: Path, offline_only, monkeypatch: pytest.MonkeyPatch,
+    label: str, location: str, error_type: type[Exception],
+) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    _parity_fixture(tmp_path, original, observations)
+    protocol = _v2_protocol(tmp_path, original)
+    bound_json, schema_validator = search._bound_json, search._schema_validator
+    active_label = None
+    injected = error_type("unexpected auxiliary validator error")
+    injected_count = 0
+
+    def tracking_bound_json(root, reference, actual_label, **kwargs):
+        nonlocal active_label
+        previous, active_label = active_label, actual_label
+        try:
+            # Keep the real reader and its exception wrapping in the call chain.
+            return bound_json(root, reference, actual_label, **kwargs)
+        finally:
+            active_label = previous
+
+    class BrokenValidator:
+        def validate(self, value):
+            nonlocal injected_count
+            injected_count += 1
+            raise injected
+
+    def broken_schema_validator(*args, **kwargs):
+        nonlocal injected_count
+        if active_label == label:
+            if location == "factory":
+                injected_count += 1
+                raise injected
+            return BrokenValidator()
+        return schema_validator(*args, **kwargs)
+
+    monkeypatch.setattr(search, "_bound_json", tracking_bound_json)
+    monkeypatch.setattr(search, "_schema_validator", broken_schema_validator)
+    with pytest.raises((RuntimeError, ValueError)) as caught:
+        _offline_call(tmp_path, protocol, observations, "python")
+    assert injected_count == 1
+    assert caught.value is injected or caught.value.__cause__ is injected
+    _assert_evaluation_failure(tmp_path, protocol, observations, str(injected))
+
+
+@pytest.mark.parametrize("label", ["oracle manifest", "oracle stdout", "oracle result"])
+def test_v2_aux_path_internal_runtime_error_fails_evaluation(
+    tmp_path: Path, offline_only, monkeypatch: pytest.MonkeyPatch, label: str,
+) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    parity_path = _parity_fixture(tmp_path, original, observations)
+    point = json.loads(parity_path.read_text())["points"][0]
+    oracle_path = tmp_path / point["oracle_manifest_path"]
+    oracle = json.loads(oracle_path.read_text())
+    target = {
+        "oracle manifest": oracle_path,
+        "oracle stdout": tmp_path / oracle["parameters"]["stdout"]["path"],
+        "oracle result": tmp_path / oracle["parameters"]["result_files"][0]["path"],
+    }[label]
+    protocol = _v2_protocol(tmp_path, original)
+    resolve = Path.resolve
+    injected = RuntimeError("unexpected auxiliary path resolution error")
+    injected_count = 0
+
+    def broken_resolve(path, *args, **kwargs):
+        nonlocal injected_count
+        if path == target:
+            injected_count += 1
+            raise injected
+        return resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", broken_resolve)
+    with pytest.raises(RuntimeError) as caught:
+        _offline_call(tmp_path, protocol, observations, "python")
+    assert injected_count == 1
+    assert caught.value is injected and injected.__context__ is None
+    _assert_evaluation_failure(tmp_path, protocol, observations, str(injected))
+
+
+@pytest.mark.parametrize("case", ["same_run_missing_member", "different_invocations", "environment_conflict", "different_environment_refs", "invalid_row", "invalid_runner"])
+def test_v2_scope_and_existing_exclusions(tmp_path: Path, offline_only, case: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    path = observations / "zero-L100-r2.json"
+    d = json.loads(path.read_text())
+    if case == "different_invocations":
+        d["run_id"] = "another-invocation"
+    elif case in {"environment_conflict", "different_environment_refs"}:
+        env = tmp_path / "reports/another-environment.json"
+        env.write_text(json.dumps({"os": "Darwin"} if case == "environment_conflict" else {"performance_admitted": False}))
+        if case == "environment_conflict":
+            original_env = tmp_path / "reports/environment.json"; original_env.write_text('{"os":"Linux"}')
+            for other in observations.glob("*.json"):
+                doc = json.loads(other.read_text()); doc["environment"]["fingerprint_sha256"] = search._sha256(original_env); _save_observation(other, doc)
+        d["environment"] = {"fingerprint_path": env.relative_to(tmp_path).as_posix(), "fingerprint_sha256": search._sha256(env)}
+    elif case == "invalid_row":
+        d["per_query"][0]["query_row_index"] = 10
+    elif case == "invalid_runner":
+        d["source_build"]["binary_sha256"] = "c" * 64
+    _save_observation(path, d)
+    manifest_path = _search_manifest(tmp_path, original, observations)
+    if case == "same_run_missing_member":
+        m = json.loads(manifest_path.read_text()); m["parameters"]["observation_references"].pop(); manifest_path.write_text(json.dumps(m))
+    protocol = _v2_protocol(tmp_path, original)
+    report = _offline_call(tmp_path, protocol, observations, "python")
+    if case in {"same_run_missing_member", "different_invocations", "environment_conflict"}:
+        assert len([r for r in report["observation_results"] if r["performance_valid"]]) == 3
+        assert report["aggregates"]["performance"] == []
+        assert report["performance_aggregation_reason"]
+    else:
+        assert report["aggregates"]["performance"][0]["eligible_count"] == (3 if case == "different_environment_refs" else 2)
+
+
+def test_v2_provenance_and_immutable_outputs(tmp_path: Path, offline_only) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    protocol = _v2_protocol(tmp_path, original)
+    output = search.evaluate_observation_directory(protocol_path=protocol, observations_path=observations, workspace=tmp_path)
+    report = output["report"]; manifest = json.loads(Path(output["build_manifest_path"]).read_text())
+    provenance = report["evaluator_provenance"]
+    assert provenance == manifest["parameters"]["evaluator_provenance"]
+    assert provenance["source"] == manifest["source"] == search._git_source_identity(tmp_path)
+    assert manifest["source"]["commit"] != manifest["parameters"]["search_runner_build"]["project_commit"]
+    assert manifest["source"]["dirty_worktree"] is True
+    for ref in provenance["source_files"]:
+        assert search._sha256(search._repository_root() / ref["path"]) == ref["sha256"]
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(ImmutableWriteError):
+        search.evaluate_observation_directory(protocol_path=protocol, observations_path=observations, workspace=tmp_path)
+    assert all(p.read_bytes() == b for p, b in before.items())
+
+
+@pytest.mark.parametrize("case", ["truth", "incompatible_truth", "execution", "policy", "evaluator", "revision"])
+def test_v2_reevaluation_and_version_binding(tmp_path: Path, offline_only, case: str) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    protocol_path = _v2_protocol(tmp_path, original)
+    protocol = json.loads(protocol_path.read_text())
+    if case in {"policy", "evaluator", "revision"}:
+        if case == "policy": protocol["evaluation"]["performance_eligibility_policy"] = "complete_valid_normative_environment_timing_parity_v1"
+        elif case == "evaluator": protocol["evaluation"]["evaluator"]["version"] = "1.0.0"
+        else: protocol["protocol_version"] = "1.0.0"
+        with pytest.raises(search.SearchEvaluationError): search.normalize_search_protocol(protocol)
+        return
+    if case == "execution":
+        protocol["search_execution"]["runner_build"]["binary_sha256"] = "c" * 64
+    else:
+        truth = protocol["evaluation"]["ground_truth"]
+        original_truth = tmp_path / truth["payload"]["path"]
+        new_truth = tmp_path / "inputs/new-truth.bin"; new_truth.write_bytes(original_truth.read_bytes())
+        truth["payload"]["path"] = "inputs/new-truth.bin"; truth["ground_truth_id"] = "new-truth"
+        if case == "incompatible_truth": truth["query_set_checksum"] = "c" * 64
+    protocol_path.write_text(json.dumps(search.normalize_search_protocol(protocol)))
+    if case in {"execution", "incompatible_truth"}:
+        with pytest.raises(search.SearchEvaluationError): _offline_call(tmp_path, protocol_path, observations, "python")
+    else:
+        report = _offline_call(tmp_path, protocol_path, observations, "python")
+        assert all(r["quality_metrics"]["recall_at_100"] == 100 for r in report["observation_results"])
+        assert report["search_execution"]["canonical_checksum"] == json.loads(original.read_text())["search_execution_checksum"]
+
+
+@pytest.mark.parametrize("eligible_count,expected", [(1, 1000.0), (2, 750.0), (3, 500.0)])
+def test_v2_preserves_nonconstant_medians(tmp_path: Path, offline_only, eligible_count: int, expected: float) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    for path in observations.glob("*.json"):
+        d = json.loads(path.read_text()); r = d["raw_search_point"]["repetition_index"]
+        d["raw_search_point"]["batch_wall_clock_us"] *= 2 ** r
+        if r >= eligible_count: d["per_query"][0]["query_row_index"] = 99
+        _save_observation(path, d)
+    _search_manifest(tmp_path, original, observations)
+    report = _offline_call(tmp_path, _v2_protocol(tmp_path, original), observations, "python")
+    aggregate = report["aggregates"]["performance"][0]
+    assert aggregate["eligible_count"] == eligible_count
+    assert aggregate["median_performance_metrics"]["qps_k100"] == expected
+    assert aggregate["median_performance_metrics"]["mean_latency_us_k100"] == 20.0
+    assert len(report["observation_results"]) == 3
+
+
+def test_v2_parity_remains_execution_bound_on_new_ground_truth(tmp_path: Path, offline_only) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    _parity_fixture(tmp_path, original, observations)
+    protocol_path = _v2_protocol(tmp_path, original)
+    d = json.loads(protocol_path.read_text())
+    truth = d["evaluation"]["ground_truth"]
+    new_truth = tmp_path / "inputs/new-truth.bin"
+    new_truth.write_bytes((tmp_path / truth["payload"]["path"]).read_bytes())
+    truth["payload"]["path"] = "inputs/new-truth.bin"; truth["ground_truth_id"] = "other-compatible-truth"
+    protocol_path.write_text(json.dumps(search.normalize_search_protocol(d)))
+    report = _offline_call(tmp_path, protocol_path, observations, "cli")
+    assert report["search_runner_parity"]["assessment"] == "PASS"
+    assert report["search_runner_parity"]["recall_scope"] == "original_ground_truth_only"
+    assert report["ground_truth"]["ground_truth_id"] == "other-compatible-truth"
 
 
 def _save_protocol_and_rebind_observations(path: Path, protocol: dict, observations: Path) -> None:

@@ -1,5 +1,18 @@
 # Feature Specification: Framework Baseline Certification
 
+## Search report v2 consumer amendment
+
+Quality comparison accepts explicitly versioned Feature 005 reports v1 and v2, validates each
+with its own schema and rejects unknown versions. It still consumes only quality findings and
+quality medians; v2 performance measurements/scopes never affect Quality Parity or certification.
+FR-030/FR-031's informational/non-formal vocabulary describes v1 reports. V2 may retain measured
+performance from any working environment without expanding this Feature's certification claims.
+
+New frozen quality policies may explicitly select evaluator
+`cpp_main_search_metrics_evaluator_v2` / `2.0.0`. Old frozen evaluator identities remain exact;
+they do not automatically accept new reports. Protocol, Artifact, query, GroundTruth, report
+checksum and evaluator matching are retained. No policy or historical report is migrated.
+
 **Feature Branch**: `feature/framework-baseline-certification`
 
 **Created**: 2026-08-25

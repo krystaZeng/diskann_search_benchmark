@@ -1,5 +1,58 @@
 # Data Model: DiskANN Post-GlobalGraph Search Evaluation
 
+## Explicit evaluation revision 1.1 and SearchEvaluationReport/v2
+
+The v1 descriptions below remain applicable to Protocol 1.0.0/report v1. Revision 1.1.0 changes
+only evaluation policy: evaluator `cpp_main_search_metrics_evaluator_v2`, version `2.0.0`, and
+`performance_eligibility_policy=complete_valid_measurement_single_invocation_v2`. Mixed version,
+policy and evaluator identities are invalid. SearchObservation/v1, public Artifacts, canonical
+hash algorithms and the complete search_execution projection remain unchanged.
+
+Report v2 has its own strict `search-evaluation-report-v2.schema.json` and preserves the quality
+fields/median semantics. Each retained observation includes its `original_protocol` reference and
+parity applicability. `performance_valid` and `performance_validity_reason` replace the v1
+eligibility terminology; valid measurements require `performance_metrics` and their own
+`environment` path/SHA. Invalid points remain audit-only. No formal/informational classification
+is assigned to ordinary v2 measurements.
+
+`aggregates.performance` uses the same median calculation but includes `scope`: search Manifest
+path/SHA, execution checksum, run_id, exact member observation paths/SHAs, environment references
+and limitations. `performance_aggregation_reason` explains omitted aggregates. Manifest admission
+checks the original protocol, full execution, runner identity, thread budget, input Artifacts and
+actual observation-reference bytes. Missing, unreadable, malformed or unbound search Manifests
+leave invocation unknown: per-point measurements remain, but performance aggregates are withheld
+with a reason. An unproven run_id never grants membership. Recorded environment
+facts are compared for conflicts; absent hardware/storage/filesystem/container/resource/load data
+are listed as unknown. Identical OS/file hashes alone never certify comparable machines.
+
+Parity retains its original result/evidence reference and adds an assessment: NOT_VERIFIED, PASS,
+ERROR, UNRESOLVED, or a mixed top-level assessment. Evidence is interpreted per point. Structured
+oracle process failure (FAILED Manifest, process_failed, nonzero exit, no observation comparison),
+missing oracle outputs, or retained successful instrumented search with zero comparison points
+remain incomplete verification, independent of error text. A sparse record never establishes PASS.
+Recall parity is explicitly `original_ground_truth_only`. Unreadable/unparseable reports or invalid
+result values use `result=INVALID_EVIDENCE`; otherwise the readable original result and available
+evidence reference are retained. Unusable auxiliary evidence, including missing logs, bad checksums
+and foreign execution bindings, has assessment UNRESOLVED and a specific reason, not PASS or proof
+of measurement error. It withholds affected performance groups, or all groups if scope is unknown,
+without discarding otherwise valid per-point measurements. Confirmed semantic-error points remain
+excluded and cannot be reinstated by a later auxiliary-evidence failure.
+An overall FAIL with all point assessments PASS remains unresolved. Missing points in a FAIL
+record are also unresolved unless the structured preparation-failure case above applies;
+their performance groups are withheld without discarding valid per-point measurements.
+
+`evaluator_provenance` records current project repository/branch/commit/dirty state, dirty-source
+checksum when applicable, and hashes of evaluator/support Python sources and Feature schemas.
+The independent evaluation Manifest repeats this provenance in parameters and uses its source
+as the Manifest source. `search_runner_build` remains a separate input parameter. Report v1 cannot
+carry the new fields; its newly generated evaluation Manifest supplies current evaluator provenance.
+
+The fixed v2 Python implementation requires complete SearchObservation/v1, a compatible frozen
+Protocol 1.1.0 and GroundTruth, existing source/evidence readers and immutable publication services;
+it provides SearchEvaluationReport/v2 with global-ID Recall and scoped measured performance.
+It uses the same calculation and base admission functions as v1 and introduces no Registry or
+public Artifact capability. Consumers dispatch on report_version and reject unknown versions.
+
 ## 1. Model boundary
 
 This Feature adds two reusable public data types and three Feature-local document types. It reuses

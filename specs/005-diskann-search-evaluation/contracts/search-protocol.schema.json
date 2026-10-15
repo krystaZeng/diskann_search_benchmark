@@ -9,7 +9,7 @@
     "search_execution_checksum", "evaluation", "canonicalization", "protocol_checksum"
   ],
   "properties": {
-    "protocol_version": {"const": "1.0.0"},
+    "protocol_version": {"enum": ["1.0.0", "1.1.0"]},
     "protocol_id": {"$ref": "#/$defs/stableId"},
     "status": {"const": "frozen"},
     "search_execution": {"$ref": "#/$defs/searchExecution"},
@@ -18,6 +18,62 @@
     "canonicalization": {"const": "diskann-search-protocol-c14n-v1"},
     "protocol_checksum": {"$ref": "#/$defs/sha256"}
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "protocol_version": {
+            "const": "1.0.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evaluation": {
+            "properties": {
+              "evaluator": {
+                "const": {
+                  "implementation_id": "cpp_main_search_metrics_evaluator_v1",
+                  "version": "1.0.0",
+                  "reproduction_mode": "instrumented"
+                }
+              },
+              "performance_eligibility_policy": {
+                "const": "complete_valid_normative_environment_timing_parity_v1"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "protocol_version": {
+            "const": "1.1.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evaluation": {
+            "properties": {
+              "evaluator": {
+                "const": {
+                  "implementation_id": "cpp_main_search_metrics_evaluator_v2",
+                  "version": "2.0.0",
+                  "reproduction_mode": "instrumented"
+                }
+              },
+              "performance_eligibility_policy": {
+                "const": "complete_valid_measurement_single_invocation_v2"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "stableId": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"},
@@ -238,7 +294,7 @@
           "const": "complete_valid_ground_truth_identity_search_semantics_v1"
         },
         "performance_eligibility_policy": {
-          "const": "complete_valid_normative_environment_timing_parity_v1"
+          "enum": ["complete_valid_normative_environment_timing_parity_v1", "complete_valid_measurement_single_invocation_v2"]
         },
         "aggregation_policy": {"const": "median_eligible"},
         "replacement_repetitions": {"const": false}

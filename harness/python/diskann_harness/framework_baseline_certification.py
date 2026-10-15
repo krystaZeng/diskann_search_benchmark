@@ -2324,9 +2324,7 @@ def compare_quality(
             try:
                 report = _read_object(path)
                 _validate_with(
-                    search_evaluation._feature_validator(
-                        "search-evaluation-report.schema.json"
-                    ),
+                    search_evaluation.report_validator(report),
                     report,
                     "Feature 005 SearchEvaluationReport",
                 )

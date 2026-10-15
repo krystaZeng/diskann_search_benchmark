@@ -1,5 +1,48 @@
 # Feature Specification: DiskANN Post-GlobalGraph Search Evaluation
 
+## Evaluation revision 1.1 / report v2 amendment
+
+This amendment governs only explicitly selected Protocol `1.1.0`, evaluator
+`cpp_main_search_metrics_evaluator_v2` / `2.0.0`, and
+`complete_valid_measurement_single_invocation_v2`. Protocol `1.0.0` retains its existing
+normative-environment policy and report v1. The version/policy/evaluator combinations are strict.
+The v1 performance classifications in FR-053, FR-056, FR-059, FR-060 and the corresponding
+success criteria below remain v1 rules; they do not gate v2 measurement persistence.
+
+For v2, complete valid observations retain Recall and the existing QPS, mean/P99.9 latency and
+Mean IOs, regardless of host OS. All query, GroundTruth, Artifact, runner/build, execution,
+checksum, trial-set and timing checks remain required. No backend, IO path or search control
+changes are authorized. Linux/local-SSD conditions may select a paper's primary experiments;
+they are not evidence that measurements from another working environment are invalid.
+
+Performance medians require one existing search BuildManifest binding the full execution and
+every participating observation's bytes. A shared run_id, OS or environment SHA is insufficient.
+Missing, unreadable, malformed or unmatched invocation evidence, multiple calls, or conflicting recorded conditions retain
+valid per-point measurements but produce no combined performance median. An identifiable single
+call with incomplete environment facts may have a descriptive median with explicit unknowns and
+no cross-call/hardware-equivalence claim. No manual condition input or environment probing is added.
+
+Parity evidence is checked before use against the execution, runner build, original observations,
+oracle manifests and retained oracle outputs. Missing/NOT_REACHED and structurally confirmed
+incomplete oracle preparation/execution do not invalidate otherwise valid measurements. Semantic
+errors exclude affected points. Unresolved FAIL and unusable auxiliary evidence (including corrupt
+reports, missing files, checksum mismatches or foreign bindings) block affected performance
+aggregates, not otherwise valid per-point measurements or report publication. When scope cannot
+be established, all performance aggregates are withheld. Previously confirmed measurement errors
+remain excluded even if later auxiliary evidence is unavailable. Old Recall parity remains scoped to its original
+GroundTruth even when the unchanged search execution is re-evaluated with new compatible truth.
+
+Evaluation-only changes use a new immutable protocol/report/Manifest identity and preserve the
+original observations and search_execution checksum. Report v2 and each new evaluation Manifest
+record the current Python evaluator source and source-file hashes; the historical runner build is
+an input identity, not evaluator provenance. No old report is rewritten or upgraded automatically.
+
+FR-063's controlled graph comparison remains a specific comparison design. A declared whole-plan
+comparison (for example P0+B0+M0 versus KMeans+B0+M1) may vary algorithms and their parameters and
+need not share Partition/LocalGraph artifacts. QuerySet, GroundTruth, hardware/resources, threads,
+cache and timing conditions must be stated, with differences and unknowns limiting conclusions.
+This amendment adds no automatic cross-plan or cross-machine comparison service.
+
 **Feature Branch**: `feature/search-evaluation`
 
 **Created**: 2026-08-18

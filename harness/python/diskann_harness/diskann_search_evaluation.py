@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 from .manifests import write_immutable_json
 from .runner import _schema_validator
@@ -249,6 +249,30 @@ def _feature_validator(name: str) -> Draft202012Validator:
     )
     Draft202012Validator.check_schema(schema)
     return Draft202012Validator(schema)
+
+
+def report_validator(report: dict[str, Any]) -> Draft202012Validator:
+    schemas = {
+        "search-evaluation-report/v1": "search-evaluation-report.schema.json",
+        "search-evaluation-report/v2": "search-evaluation-report-v2.schema.json",
+    }
+    name = schemas.get(report.get("report_version"))
+    if name is None:
+        raise SearchEvaluationError("unknown SearchEvaluationReport version")
+    return _feature_validator(name)
+
+
+def _evaluator_provenance() -> dict[str, Any]:
+    root = _repository_root()
+    paths = [
+        Path(__file__).resolve(), root / "harness/python/diskann_harness/manifests.py",
+        root / "harness/python/diskann_harness/runner.py",
+        *sorted((root / "specs/005-diskann-search-evaluation/contracts").glob("*.schema.json")),
+    ]
+    return {
+        "source": _git_source_identity(root),
+        "source_files": [{"path": p.relative_to(root).as_posix(), "sha256": _sha256(p)} for p in paths],
+    }
 
 
 def normalize_query_set_fixture(
@@ -696,6 +720,12 @@ def _load_evaluation_ground_truth(
     # FR-044: incompatible truth blocks evaluation, not raw search validity.
     query_count = protocol["search_execution"]["query_set"]["query_count"]
     truth_ref = protocol["evaluation"]["ground_truth"]
+    execution = protocol["search_execution"]
+    if truth_ref["query_set_checksum"] != execution["query_set"]["canonical_checksum"] or any(
+        truth_ref["dataset_artifact"][key] != execution["dataset_artifact"][key]
+        for key in ("artifact_type", "format_version", "aggregate_checksum")
+    ):
+        raise SearchEvaluationError("GroundTruth Dataset/QuerySet identity is incompatible")
     if truth_ref["query_count"] != query_count:
         raise SearchEvaluationError("GroundTruth query_count differs from frozen QuerySet")
     truth_path = root / truth_ref["payload"]["path"]
@@ -771,7 +801,7 @@ def _admit_observation_set(
             execution_matches and document["search_execution"]["execution_id"] != execution["execution_id"]
         ):
             raise SearchEvaluationError(f"observation identity contradicts checksum: {path}")
-        if not protocol_matches:
+        if not protocol_matches and not execution_matches:
             # Identifiable foreign-protocol records remain audit references;
             # they cannot fill a slot in this protocol's declared trial set.
             continue
@@ -854,9 +884,325 @@ def _verified_observation_environment(
     return environment, actual_sha
 
 
+def _bound_json(root: Path, reference: dict[str, Any], label: str, *, manifest: bool = False) -> dict[str, Any]:
+    path = _auxiliary_existing_file(root, reference.get("path"), label)
+    payload = path.read_bytes()
+    if hashlib.sha256(payload).hexdigest() != reference.get("sha256"):
+        raise SearchEvaluationError(f"{label} checksum mismatch")
+    input_error = False
+    try:
+        try:
+            value = json.loads(payload)
+        except (ValueError, RecursionError):
+            input_error = True
+            raise
+        if not isinstance(value, dict):
+            input_error = True
+            raise ValueError("not an object")
+        if manifest:
+            validator = _schema_validator("build-manifest.schema.json", _repository_root())
+            try:
+                validator.validate(value)
+            except ValidationError:
+                input_error = True
+                raise
+    except Exception as error:
+        wrapped = SearchEvaluationError(f"invalid {label}: {error}")
+        # Preserve the shared reader's exception contract; only auxiliary handlers
+        # use this local origin marker to distinguish bad input from reader bugs.
+        wrapped._unexpected_bound_json_error = not input_error
+        raise wrapped from error
+    return value
+
+
+def _check_auxiliary_path(value: Any, label: str) -> None:
+    if isinstance(value, str) and "\x00" in value:
+        raise SearchEvaluationError(f"{label} path contains a null character")
+
+
+def _auxiliary_existing_file(root: Path, value: Any, label: str) -> Path:
+    _check_auxiliary_path(value, label)
+    try:
+        return _confined_existing_file(root, value, label)
+    except RuntimeError as error:
+        if (type(error) is RuntimeError
+                and isinstance(error.__context__, OSError)
+                and error.__context__.errno == errno.ELOOP):
+            raise SearchEvaluationError(f"{label} path contains a symbolic link loop") from error
+        raise
+
+
+def _original_protocol(root: Path, observation: dict[str, Any], protocol: dict[str, Any]) -> dict[str, Any]:
+    ref = observation["protocol"]
+    path = _confined_existing_file(root, ref["path"], "original protocol")
+    try:
+        original = json.loads(path.read_bytes())
+        valid = normalize_search_protocol(original) == original
+    except Exception as error:
+        raise SearchEvaluationError(f"invalid original protocol: {path}") from error
+    if not valid or any(original[k] != ref[k] for k in ("protocol_id", "protocol_checksum")):
+        raise SearchEvaluationError("original protocol identity mismatch")
+    if original["search_execution"] != protocol["search_execution"]:
+        raise SearchEvaluationError("original protocol search execution mismatch")
+    return original
+
+
+def _single_invocation(
+    root: Path, protocol: dict[str, Any], documents: list[tuple[Path, dict[str, Any]]],
+    checksums: dict[Path, str],
+) -> tuple[dict[str, Any] | None, str]:
+    """The runner's existing terminal Manifest, not run_id, establishes membership."""
+    if len({d["run_id"] for _, d in documents}) != 1:
+        return None, "multiple search invocations; no cross-invocation aggregation"
+    run_id = documents[0][1]["run_id"]
+    relative = f"manifests/{run_id}.json"
+    candidate = root / relative
+    try:
+        if not candidate.is_file():
+            return None, "search manifest unavailable; invocation membership unverified"
+        reference = {"path": relative, "sha256": _sha256(candidate)}
+        manifest = _bound_json(root, reference, "search manifest", manifest=True)
+        execution = protocol["search_execution"]
+        params = manifest["parameters"]
+        expected_impl = {"implementation_id": execution["implementation"]["implementation_id"], "implementation_version": execution["implementation"]["version"]}
+        if (manifest["stage"] != "search" or manifest["run_id"] != run_id
+                or manifest["status"] not in {"SUCCEEDED", "FAILED", "CANCELLED"}
+                or manifest["implementation"] != expected_impl
+                or manifest["source"] != _PINNED_DISKANN_SOURCE
+                or params.get("search_execution_checksum") != protocol["search_execution_checksum"]
+                or params.get("search_execution") != execution
+                or manifest["resource_budget"]["thread_budget"] != execution["thread_count"]
+                or manifest["input_artifacts"] != [execution[k] for k in ("dataset_artifact", "global_graph_artifact", "pq_artifact", "disk_layout_artifact")]):
+            return None, "search manifest identity/controls do not establish this invocation"
+        references = params.get("observation_references", [])
+        if not isinstance(references, list) or any(
+            not isinstance(r, dict) or set(r) != {"path", "sha256"}
+            or not isinstance(r["path"], str) or not isinstance(r["sha256"], str)
+            for r in references
+        ):
+            raise SearchEvaluationError("invalid search manifest observation references")
+        if len({r["path"] for r in references}) != len(references):
+            raise SearchEvaluationError("duplicate search manifest observation references")
+        for path, document in documents:
+            original = document["protocol"]
+            if any(params.get(k) != original[k] for k in ("protocol_id", "protocol_checksum")):
+                return None, "search manifest does not bind every original protocol"
+            # Evaluation may read an immutable copy; verify the producer's original too.
+            matches = [r for r in references if r["sha256"] == checksums[path]]
+            if len(matches) != 1:
+                return None, "search manifest does not bind every observation checksum"
+            _bound_json(root, matches[0], "search manifest observation")
+        return {"search_manifest": reference, "search_execution_checksum": protocol["search_execution_checksum"], "run_id": run_id}, "verified single search invocation"
+    except (OSError, SearchEvaluationError) as error:
+        if getattr(error, "_unexpected_bound_json_error", False):
+            raise
+        return None, f"search manifest unavailable; invocation membership unverified: {error}"
+
+
+def _environment_limits(environments: list[dict[str, Any]]) -> tuple[list[str], bool]:
+    # These are recorded facts only. No platform probing or inferred hardware equality.
+    ignored = {"performance_admitted", "performance_classification"}
+    facts: dict[str, list[Any]] = {}
+    for environment in environments:
+        for key, value in environment.items():
+            if key not in ignored and value is not None and value != "unknown":
+                facts.setdefault(key, []).append(value)
+    conflicts = sorted(key for key, values in facts.items() if any(v != values[0] for v in values[1:]))
+    unknown = [key for key in ("hardware", "storage", "filesystem", "container", "resource_limits", "load")
+               if any(not env.get(key) or env.get(key) == "unknown" for env in environments)]
+    limits = ["Descriptive summary of this verified invocation only; no cross-invocation or hardware equivalence inferred."]
+    if unknown:
+        limits.append("Environment facts unknown or incomplete: " + ", ".join(unknown))
+    if conflicts:
+        limits.append("Conflicting recorded environment conditions: " + ", ".join(conflicts))
+    return limits, bool(conflicts)
+
+
+def _parity_findings(
+    root: Path, protocol: dict[str, Any], documents: list[tuple[Path, dict[str, Any]]],
+    checksums: dict[Path, str], invocation: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[Path, dict[str, str]]]:
+    default = {"assessment": "NOT_VERIFIED", "reason": "Search Runner Parity not reached"}
+    findings = {path: dict(default) for path, _ in documents}
+    execution = protocol["search_execution"]
+    relative = f"reports/search-parity/{execution['execution_id']}.json"
+    path = root / relative
+    summary: dict[str, Any] = {"result": "INVALID_EVIDENCE", **default, "recall_scope": "original_ground_truth_only"}
+    try:
+        if not path.exists():
+            summary["result"] = "MISSING"
+            return summary, findings
+        ref = {"path": relative, "sha256": _sha256(path)}
+        summary["evidence"] = ref
+        evidence = _bound_json(root, ref, "Parity evidence")
+        result = evidence.get("result")
+        if not isinstance(result, str) or result not in {"PASS", "FAIL", "NOT_REACHED"}:
+            raise SearchEvaluationError("invalid Parity result")
+        summary["result"] = result
+        if result == "PASS" and evidence.get("instrumented_exit_code") != 0:
+            raise SearchEvaluationError("Parity PASS has no successful instrumented invocation")
+        controls = evidence.get("controls")
+        if controls is not None:
+            expected = {"search_execution_checksum": protocol["search_execution_checksum"], **{k: execution[k] for k in ("K", "beamwidth", "thread_count", "cache", "io_limit", "warmup_policy")}}
+            if controls != expected:
+                raise SearchEvaluationError("Parity search execution/control identity mismatch")
+        if result == "NOT_REACHED":
+            return summary, findings
+        points = evidence.get("points")
+        # The existing preparation-failure record has exit=0 and no comparison points.
+        # A verified successful search Manifest establishes that measured search ran;
+        # no result/measurement comparison exists here. Never inspect reason text.
+        if result == "FAIL" and points == [] and evidence.get("instrumented_exit_code") == 0 and invocation:
+            reason = "Parity incomplete: instrumented search retained; no oracle comparison points"
+            summary.update(assessment="NOT_VERIFIED", reason=reason)
+            return summary, {p: {"assessment": "NOT_VERIFIED", "reason": reason} for p, _ in documents}
+        if not isinstance(points, list) or not controls:
+            if points and isinstance(points, list):
+                raise SearchEvaluationError("Parity points lack execution binding")
+            if result == "PASS":
+                raise SearchEvaluationError("Parity PASS lacks bound structured evidence")
+            reason = "unresolved Parity FAIL: comparison evidence insufficient"
+            summary.update(assessment="UNRESOLVED", reason=reason)
+            return summary, {p: {"assessment": "UNRESOLVED", "reason": reason} for p, _ in documents}
+        build = execution["runner_build"]
+        build_manifest = _bound_json(root, {"path": build["build_manifest_path"], "sha256": build["build_manifest_sha256"]}, "runner build manifest", manifest=True)
+        build_source = build_manifest["source"]
+        bp = build_manifest["parameters"]
+        if not isinstance(bp.get("runner_binary", {}), dict):
+            raise SearchEvaluationError("invalid Parity runner binary reference")
+        if (build_manifest["status"] != "SUCCEEDED"
+                or any(build_source.get(k) != build["project_" + k] for k in ("repository", "branch", "commit"))
+                or build_source["dirty_worktree"] != build["project_dirty"]
+                or bp.get("runner_binary", {}).get("sha256", bp.get("binary_sha256")) != build["binary_sha256"]
+                or bp.get("diskann_source") != _PINNED_DISKANN_SOURCE):
+            raise SearchEvaluationError("Parity runner/build identity mismatch")
+    except (OSError, SearchEvaluationError) as error:
+        if getattr(error, "_unexpected_bound_json_error", False):
+            raise
+        reason = f"Parity evidence unavailable: {error}"
+        summary.update(assessment="UNRESOLVED", reason=reason)
+        return summary, {p: {"assessment": "UNRESOLVED", "reason": reason} for p, _ in documents}
+    by_slot = {(d["raw_search_point"]["L_search"], d["raw_search_point"]["repetition_index"]): (p, d) for p, d in documents}
+    seen: set[tuple[int, int]] = set()
+    unscoped_reason = None
+    for point in points:
+        observation_path = None
+        try:
+            if not isinstance(point, dict):
+                raise SearchEvaluationError("invalid Parity point")
+            slot = (point.get("L_search"), point.get("repetition_index"))
+            if any(type(value) is not int for value in slot) or slot not in by_slot or slot in seen:
+                raise SearchEvaluationError("Parity undeclared/duplicate point")
+            seen.add(slot)
+            observation_path, observation = by_slot[slot]
+            # Core admission already validated the original protocol before this helper.
+            original = observation["protocol"]
+            oracle_ref = {"path": point.get("oracle_manifest_path"), "sha256": point.get("oracle_manifest_sha256")}
+            oracle = _bound_json(root, oracle_ref, "oracle manifest", manifest=True)
+            params = oracle["parameters"]
+            if (oracle["stage"] != "search" or oracle["source"] != _PINNED_DISKANN_SOURCE
+                    or oracle["implementation"] != {"implementation_id": "cpp_main_search_disk_index_oracle_v1", "implementation_version": "1.0.0"}
+                    or params.get("search_execution_checksum") != protocol["search_execution_checksum"]
+                    or params.get("protocol_checksum") != original["protocol_checksum"]
+                    or params.get("protocol_id") != original["protocol_id"]
+                    or oracle["run_id"] != f"{execution['execution_id']}-oracle-L{slot[0]}-r{slot[1]}"
+                    or oracle["toolchain"] != build_manifest["toolchain"]
+                    or oracle["resource_budget"]["thread_budget"] != execution["thread_count"]
+                    or oracle["input_artifacts"] != [execution[k] for k in ("dataset_artifact", "global_graph_artifact", "pq_artifact", "disk_layout_artifact")]):
+                raise SearchEvaluationError("Parity oracle manifest binding mismatch")
+            argv = params.get("argv", [])
+            expected_args = {"--recall_at": "100", "--search_list": str(slot[0]), "--beamwidth": "2",
+                             "--num_threads": "6", "--num_nodes_to_cache": str(execution["cache"]["requested_nodes"]),
+                             "--search_io_limit": str(execution["io_limit"])}
+            if not isinstance(argv, list) or any(argv.count(k) != 1 or argv.index(k) + 1 >= len(argv) or argv[argv.index(k) + 1] != v for k, v in expected_args.items()):
+                raise SearchEvaluationError("Parity oracle control binding mismatch")
+            for name in ("stdout", "stderr"):
+                ref = params.get(name, {})
+                if not isinstance(ref, dict):
+                    raise SearchEvaluationError(f"invalid oracle {name} reference")
+                evidence_file = _auxiliary_existing_file(root, ref.get("path"), f"oracle {name}")
+                if _sha256(evidence_file) != ref.get("sha256"):
+                    raise SearchEvaluationError(f"oracle {name} checksum mismatch")
+            output_refs = params.get("result_files")
+            if not isinstance(output_refs, list):
+                raise SearchEvaluationError("oracle result references invalid")
+            for ref in output_refs:
+                if not isinstance(ref, dict):
+                    raise SearchEvaluationError("invalid oracle result reference")
+                output_file = _auxiliary_existing_file(root, ref.get("path"), "oracle result")
+                if _sha256(output_file) != ref.get("sha256") or output_file.stat().st_size != ref.get("byte_length"):
+                    raise SearchEvaluationError("oracle result checksum/length mismatch")
+            if not isinstance(point.get("result"), str) or point["result"] not in {"PASS", "FAIL"}:
+                raise SearchEvaluationError("invalid Parity point result")
+            # A structured process failure means the oracle never formed a comparison.
+            if (point["result"] == "FAIL" and oracle["status"] == "FAILED"
+                    and oracle.get("failure", {}).get("category") == "process_failed"
+                    and type(oracle.get("failure", {}).get("exit_code")) is int
+                    and oracle["failure"]["exit_code"] != 0
+                    and "observation_sha256" not in point):
+                findings[observation_path] = {"assessment": "NOT_VERIFIED", "reason": "Parity incomplete: oracle process failed before comparison"}
+                continue
+            if point["result"] == "FAIL" and oracle["status"] == "SUCCEEDED" and len(output_refs) != 2 and "observation_sha256" not in point:
+                findings[observation_path] = {"assessment": "NOT_VERIFIED", "reason": "Parity incomplete: oracle result files not produced"}
+                continue
+            if "observation_sha256" not in point:
+                findings[observation_path] = {"assessment": "UNRESOLVED", "reason": "Parity FAIL without a complete comparison"}
+                if point["result"] == "PASS":
+                    raise SearchEvaluationError("Parity PASS lacks observation binding")
+                continue
+            if point["observation_sha256"] != checksums[observation_path]:
+                raise SearchEvaluationError("Parity observation checksum mismatch")
+            _bound_json(root, {"path": point.get("observation_path"), "sha256": point["observation_sha256"]}, "Parity observation")
+            checks = {"ordered_ids_equal": True, "distances_within_tolerance": True, "mean_ios_equal": True,
+                      "query_stats_mapping": "total_us_and_n_ios_direct", "qps_formula": "query_count/canonical_batch_wall_clock_seconds",
+                      "latency_formula": "pinned_QueryStats_total_us", "timing_boundary": execution["timing_boundary"], "persistence_outside_timing": True}
+            if any(key in point and type(point[key]) is not type(expected) for key, expected in checks.items()):
+                raise SearchEvaluationError("invalid Parity comparison field type")
+            wrong = [key for key, expected in checks.items() if key in point and point[key] != expected]
+            missing = [key for key in checks if key not in point]
+            if oracle["status"] != "SUCCEEDED":
+                raise SearchEvaluationError("Parity comparison references unsuccessful oracle")
+            if len(output_refs) != 2:
+                raise SearchEvaluationError("Parity comparison lacks oracle result files")
+            if wrong:
+                findings[observation_path] = {"assessment": "ERROR", "reason": "Parity detected semantic error: " + ", ".join(wrong)}
+            elif missing or point["result"] != "PASS":
+                findings[observation_path] = {"assessment": "UNRESOLVED", "reason": "Parity comparison unresolved; original GroundTruth Recall is not re-certified"}
+            else:
+                findings[observation_path] = {"assessment": "PASS", "reason": "execution/observation-bound search semantics parity; Recall applies only to original GroundTruth"}
+        except (OSError, SearchEvaluationError) as error:
+            if getattr(error, "_unexpected_bound_json_error", False):
+                raise
+            reason = f"Parity evidence unavailable: {error}"
+            if observation_path is None:
+                unscoped_reason = reason
+            else:
+                findings[observation_path] = {"assessment": "UNRESOLVED", "reason": reason}
+    for slot in by_slot.keys() - seen:
+        observation_path, _ = by_slot[slot]
+        findings[observation_path] = {
+            "assessment": "UNRESOLVED",
+            "reason": f"Parity {result} has no comparison evidence for this point",
+        }
+    if result == "FAIL" and all(f["assessment"] == "PASS" for f in findings.values()):
+        unscoped_reason = "Parity overall FAIL contradicts all point-level PASS results"
+    if result == "PASS":
+        for finding in findings.values():
+            if finding["assessment"] == "NOT_VERIFIED":
+                finding.update(assessment="UNRESOLVED", reason="Parity overall PASS contradicts incomplete comparison")
+    if unscoped_reason:
+        # Missing scope must withhold aggregation without undoing proven errors.
+        for finding in findings.values():
+            if finding["assessment"] != "ERROR":
+                finding.update(assessment="UNRESOLVED", reason=unscoped_reason)
+    states = {f["assessment"] for f in findings.values()}
+    summary.update(assessment=next(iter(states)) if len(states) == 1 else "MIXED", reason="See per-observation parity applicability; no cross-execution PASS reuse")
+    return summary, findings
+
+
 def _evaluate_observation_directory(
     *, protocol_path: str | Path, observations_path: str | Path,
-    workspace: str | Path,
+    workspace: str | Path, provenance: dict[str, Any],
 ) -> dict[str, Any]:
     """Offline-only evaluator; never invokes the C++ runner or SSD search."""
     root = Path(workspace).resolve()
@@ -866,6 +1212,7 @@ def _evaluate_observation_directory(
     if normalized != protocol:
         raise SearchEvaluationError("frozen SearchProtocol checksum/identity mismatch")
     execution = protocol["search_execution"]
+    v2 = protocol["protocol_version"] == "1.1.0"
     truth_ref = protocol["evaluation"]["ground_truth"]
     ground_truth, ground_truth_distances = _load_evaluation_ground_truth(root, protocol)
     observation_dir = Path(observations_path).resolve()
@@ -883,6 +1230,16 @@ def _evaluate_observation_directory(
         raise SearchEvaluationError("no SearchObservation was supplied")
     validator = _feature_validator("search-observation.schema.json")
     admitted = _admit_observation_set(protocol, documents, validator)
+    participating = [(p, d) for p, d in documents if p in admitted]
+    for _, document in participating:
+        if v2 or document["protocol"]["protocol_checksum"] != protocol["protocol_checksum"]:
+            _original_protocol(root, document, protocol)
+    invocation, aggregation_reason = (None, "legacy performance admission")
+    parity_summary: dict[str, Any] = {}
+    parity_findings: dict[Path, dict[str, str]] = {}
+    if v2:
+        invocation, aggregation_reason = _single_invocation(root, protocol, participating, file_checksums)
+        parity_summary, parity_findings = _parity_findings(root, protocol, participating, file_checksums, invocation)
 
     results: list[dict[str, Any]] = []
     display: list[dict[str, Any]] = []
@@ -890,6 +1247,7 @@ def _evaluate_observation_directory(
     performance_groups: dict[tuple[str, int], list[dict[str, float]]] = {}
     environment_path = None
     environment_sha = None
+    environments: dict[str, dict[str, Any]] = {}
     for path, document in documents:
         point = document["raw_search_point"]
         cache_mode = point["cache"]["mode"]
@@ -901,6 +1259,9 @@ def _evaluate_observation_directory(
             execution=execution,
         )
         relative = path.relative_to(root).as_posix()
+        parity = parity_findings.get(path, {"assessment": "NOT_VERIFIED", "reason": "observation excluded before parity use"})
+        if v2 and exclusion_reason is None and parity["assessment"] == "ERROR":
+            exclusion_reason = parity["reason"]
         if exclusion_reason is not None:
             result = audit_excluded_observation(
                 observation_id=document["observation_id"],
@@ -908,13 +1269,17 @@ def _evaluate_observation_directory(
                 status=point["status"], reason=exclusion_reason,
             )
             result.update({"cache_mode": cache_mode, "L_search": l_search, "repetition_index": repetition})
+            if v2:
+                result["performance_valid"] = result.pop("performance_eligible")
+                result["performance_validity_reason"] = result.pop("performance_eligibility_reason")
+                result.update(original_protocol=document["protocol"], parity=parity)
             results.append(result)
             continue
         environment_path = document["environment"]["fingerprint_path"]
         actual_environment, environment_sha = _verified_observation_environment(
             root, document["environment"], path,
         )
-        performance_admitted = bool(actual_environment.get("performance_admitted", False))
+        performance_admitted = not v2 and bool(actual_environment.get("performance_admitted", False))
         raw = {
             "status": point["status"], "query_count": point["query_count"],
             "completed_query_count": point["completed_query_count"],
@@ -944,13 +1309,24 @@ def _evaluate_observation_directory(
             performance_groups.setdefault((cache_mode, l_search), []).append(
                 evaluated["display_metrics"]
             )
+        if v2:
+            result.pop("performance_eligible")
+            result.pop("performance_eligibility_reason")
+            result.update(
+                performance_valid=True, performance_validity_reason="complete valid measurement under recorded runtime conditions",
+                performance_metrics=evaluated["display_metrics"], environment=document["environment"],
+                original_protocol=document["protocol"], parity=parity,
+            )
+            environments[relative] = actual_environment
         quality_groups.setdefault((cache_mode, l_search), []).append(
             evaluated["quality_metrics"]
         )
-        display.append(
-            {"observation_id": document["observation_id"], **evaluated["display_metrics"],
-             "classification": "formal" if performance_admitted else "informational_non_formal"}
-        )
+        displayed = {"observation_id": document["observation_id"], **evaluated["display_metrics"]}
+        if v2:
+            displayed["performance_valid"] = True
+        else:
+            displayed["classification"] = "formal" if performance_admitted else "informational_non_formal"
+        display.append(displayed)
         results.append(result)
 
     quality_aggregates = []
@@ -973,11 +1349,31 @@ def _evaluate_observation_directory(
                 for key in ("qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100")
             },
         })
+    if v2:
+        valid = [r for r in results if r["performance_valid"]]
+        limits, conflict = _environment_limits([environments[r["path"]] for r in valid])
+        if conflict:
+            aggregation_reason = limits[-1]
+        elif invocation is not None:
+            aggregation_reason = "single-invocation descriptive aggregation; see scope limitations"
+            for cache_mode, l_search in sorted({(r["cache_mode"], r["L_search"]) for r in valid}):
+                members = [r for r in valid if (r["cache_mode"], r["L_search"]) == (cache_mode, l_search)]
+                if any(r["parity"]["assessment"] == "UNRESOLVED" for r in members):
+                    aggregation_reason = "unresolved Parity evidence prevents affected performance aggregation; see per-observation reasons"
+                    continue
+                performance_aggregates.append({
+                    "cache_mode": cache_mode, "L_search": l_search, "eligible_count": len(members), "aggregation": "median_eligible",
+                    "median_performance_metrics": {k: _median([r["performance_metrics"][k] for r in members]) for k in members[0]["performance_metrics"]},
+                    "scope": {**invocation, "members": [{k: r[k] for k in ("observation_id", "path", "sha256")} for r in members],
+                              "environments": list({json.dumps(r["environment"], sort_keys=True): r["environment"] for r in members}.values()), "limitations": limits},
+                })
     if environment_path is None or environment_sha is None:
         raise SearchEvaluationError("no complete valid observation is eligible for a report")
 
     parity_path = root / "reports" / "search-parity" / f"{execution['execution_id']}.json"
-    if parity_path.exists():
+    if v2:
+        parity = parity_summary
+    elif parity_path.exists():
         parity = json.loads(parity_path.read_text(encoding="utf-8"))
     else:
         parity = {"result": "NOT_REACHED", "reason": "actual Search Runner Parity pending"}
@@ -987,10 +1383,10 @@ def _evaluate_observation_directory(
     if not non_reexecution_path.exists():
         write_immutable_json(non_reexecution_path, non_reexecution)
     report = {
-        "report_version": "search-evaluation-report/v1",
+        "report_version": "search-evaluation-report/v2" if v2 else "search-evaluation-report/v1",
         "report_id": f"{protocol['protocol_id']}-evaluation",
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "evaluator": {"implementation_id": "cpp_main_search_metrics_evaluator_v1", "version": "1.0.0", "reproduction_mode": "instrumented"},
+        "evaluator": protocol["evaluation"]["evaluator"],
         "diskann_source_mapping": {"repository": "https://github.com/microsoft/DiskANN.git", "branch": "cpp_main", "commit": "78256bbab4685e1774e78d331e081a153be26823", "research_path": "specs/005-diskann-search-evaluation/research.md"},
         "protocol": {"path": protocol_file.relative_to(root).as_posix(), "protocol_id": protocol["protocol_id"], "protocol_checksum": protocol["protocol_checksum"]},
         "search_execution": {"execution_id": execution["execution_id"], "canonical_checksum": protocol["search_execution_checksum"]},
@@ -1001,13 +1397,17 @@ def _evaluate_observation_directory(
         "entry_policy": "end_to_end",
         "graph_baseline_context": {"graph_structural_parity_gate": "NOT_REACHED", "framework_state": "candidate", "search_runner_parity_is_graph_parity": False, "final_baseline_certified": False},
         "environment_fingerprint": {"path": environment_path, "sha256": environment_sha},
-        "search_runner_parity": {"evidence_path": parity_path.relative_to(root).as_posix(), "evidence_sha256": _sha256(parity_path), "result": parity["result"]},
+        "search_runner_parity": parity_summary if v2 else {"evidence_path": parity_path.relative_to(root).as_posix(), "evidence_sha256": _sha256(parity_path), "result": parity["result"]},
         "non_reexecution_evidence": {**{key: non_reexecution[key] for key in ("partition_invoked", "local_build_invoked", "merge_invoked")}, "evidence_path": non_reexecution_path.relative_to(root).as_posix(), "evidence_sha256": _sha256(non_reexecution_path)},
         "observation_results": results,
         "aggregates": {"quality": quality_aggregates, "performance": performance_aggregates},
     }
+    if v2:
+        report.pop("environment_fingerprint")
+        report.update(evaluator_provenance=provenance, performance_aggregation_reason=aggregation_reason,
+                      evaluation_policy=protocol["evaluation"]["performance_eligibility_policy"])
     report["report_checksum"] = _canonical_digest(report)
-    errors = list(_feature_validator("search-evaluation-report.schema.json").iter_errors(report))
+    errors = list(report_validator(report).iter_errors(report))
     if errors:
         raise SearchEvaluationError(f"SearchEvaluationReport is invalid: {errors[0].message}")
     report_path = root / "reports" / "search-evaluation" / f"{report['report_id']}.json"
@@ -1019,6 +1419,7 @@ def _evaluation_manifest(
     *, protocol: dict[str, Any], workspace: Path, started_at: str,
     ended_at: str, status: str, report_path: Path | None,
     observation_root: Path,
+    provenance: dict[str, Any],
     failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     execution = protocol["search_execution"]
@@ -1052,6 +1453,8 @@ def _evaluation_manifest(
             )
         },
         "observation_paths": observations,
+        "evaluator_provenance": provenance,
+        "search_runner_build": runner_build,
     }
     if report_path is not None:
         parameters["output_reference"] = {
@@ -1063,15 +1466,10 @@ def _evaluation_manifest(
         "run_id": f"{protocol['protocol_id']}-evaluation",
         "stage": "evaluate",
         "implementation": {
-            "implementation_id": "cpp_main_search_metrics_evaluator_v1",
-            "implementation_version": "1.0.0",
+            "implementation_id": protocol["evaluation"]["evaluator"]["implementation_id"],
+            "implementation_version": protocol["evaluation"]["evaluator"]["version"],
         },
-        "source": {
-            "repository": runner_build["project_repository"],
-            "branch": runner_build["project_branch"],
-            "commit": runner_build["project_commit"],
-            "dirty_worktree": runner_build["project_dirty"],
-        },
+        "source": provenance["source"],
         "toolchain": {
             "os": platform.platform(),
             "compiler_path": sys.executable,
@@ -1124,6 +1522,7 @@ def evaluate_observation_directory(
     root = Path(workspace).resolve()
     observation_root = Path(observations_path).resolve()
     protocol = json.loads(Path(protocol_path).read_text(encoding="utf-8"))
+    provenance = _evaluator_provenance()
     manifest_path = (
         root / "manifests" / f"{protocol['protocol_id']}-evaluation.json"
     )
@@ -1132,6 +1531,7 @@ def evaluate_observation_directory(
             protocol_path=protocol_path,
             observations_path=observations_path,
             workspace=workspace,
+            provenance=provenance,
         )
         ended_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         manifest = _evaluation_manifest(
@@ -1139,6 +1539,7 @@ def evaluate_observation_directory(
             ended_at=ended_at, status="SUCCEEDED",
             report_path=Path(result["report_path"]),
             observation_root=observation_root,
+            provenance=provenance,
         )
         write_immutable_json(manifest_path, manifest)
         result["build_manifest_path"] = str(manifest_path)
@@ -1151,6 +1552,7 @@ def evaluate_observation_directory(
                     protocol=protocol, workspace=root, started_at=started_at,
                     ended_at=ended_at, status="FAILED", report_path=None,
                     observation_root=observation_root,
+                    provenance=provenance,
                     failure={"category": "evaluation_failed", "reason": str(error)},
                 )
                 write_immutable_json(manifest_path, manifest)

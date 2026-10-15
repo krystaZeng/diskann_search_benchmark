@@ -136,10 +136,42 @@ def test_feature_005_local_schemas_are_valid_but_not_public_artifacts() -> None:
         "search-protocol.schema.json",
         "search-observation.schema.json",
         "search-evaluation-report.schema.json",
+        "search-evaluation-report-v2.schema.json",
     ):
         schema = json.loads((FEATURE_005_SCHEMAS / name).read_text(encoding="utf-8"))
         Draft202012Validator.check_schema(schema)
         assert name not in {path.name for path in RUNTIME_SCHEMAS.glob("*.json")}
+
+
+def test_search_report_versions_keep_distinct_semantics() -> None:
+    from diskann_harness import diskann_search_evaluation as search
+    old = search.report_validator({"report_version": "search-evaluation-report/v1"}).schema
+    new = search.report_validator({"report_version": "search-evaluation-report/v2"}).schema
+    assert "performance_eligible" in old["$defs"]["observationResult"]["required"]
+    assert "performance_valid" in new["$defs"]["observationResult"]["required"]
+    assert "performance_metric_classification" not in new["$defs"]["observationResult"]["properties"]
+    assert "scope" in new["$defs"]["performanceAggregate"]["required"]
+    with pytest.raises(search.SearchEvaluationError, match="unknown"):
+        search.report_validator({"report_version": "search-evaluation-report/v3"})
+    validator = Draft202012Validator(new["properties"]["evaluator"])
+    validator.validate({"implementation_id": "cpp_main_search_metrics_evaluator_v2", "version": "2.0.0", "reproduction_mode": "instrumented"})
+    with pytest.raises(ValidationError):
+        validator.validate({"implementation_id": "cpp_main_search_metrics_evaluator_v1", "version": "1.0.0", "reproduction_mode": "instrumented"})
+
+
+def test_v2_parity_invalid_evidence_is_distinct_from_missing_or_pass() -> None:
+    schema = json.loads((FEATURE_005_SCHEMAS / "search-evaluation-report-v2.schema.json").read_text())
+    validator = Draft202012Validator(schema["properties"]["search_runner_parity"])
+    document = {
+        "result": "INVALID_EVIDENCE", "assessment": "UNRESOLVED",
+        "reason": "Parity report cannot be parsed", "recall_scope": "original_ground_truth_only",
+    }
+    validator.validate(document)
+    with pytest.raises(ValidationError):
+        validator.validate({**document, "result": "UNKNOWN"})
+    legacy = json.loads((FEATURE_005_SCHEMAS / "search-evaluation-report.schema.json").read_text())
+    with pytest.raises(ValidationError):
+        Draft202012Validator(legacy["properties"]["search_runner_parity"]).validate(document)
 
 
 def test_feature_006_design_schemas_are_strict_draft_2020_12() -> None:

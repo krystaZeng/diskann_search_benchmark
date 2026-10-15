@@ -2086,6 +2086,7 @@ def _feature005_two_graph_fixture(
     *,
     framework_missed_rows: int = 1,
     invalidate_framework: tuple[int, int] | None = None,
+    evaluation_revision: str = "1.0.0",
 ) -> dict[str, object]:
     workspace = tmp_path / "quality-workspace"
     workspace.mkdir()
@@ -2200,6 +2201,14 @@ def _feature005_two_graph_fixture(
             )
             for cache in ("zero", "fixed_bfs")
         ]
+        if evaluation_revision == "1.1.0":
+            for declaration in declarations:
+                declaration["protocol_version"] = evaluation_revision
+                declaration["evaluation"]["evaluator"] = {
+                    "implementation_id": "cpp_main_search_metrics_evaluator_v2",
+                    "version": "2.0.0", "reproduction_mode": "instrumented",
+                }
+                declaration["evaluation"]["performance_eligibility_policy"] = "complete_valid_measurement_single_invocation_v2"
         config = {
             "mode": "formal-search",
             "fixture_mode": True,
@@ -2359,6 +2368,37 @@ def test_two_graph_fixture_uses_feature005_preflight_and_evaluator_for_all_four_
         for group in evidence["groups"]
         for finding in group["metric_findings"]
     )
+    assert "performance" not in json.dumps(evidence)
+
+
+@pytest.mark.parametrize("case", ["v2", "performance_changed", "old_policy", "unknown_report"])
+def test_quality_consumer_v2_is_explicit_and_quality_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+    fixture = _feature005_two_graph_fixture(tmp_path, monkeypatch, evaluation_revision="1.1.0")
+    workspace = fixture["workspace"]
+    freeze = workspace / "freeze-v2.json"; freeze.write_text(json.dumps(_freeze_input(fixture)))
+    policy_path = workspace / "policy-v2.json"
+    fbc.freeze_quality_policy(freeze, policy_path, repository_root=REPOSITORY_ROOT)
+    if case == "old_policy":
+        policy = json.loads(policy_path.read_text())
+        policy["evaluator"] = {"implementation_id": "cpp_main_search_metrics_evaluator_v1", "version": "1.0.0", "reproduction_mode": "instrumented"}
+        policy["policy_checksum"] = fbc.canonical_document_checksum(policy, "policy_checksum")
+        policy_path.write_text(json.dumps(policy))
+    for role, paths in fixture["report_paths"].items():
+        for path in paths.values():
+            report = json.loads(path.read_text())
+            assert report["report_version"] == "search-evaluation-report/v2"
+            if case == "performance_changed":
+                for result in report["observation_results"]:
+                    result["performance_metrics"] = {key: 9999999.0 for key in result["performance_metrics"]}
+            elif case == "unknown_report" and role == "framework":
+                report["report_version"] = "search-evaluation-report/v999"
+            report["report_checksum"] = search._canonical_digest({k: v for k, v in report.items() if k != "report_checksum"})
+            path.write_text(json.dumps(report))
+    request = workspace / "compare-v2.json"; request.write_text(json.dumps(_comparison_input(fixture)))
+    output = workspace / "quality-v2.json"
+    result = fbc.compare_quality(policy_path, request, output, repository_root=REPOSITORY_ROOT)
+    assert result["result"] == ("INCONCLUSIVE" if case in {"old_policy", "unknown_report"} else "PASS")
+    evidence = json.loads(output.read_text())
     assert "performance" not in json.dumps(evidence)
 
 
