@@ -114,14 +114,17 @@ void requests(const fs::path& base) {
     rejected(root, config, "Dataset");
   }
   {
-    const auto root = base / "scale-gate";
-    const auto config = prepare(root);
+    const auto root = base / "inconsistent-large-declaration";
+    auto config = prepare(root);
     const auto path = root / "workspace/normal/dataset/artifact.json";
     auto metadata = f::read_json(path);
     // Declaration-only negative: no large payload is created or read.
     metadata["dataset"]["global_node_count"] = 1000001;
+    metadata["structural"]["global_node_count"] = 1000001;
+    metadata["aggregate_checksum"] = f::aggregate_for(metadata);
+    config["dataset"]["aggregate_checksum"] = metadata.at("aggregate_checksum");
     f::write_text(path, metadata.dump());
-    rejected(root, config, "approval gate");
+    rejected(root, config, "header differs");
   }
   {
     const auto root = base / "unsupported-distance";

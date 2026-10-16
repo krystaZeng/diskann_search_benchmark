@@ -3,20 +3,18 @@
 from __future__ import annotations
 
 import argparse
-import array
 import hashlib
 import json
 import math
-import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .manifests import ImmutableWriteError, write_immutable_json
+from . import native_dataset
+from .workspace import WorkspaceError
 
 
 PINNED_COMMIT = "78256bbab4685e1774e78d331e081a153be26823"
@@ -75,31 +73,10 @@ def _resolve_repository_path(value: str, repository_root: Path) -> Path:
 
 
 def _write_immutable_bytes(target: Path, source: Path) -> None:
-    if target.exists():
-        raise BaselineHarnessError(f"immutable target already exists: {target}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, name = tempfile.mkstemp(
-        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
-    )
-    temporary = Path(name)
     try:
-        with os.fdopen(descriptor, "wb") as output, source.open("rb") as input_file:
-            shutil.copyfileobj(input_file, output, length=8 * 1024 * 1024)
-            output.flush()
-            os.fsync(output.fileno())
-        try:
-            os.link(temporary, target)
-        except FileExistsError as error:
-            raise BaselineHarnessError(
-                f"immutable target already exists: {target}"
-            ) from error
-        except OSError as error:
-            raise BaselineHarnessError(
-                f"cannot publish immutable Dataset payload: {target}"
-            ) from error
-        target.chmod(0o444)
-    finally:
-        temporary.unlink(missing_ok=True)
+        native_dataset.write_immutable_bytes(target, source)
+    except native_dataset.NativeDatasetError as error:
+        raise BaselineHarnessError(str(error)) from error
 
 
 def normalize_profile(profile: dict[str, Any]) -> dict[str, Any]:
@@ -237,162 +214,36 @@ def _admit_source_build(repository_root: Path) -> dict[str, Any]:
 
 
 def _scan_dataset(source: Path, expected: dict[str, Any]) -> dict[str, Any]:
-    if not source.is_file():
-        raise BaselineHarnessError("SIFT1M Dataset is missing or not a regular file")
-    expected_bytes = int(expected["byte_length"])
-    if source.stat().st_size != expected_bytes:
-        raise BaselineHarnessError("SIFT1M Dataset byte length differs")
-    digest = hashlib.sha256()
-    non_finite = 0
-    value_count = 0
-    with source.open("rb") as input_file:
-        header = input_file.read(8)
-        digest.update(header)
-        if len(header) != 8:
-            raise BaselineHarnessError("SIFT1M Dataset header is truncated")
-        npts = int.from_bytes(header[:4], "little")
-        dimension = int.from_bytes(header[4:], "little")
-        if npts != expected["global_node_count"] or dimension != expected["vector_dimension"]:
-            raise BaselineHarnessError("SIFT1M Dataset header identity differs")
-        for block in iter(lambda: input_file.read(64 * 1024 * 1024), b""):
-            digest.update(block)
-            if len(block) % 4:
-                raise BaselineHarnessError("SIFT1M float32 payload is misaligned")
-            values = array.array("f")
-            values.frombytes(block)
-            if sys.byteorder != "little":
-                values.byteswap()
-            non_finite += sum(1 for value in values if not math.isfinite(value))
-            value_count += len(values)
-    if value_count != npts * dimension or non_finite != 0:
-        raise BaselineHarnessError("SIFT1M payload count or finiteness check failed")
-    checksum = digest.hexdigest()
-    if checksum != expected["checksum"] or checksum != DATASET_SHA256:
+    try:
+        facts = native_dataset.scan_dataset(source, expected, label="SIFT1M")
+    except native_dataset.NativeDatasetError as error:
+        raise BaselineHarnessError(str(error)) from error
+    if facts["sha256"] != DATASET_SHA256:
         raise BaselineHarnessError("SIFT1M Dataset SHA-256 differs")
-    return {
-        "npts": npts,
-        "dimension": dimension,
-        "byte_length": expected_bytes,
-        "sha256": checksum,
-        "non_finite_count": non_finite,
-        "value_count": value_count,
-    }
+    return facts
 
 
 def _dataset_identity_projection(
     dataset_checksum: str, structural: dict[str, Any], payload: dict[str, Any]
 ) -> dict[str, Any]:
-    return {
-        "schema_version": "1.0.0",
-        "canonicalization": "diskann-artifact-c14n-v1",
-        "artifact_type": "dataset",
-        "format_version": "diskann-float32-dataset/v1",
-        "dataset_checksum": dataset_checksum,
-        "id_space": "none",
-        "capabilities": ["dataset.diskann_float32_bin/v1"],
-        "payloads": [
-            {
-                "role": payload["role"],
-                "byte_length": payload["byte_length"],
-                "sha256": payload["sha256"],
-            }
-        ],
-        "source_artifacts": [],
-        "structural": structural,
-    }
+    return native_dataset.dataset_identity_projection(dataset_checksum, structural, payload)
 
 
 def _admit_dataset(
     repository_root: Path, workspace: Path, dataset: dict[str, Any]
 ) -> dict[str, Any]:
-    from .checksum import aggregate_checksum
-
+    # _load_profile retains the frozen request schema; the scanner additionally
+    # requires the pinned payload checksum. Public admission cannot bypass it.
     source = _resolve_repository_path(dataset["path"], repository_root)
     facts = _scan_dataset(source, dataset)
-    directory = workspace / "normal" / "datasets" / "sift1m"
-    destination = directory / "vectors.bin"
-    _write_immutable_bytes(destination, source)
-    destination_checksum = _sha256(destination)
-    if destination_checksum != facts["sha256"]:
-        raise BaselineHarnessError("admitted Dataset checksum differs from source")
-    dataset_identity = {
-        "dataset_id": dataset["dataset_id"],
-        "dataset_checksum": facts["sha256"],
-        "global_node_count": facts["npts"],
-        "vector_dimension": facts["dimension"],
-        "scalar_type": "float32",
-        "distance_metric": "l2",
-    }
-    structural = {
-        "global_node_count": facts["npts"],
-        "vector_dimension": facts["dimension"],
-        "scalar_type": "float32",
-        "distance_metric": "l2",
-    }
-    payload = {
-        "role": "vectors",
-        "path": "vectors.bin",
-        "media_type": NATIVE_DATASET_MEDIA,
-        "byte_length": facts["byte_length"],
-        "sha256": facts["sha256"],
-    }
-    projection = _dataset_identity_projection(
-        facts["sha256"], structural, payload
-    )
-    aggregate = aggregate_checksum(projection)
-    metadata = {
-        "schema_version": "1.0.0",
-        "canonicalization": "diskann-artifact-c14n-v1",
-        "artifact_type": "dataset",
-        "format_version": "diskann-float32-dataset/v1",
-        "dataset": dataset_identity,
-        "id_space": "none",
-        "structural": structural,
-        "capabilities": ["dataset.diskann_float32_bin/v1"],
-        "source_artifacts": [],
-        "payloads": [payload],
-        "aggregate_checksum": aggregate,
-    }
     try:
-        write_immutable_json(directory / "artifact.json", metadata)
-    except ImmutableWriteError as error:
+        return native_dataset.publish_dataset(
+            source, workspace, dataset["dataset_id"], facts,
+            repository_root=repository_root, directory="datasets/sift1m",
+            evidence_path="manifests/evidence/dataset-admission.json",
+        )
+    except (native_dataset.NativeDatasetError, ImmutableWriteError, WorkspaceError) as error:
         raise BaselineHarnessError(str(error)) from error
-    artifact_ref = {
-        "metadata_path": "datasets/sift1m/artifact.json",
-        "artifact_type": "dataset",
-        "format_version": "diskann-float32-dataset/v1",
-        "aggregate_checksum": aggregate,
-    }
-    evidence = {
-        "evidence_version": "1.0.0",
-        "validator_version": "1.0.0",
-        "artifact_candidate": {
-            "artifact_type": "dataset",
-            "format_version": "diskann-float32-dataset/v1",
-            "metadata_path": artifact_ref["metadata_path"],
-            "claimed_aggregate_checksum": aggregate,
-        },
-        "checks": [
-            {"check_id": "header", "passed": True, "message": "1000000x128 float32 header is valid"},
-            {"check_id": "byte_length", "passed": True, "message": "exact Dataset byte length is valid"},
-            {"check_id": "payload_checksum", "passed": True, "message": "source and admitted SHA-256 match"},
-            {"check_id": "finite_payload", "passed": True, "message": "all float32 payload values are finite"},
-        ],
-        "result": "VALID",
-    }
-    evidence_path = workspace / "manifests" / "evidence" / "dataset-admission.json"
-    try:
-        write_immutable_json(evidence_path, evidence)
-    except ImmutableWriteError as error:
-        raise BaselineHarnessError(str(error)) from error
-    return {
-        "artifact_ref": artifact_ref,
-        "validation_evidence_path": _repository_relative(evidence_path, workspace),
-        "source_sha256": facts["sha256"],
-        "destination_sha256": destination_checksum,
-        "non_finite_count": facts["non_finite_count"],
-        "facts": facts,
-    }
 
 
 def _sharded_admission(profile: dict[str, Any]) -> dict[str, Any]:

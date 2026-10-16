@@ -42,6 +42,56 @@ B0/B1 使用绑定已校验 Dataset 的原生向量访问器；距离服务明�
 
 ## 配置与执行
 
+### 准入已有原生数据
+
+现有 Harness 提供 `admit-dataset`，只读取已有的小端原生矩阵：两个 uint32 字段
+`N, dimension`，随后连续 `N × dimension` 个 IEEE-754 float32；距离语义为 L2。
+不接受原始 fvecs/bvecs，不下载或转换数据。声明文件为 JSON，例如下面的 **96×4 小数据**
+声明；文件必须真实存在且与声明一致：
+
+```json
+{
+  "path": "/absolute/path/small-vectors.bin",
+  "dataset_id": "my-small-native-v1",
+  "global_node_count": 96,
+  "vector_dimension": 4,
+  "scalar_type": "float32",
+  "distance_metric": "l2"
+}
+```
+
+可选字段为 `checksum`（预期小写 SHA-256）和 `byte_length`。省略 checksum 时仍完整计算
+并记录 SHA-256；提供时必须匹配。相对输入路径以仓库根（或 `--source-dir`）为基准且不得
+逃逸，绝对路径可指向已有外部数据。N 和维度必须与实际文件头一致；精确长度必须为
+`8 + 4*N*dimension`，所有数值必须有限。保留 uint32 头部和 uint64 长度范围检查。
+
+```sh
+.venv/bin/python -m diskann_harness.cli admit-dataset \
+  --config /absolute/path/dataset.json --workspace /absolute/path/workspace
+
+# 使用上述 JSON 输出中的 artifact_ref_path；该路径相对于 workspace。
+.venv/bin/python -m diskann_harness.cli validate \
+  --artifact-ref /absolute/path/workspace/manifests/dataset-admission/<identity>/artifact-ref.json \
+  --workspace /absolute/path/workspace \
+  --runner build/composition/src/cli/diskann_pipeline_runner
+```
+
+准入不启动流水线，不需要 `--runner`。输出继续使用 `diskann-float32-dataset/v1`：
+`normal/datasets/<identity>/` 保存不可覆盖的 payload 和 metadata；
+`manifests/dataset-admission/<identity>/` 保存独立 ArtifactRef、扫描校验记录及准入来源记录。
+来源记录包含输入路径、原声明、实际头部/长度、输入和发布副本的 SHA，以及准入模块源码 SHA。
+`<identity>` 由 dataset_id 和实际 payload SHA 派生，不取调用者给出的目录名。
+源文件不修改；复制后的 SHA 再次核对，输入不合法、路径越界或目标已存在时退出码为 2。
+发布不提供多文件事务或自动覆盖重试；中途 I/O 失败可保留已写入文件，需检查后选择新工作区。
+
+公共 `validate` 根据 Dataset 的明确格式/版本选择原生或 Fake 契约，未知版本拒绝；
+底层仍调用已有 C++ validator，包含原生文件校验，不仅是 JSON schema 校验。
+准入输出中的 `artifact_ref` 可直接填入组合配置的 `dataset`，并设置对应 workspace。
+流水线开始前仍会独立校验该 Artifact。原冻结 SIFT1M preflight 继续使用原 schema、固定
+checksum、路径和实验约束；这个公共命令不改变冻结入口的适用范围或认证结论。
+
+### 运行完整组合
+
 例子：[`p0-b0-m0.json`](../../experiments/configs/module-composition/p0-b0-m0.json) 和
 [`kmeans-b0-m1.json`](../../experiments/configs/module-composition/kmeans-b0-m1.json)。
 它们的 DatasetRef 对应现有 `NativeDatasetFixture` 的 96×4 float32 小数据，不能拿该
@@ -117,11 +167,21 @@ DiskANN 固定为 `https://github.com/microsoft/DiskANN.git`、`cpp_main`、
 `78256bbab4685e1774e78d331e081a153be26823`。M0 仍是映射、聚合、去重、随机打乱和截断，
 不是距离剪枝或连通性修复。
 
-新入口拒绝声明超过 1,000,000 节点的数据，随后仍完整校验 Artifact 和 native header。
-这是本入口的实验准入边界，不是算法容量结论，无大规模绕过参数。
+入口不再无条件拒绝超过 1,000,000 节点的数据；规模取自完整校验后的 Artifact 和原生文件头。
+这只是技术准入范围的调整。超过 SIFT1M 的实际任务仍须按 AGENTS.md 获得明确人工批准，
+配置存在或数据准入成功不代表运行许可；没有新增审批字段或绕过模块资源约束。
 只运行完整三阶段，不支持阶段停止、矩阵、批量调度、自动重试或动态插件。
+Partition 后会继续 Local Build、Merge 和原有结构评估，预算必须覆盖完整流程。
+例如 M1 的向量缓存需要 `4*N*dimension + N + 8*dimension` 字节，另需图和其他工作空间；
+不能把现有 1 GiB 小数据配置直接当作大数据预算。
 
-本轮小数据验收及实际证据见
+公共准入改动已使用真实 96×4 float32 数据验证 P0+B0+M0、KMeans+B0+M0、OGP+B0+M0，
+检查映射、产物、Manifest、独立校验及不可覆盖行为。P0 保持每点双副本，KMeans K=3
+实际为 3 块，OGP requested_num_clusters=4、overlap=0.2 实际为 5 块。
+本次未执行 SIFT1M 或 SIFT10M 流水线，不构成大规模或性能验证；OGP 固定源码的已知
+备用分桶疑点仍须独立核查，本次未复现、修复或修改固定源码。
+
+此前组合入口小数据验收及实际证据见
 [验证记录](../../experiments/reports/module-composition-small-20261014/verification.json)。
 96×4 float32 fixture 已通过新入口执行 P0+B0+M0、KMeans+B0+M0、OGP+B0+M0、
 KMeans+B0+M1、P0+B1+M0。KMeans 使用 K=3、迭代上限默认 15；OGP 使用

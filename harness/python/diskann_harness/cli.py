@@ -9,6 +9,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .config import ConfigurationError
+from .manifests import ImmutableWriteError
+from .native_dataset import CAPABILITY, FORMAT, NativeDatasetError, admit_dataset
 from .runner import RunnerError, build_project, execute_configuration, run_single_request
 from .workspace import WorkspaceError
 
@@ -44,7 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="diskann-harness")
     parser.add_argument(
         "operation",
-        choices=("build", "execute", "validate", "evaluate"),
+        choices=("build", "execute", "validate", "evaluate", "admit-dataset"),
         nargs="?",
         help="Lifecycle to execute.",
     )
@@ -76,6 +78,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(output)
             return 0
+        if args.operation == "admit-dataset":
+            if not args.config or not args.workspace:
+                raise RunnerError("admit-dataset requires --config and --workspace")
+            declaration = json.loads(Path(args.config).read_text(encoding="utf-8"))
+            result = admit_dataset(
+                declaration, args.workspace,
+                repository_root=Path(__file__).resolve().parents[3], source_dir=args.source_dir,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0
         if not args.workspace or not args.runner:
             raise RunnerError(f"{args.operation} requires --workspace and --runner")
         if args.operation == "execute":
@@ -90,10 +102,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not args.artifact_ref:
             raise RunnerError(f"{args.operation} requires --artifact-ref")
         artifact = json.loads(Path(args.artifact_ref).read_text(encoding="utf-8"))
+        if not isinstance(artifact, dict):
+            raise RunnerError("ArtifactRef must be an object")
         artifact_type = artifact.get("artifact_type")
-        if artifact_type not in CANONICAL_ARTIFACT_CONTRACTS:
+        if not isinstance(artifact_type, str) or artifact_type not in CANONICAL_ARTIFACT_CONTRACTS:
             raise RunnerError("unsupported Artifact type for Feature 001 lifecycle")
         contract = CANONICAL_ARTIFACT_CONTRACTS[artifact_type]
+        if artifact_type == "dataset":
+            if artifact.get("format_version") == FORMAT:
+                contract = {"format_version": FORMAT, "id_space": "none", "capabilities": [CAPABILITY]}
+            elif artifact.get("format_version") != contract["format_version"]:
+                raise RunnerError("unsupported Dataset format/version")
+        if not isinstance(artifact.get("aggregate_checksum"), str):
+            raise RunnerError("ArtifactRef requires aggregate_checksum")
         request: dict[str, object] = {
             "request_version": "1.0.0",
             "request_id": (
@@ -120,7 +141,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = run_single_request(request, args.workspace, args.runner)
         print(json.dumps(result, sort_keys=True))
         return int(result["exit_code"])
-    except (ConfigurationError, RunnerError, WorkspaceError, OSError, json.JSONDecodeError) as error:
+    except (ConfigurationError, RunnerError, WorkspaceError, NativeDatasetError,
+            ImmutableWriteError, OSError, json.JSONDecodeError) as error:
         print(str(error), file=sys.stderr)
         return 2
 

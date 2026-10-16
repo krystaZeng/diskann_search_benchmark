@@ -40,7 +40,7 @@ def test_workspace_normalization_and_confinement(tmp_path: Path) -> None:
 
 def test_all_harness_lifecycles_have_stable_argument_shapes() -> None:
     parser = build_parser()
-    for operation in ("build", "execute", "validate", "evaluate"):
+    for operation in ("build", "execute", "validate", "evaluate", "admit-dataset"):
         assert parser.parse_args([operation]).operation == operation
     assert EXIT_MEANINGS == {
         0: "success",
@@ -69,6 +69,37 @@ def test_cli_propagates_configuration_error(tmp_path: Path) -> None:
     config.write_text("workspace: &w\n  root: .\nworkspace: *w\n", encoding="utf-8")
     assert main(["execute", "--config", str(config), "--workspace", str(tmp_path),
                  "--runner", str(tmp_path / "missing")]) == 2
+
+
+@pytest.mark.parametrize("format_version,capability", [
+    ("diskann-float32-dataset/v1", "dataset.diskann_float32_bin/v1"),
+    ("fake-dataset-json/v1", "dataset.vector_access/v1"),
+])
+@pytest.mark.parametrize("validator_exit", [0, 6])
+def test_cli_dataset_contract_routing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                     format_version: str, capability: str, validator_exit: int) -> None:
+    from diskann_harness import cli
+    reference = tmp_path / "artifact-ref.json"
+    reference.write_text(json.dumps({"artifact_type": "dataset", "metadata_path": "dataset/artifact.json",
+                                     "format_version": format_version, "aggregate_checksum": "a" * 64}))
+    seen = []
+    def validate(request, *args):
+        seen.append(request)
+        return {"exit_code": validator_exit}
+    monkeypatch.setattr(cli, "run_single_request", validate)
+    assert main(["validate", "--artifact-ref", str(reference), "--workspace", str(tmp_path), "--runner", "runner"]) == validator_exit
+    assert seen[0]["expected_contract"] == {"artifact_type": "dataset", "accepted_format_versions": [format_version],
+                                            "id_space": "none", "capabilities": [capability]}
+
+
+@pytest.mark.parametrize("value", [[], {"artifact_type": "dataset", "format_version": "diskann-float32-dataset/v2"},
+                                  {"artifact_type": "dataset", "format_version": "unknown/v1"}])
+def test_cli_dataset_rejects_invalid_or_unknown_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value) -> None:
+    from diskann_harness import cli
+    reference = tmp_path / "artifact-ref.json"
+    reference.write_text(json.dumps(value))
+    monkeypatch.setattr(cli, "run_single_request", lambda *args: pytest.fail("invalid reference reached runner"))
+    assert main(["validate", "--artifact-ref", str(reference), "--workspace", str(tmp_path), "--runner", "runner"]) == 2
 
 
 @pytest.mark.parametrize("requires_force", [False, True])

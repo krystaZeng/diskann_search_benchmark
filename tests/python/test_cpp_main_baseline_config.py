@@ -113,6 +113,9 @@ def test_profile_uses_exact_stage_identities_and_derived_values() -> None:
         (("study_class",), "infrastructure_validation"),
         (("source", "commit"), "0" * 40),
         (("dataset", "checksum"), "0" * 64),
+        (("dataset", "dataset_id"), "other-native-dataset"),
+        (("dataset", "path"), "another/vectors.bin"),
+        (("dataset", "global_node_count"), 96),
         (("implementations", "partition"), "fake_partition_v1"),
         (("status",), "frozen"),
         (("profile", "R"), 0),
@@ -245,6 +248,32 @@ def test_dataset_projection_matches_public_cpp_identity_contract() -> None:
     assert aggregate_checksum(projection) == (
         "4935b25f2cb2af2a05c7a657c3beb9c1823f45d1cf067f1d298169bb721f377e"
     )
+
+
+def test_frozen_scanner_rejects_other_valid_native_bytes(tmp_path: Path) -> None:
+    import struct
+    source = tmp_path / "small.bin"
+    source.write_bytes(struct.pack("<IIf", 1, 1, 1.0))
+    expected = {"global_node_count": 1, "vector_dimension": 1, "byte_length": 12,
+                "checksum": hashlib.sha256(source.read_bytes()).hexdigest()}
+    assert cpp_main_baseline.native_dataset.scan_dataset(source, expected)["npts"] == 1
+    with pytest.raises(cpp_main_baseline.BaselineHarnessError, match="SIFT1M Dataset SHA-256 differs"):
+        cpp_main_baseline._scan_dataset(source, expected)
+
+
+def test_frozen_scanner_delegates_without_relaxing_pinned_checksum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = load_profile()["dataset"]
+    facts = {"sha256": DATASET_SHA256, "npts": 1000000, "dimension": 128}
+    seen = []
+    def scanned(source, declaration, *, label):
+        seen.append((source, declaration, label))
+        return facts
+    monkeypatch.setattr(cpp_main_baseline.native_dataset, "scan_dataset", scanned)
+    assert cpp_main_baseline._scan_dataset(tmp_path / "source", expected) is facts
+    assert seen == [(tmp_path / "source", expected, "SIFT1M")]
+    facts["sha256"] = "0" * 64
+    with pytest.raises(cpp_main_baseline.BaselineHarnessError, match="SIFT1M Dataset SHA-256 differs"):
+        cpp_main_baseline._scan_dataset(tmp_path / "source", expected)
 
 
 def test_preflight_writes_one_immutable_nonexecuting_request(

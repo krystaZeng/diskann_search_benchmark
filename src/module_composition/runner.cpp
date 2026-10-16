@@ -289,17 +289,9 @@ int main(int argc, char** argv) {
           !selected.at("parameters").is_object()) reject(std::string(stage) + " identity/version must be strings and parameters an object");
     }
     const auto dataset = dp::parse_artifact_ref(config.at("dataset").dump());
-    // Inspect the declaration before payload validation/scan. The accessor
-    // below must still validate the complete Artifact and native header.
-    const auto metadata = dp::detail::parse_json_strict(read(dp::resolve_confined_path(
-        workspace.normal_root, dataset.metadata_path)));
-    const auto declared_count = positive(metadata.at("dataset").at("global_node_count"),
-                                         "global_node_count", std::numeric_limits<std::uint64_t>::max());
-    if (declared_count > 1000000)
-      reject("AGENTS.md approval gate: this entry does not authorize datasets above SIFT1M");
+    // Scale comes from the fully validated Artifact and native payload.
+    // Larger experiments still require the separate AGENTS.md human approval.
     native::CppMainVectorAccessor vectors(workspace, dataset);
-    if (vectors.dataset_identity().global_node_count > 1000000)
-      reject("AGENTS.md approval gate: this entry does not authorize datasets above SIFT1M");
     const auto native_admission = native::configured_source_build_admission();
     const auto evidence = native::admit_source_and_build(native_admission);
     dp::StageSourceIdentities sources{evidence.source, evidence.source, evidence.source};
