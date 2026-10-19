@@ -84,6 +84,43 @@ void requests(const fs::path& base) {
   negative([](Json& c) { c["local_build"]["parameters"]["alpha"] = 1.3; }, "constant");
   negative([](Json& c) { c["merge"]["parameters"]["R"] = -1; }, "R");
   negative([](Json& c) { c["local_build"]["parameters"]["partition_id"] = 0; }, "executor-owned");
+  for (const auto* stage : {"partition", "local_build"}) {
+    negative([stage](Json& c) { c[stage]["implementation_version"] = "1.2.0"; }, "identity");
+    negative([stage](Json& c) { c[stage]["parameters"]["R"] = 64; }, "constant");
+    for (const auto& bad : std::vector<Json>{0, 1, -1, 64.0, true, "64", nullptr,
+                                            4294967296ULL, 4294967360ULL}) {
+      // The message varies between schema type and numeric-parser rejection.
+      negative([stage, bad](Json& c) {
+        c[stage]["implementation_version"] = "1.1.0";
+        c[stage]["parameters"]["R"] = bad;
+      }, stage);
+    }
+  }
+  for (const auto& bad : std::vector<Json>{0, -1, 100.0, true, "100", nullptr, 4294967396ULL}) {
+    negative([bad](Json& c) {
+      c["local_build"]["implementation_version"] = "1.1.0";
+      c["local_build"]["parameters"]["L"] = bad;
+    }, "local_build");
+  }
+  negative([](Json& c) { c["local_build"]["parameters"]["L"] = 100; }, "constant");
+  negative([](Json& c) {
+    c["local_build"]["implementation_version"] = "1.1.0";
+    c["local_build"]["parameters"]["num_threads"] = 7;
+  }, "constant");
+  {
+    const auto root = base / "p0-v1-1-near-budget";
+    auto config = prepare(root);
+    config["partition"]["implementation_version"] = "1.1.0";
+    config["partition"]["parameters"]["build_DRAM_budget_gib"] = 0.6000000000005;
+    rejected(root, config, "build_DRAM_budget_gib does not equal its required constant");
+  }
+  {
+    const auto root = base / "b0-v1-1-near-alpha";
+    auto config = prepare(root);
+    config["local_build"]["implementation_version"] = "1.1.0";
+    config["local_build"]["parameters"]["alpha"] = 1.2000005;
+    rejected(root, config, "alpha does not equal its required constant");
+  }
 #ifdef DISKANN_KMEANS_PARTITION
   negative([](Json& c) { c["partition"] = selected(kKmeans, {{"K", 97}}); }, "K");
   negative([](Json& c) { c["partition"] = selected(kKmeans, {{"K", 2}, {"max_k_means_reps", 0}}); }, "max_k_means_reps");
@@ -186,12 +223,54 @@ void inspect(const fs::path& root, const Json& config) {
     const auto validation = validator.validate(dp::parse_artifact_ref(local.dump()), {*partition.validated_artifact});
     DP_EXPECT_TRUE(validation.valid());
     inputs.push_back(*validation.validated_artifact);
+    if (config.at("local_build").at("implementation_id") == native::kB0ImplementationId) {
+      const auto& selected_b0 = config.at("local_build");
+      const auto parsed = native::parse_b0_parameters(selected_b0.at("parameters").dump(),
+                                                       selected_b0.at("implementation_version"));
+      const auto meta = f::read_json(workspace.normal_root / local.at("metadata_path").get<std::string>());
+      const auto& structure = meta.at("structural");
+      DP_EXPECT_EQ(structure.at("declared_max_degree"), parsed.local_degree);
+      DP_EXPECT_TRUE(structure.at("observed_max_degree") <= parsed.local_degree);
+      if (selected_b0.at("implementation_version") == "1.1.0") {
+        const auto prefix = "cpp_main.b0.v1_1.partition." +
+            std::to_string(structure.at("partition_id").get<unsigned>()) + ".";
+        const auto& observed = result.at("native_parameter_observations");
+        DP_EXPECT_EQ(observed.at(prefix + "max_degree"), parsed.local_degree);
+        DP_EXPECT_EQ(observed.at(prefix + "search_list_size"), parsed.l);
+        DP_EXPECT_EQ(observed.at(prefix + "filter_list_size"), parsed.l);
+        DP_EXPECT_EQ(observed.at(prefix + "validation_max_degree"), parsed.local_degree);
+      }
+    }
   }
   DP_EXPECT_TRUE(validator.validate(dp::parse_artifact_ref(result.at("global_graph").dump()), inputs).valid());
+  if (config.at("merge").at("implementation_id") == native::kM0ImplementationId) {
+    const auto global = f::read_json(workspace.normal_root /
+        result.at("global_graph").at("metadata_path").get<std::string>());
+    DP_EXPECT_EQ(global.at("id_space"), "global");
+    DP_EXPECT_EQ(global.at("dataset").at("global_node_count"), dataset.validated_artifact->dataset().global_node_count);
+    DP_EXPECT_EQ(global.at("structural").at("declared_max_degree"), config.at("merge").at("parameters").at("R"));
+    DP_EXPECT_TRUE(global.at("structural").at("observed_max_degree") <= config.at("merge").at("parameters").at("R"));
+  }
+  if (config.at("partition").at("implementation_id") == native::kP0ImplementationId &&
+      config.at("partition").at("implementation_version") == "1.1.0") {
+    const auto parsed = native::parse_p0_parameters(config.at("partition").at("parameters").dump(),
+        dataset.validated_artifact->dataset().global_node_count, "1.1.0");
+    DP_EXPECT_EQ(result.at("native_parameter_observations").at("cpp_main.p0.v1_1.graph_degree"), parsed.local_degree);
+    std::vector<unsigned> owners(dataset.validated_artifact->dataset().global_node_count, 0);
+    const auto directory = (workspace.normal_root / result.at("partition").at("metadata_path").get<std::string>()).parent_path();
+    for (const auto& record : partition_meta.at("structural").at("partitions")) {
+      const auto id = record.at("partition_id").get<unsigned>();
+      const auto map = native::validate_partition_id_map(directory / ("partition-" + std::to_string(id) + "-map.bin"),
+          record.at("local_node_count"), owners.size());
+      DP_EXPECT_TRUE(std::is_sorted(map.begin(), map.end()));
+      for (auto node : map) ++owners[node];
+    }
+    DP_EXPECT_TRUE(std::all_of(owners.begin(), owners.end(), [](unsigned n) { return n == 2; }));
+  }
   DP_EXPECT_EQ(result.at("stage_invocations"), Json({{"partition", 1}, {"local_build", count}, {"merge", 1}}));
   for (const auto* stage : {"partition", "local_build", "merge"}) {
     DP_EXPECT_EQ(result.at("effective_config").at(stage).at("implementation_id"), config.at(stage).at("implementation_id"));
-    DP_EXPECT_EQ(result.at("effective_config").at(stage).at("implementation_version"), "1.0.0");
+    DP_EXPECT_EQ(result.at("effective_config").at(stage).at("implementation_version"), config.at(stage).at("implementation_version"));
   }
   for (const auto& record : result.at("build_manifests")) {
     const auto path = workspace.root / record.at("path").get<std::string>();
@@ -200,12 +279,19 @@ void inspect(const fs::path& root, const Json& config) {
     const auto stage = manifest.stage;
     const auto selected_stage = stage == "local_build" ? "local_build" : stage;
     DP_EXPECT_EQ(manifest.implementation.implementation_id, config.at(selected_stage).at("implementation_id"));
+    DP_EXPECT_EQ(manifest.implementation.implementation_version, config.at(selected_stage).at("implementation_version"));
     DP_EXPECT_EQ(manifest.status, dp::StageStatus::kSucceeded);
     const auto parameters = Json::parse(manifest.parameters_json);
     auto effective = parameters.at("stage_parameters");
     effective.erase("partition_id");
     DP_EXPECT_EQ(effective, result.at("effective_config").at(selected_stage).at("parameters"));
     DP_EXPECT_EQ(parameters.at("source_config").at("entry_build_manifest"), result.at("entry_build_manifest"));
+    if (manifest.implementation.implementation_version == "1.1.0") {
+      const auto& derived = parameters.at("source_config").at("native_effective_parameters").at(selected_stage);
+      const auto r = effective.at("R").get<std::uint64_t>();
+      DP_EXPECT_EQ(derived.at(stage == "partition" ? "graph_degree" : "local_degree"), 2 * r / 3);
+      if (stage == "local_build") DP_EXPECT_EQ(derived.at("filter_list_size"), effective.at("L"));
+    }
     if (manifest.implementation.implementation_id == kOgp)
       DP_EXPECT_EQ(manifest.source.commit, "df5efb4a6b303011c795666ed267f29d994b558c");
     else if (manifest.implementation.implementation_id != kM1 && manifest.implementation.implementation_id != kB1)
@@ -227,9 +313,15 @@ void inspect(const fs::path& root, const Json& config) {
   const auto build = f::read_json(path);
   DP_EXPECT_EQ(build.at("parameters").at("runner_binary").at("sha256"), dp::sha256_file(COMPOSITION_RUNNER));
   DP_EXPECT_EQ(build.at("implementation").at("implementation_id"), "module_composition_runner_v1");
+  if (config.at("local_build").at("implementation_version") == "1.1.0") {
+    const auto& derived = build.at("parameters").at("native_effective_parameters").at("local_build");
+    DP_EXPECT_EQ(derived.at("L"), config.at("local_build").at("parameters").at("L"));
+    DP_EXPECT_EQ(derived.at("R"), config.at("local_build").at("parameters").at("R"));
+  }
 }
 void native_runs(const fs::path& base) {
-  std::vector<std::string> combinations{"p0-b0-m0"};
+  std::vector<std::string> combinations{"p0-b0-m0", "p0-b0-v1-1-r16", "p0-b0-v1-1-r64",
+                                         "p0-v1-1-b0-old", "p0-old-b0-v1-1"};
 #ifdef DISKANN_KMEANS_PARTITION
   combinations.push_back("kmeans-b0-m0");
 #ifdef DISKANN_HNSW_MERGER
@@ -238,6 +330,7 @@ void native_runs(const fs::path& base) {
 #endif
 #ifdef DISKANN_GP_ANN_OGP
   combinations.push_back("ogp-b0-m0");
+  combinations.push_back("ogp-b0-v1-1-r64");
 #endif
 #ifdef DISKANN_XN_DESCENT
   combinations.push_back("p0-b1-m0");
@@ -251,6 +344,38 @@ void native_runs(const fs::path& base) {
     if (combination.find("ogp") == 0) config["partition"] = selected(kOgp, {{"requested_num_clusters", 4}, {"requested_overlap", 0.2}, {"partitioning_mode", "default"}});
     if (combination == "kmeans-b0-m1") config["merge"] = selected(kM1, {{"R", 16}, {"alpha", 1.2}, {"max_candidate_size", 750}, {"metric", "l2"}, {"use_filters", false}, {"multi_shard_strategy", "large_first_pairwise_v1"}, {"lambda_policy", "paper_adaptive_log_v1"}});
     if (combination == "p0-b1-m0") config["local_build"] = selected(kB1, b1_parameters());
+    if (combination == "p0-b0-v1-1-r16" || combination == "p0-b0-v1-1-r64" ||
+        combination == "ogp-b0-v1-1-r64") {
+      const auto r = combination.find("r64") != std::string::npos ? 64 : 16;
+      if (combination.find("p0") == 0) {
+        config["partition"]["implementation_version"] = "1.1.0";
+        config["partition"]["parameters"]["R"] = r;
+      }
+      config["local_build"]["implementation_version"] = "1.1.0";
+      config["local_build"]["parameters"]["R"] = r;
+      config["local_build"]["parameters"]["L"] = r == 64 ? 100 : 32;
+      config["merge"]["parameters"]["R"] = r;
+    }
+    if (combination == "p0-v1-1-b0-old") config["partition"]["implementation_version"] = "1.1.0";
+    if (combination == "p0-old-b0-v1-1") {
+      // Stage parameters are independently selected; there is no all-stage equal-R gate.
+      config["local_build"]["implementation_version"] = "1.1.0";
+      config["local_build"]["parameters"]["R"] = 64;
+      config["local_build"]["parameters"]["L"] = 100;
+      config["merge"]["parameters"]["R"] = 64;
+    }
+    if (combination == "p0-b0-v1-1-r64" || combination == "ogp-b0-v1-1-r64") {
+      const auto filename = combination == "p0-b0-v1-1-r64"
+          ? "p0-b0-m0-default-rl.json" : "ogp-b0-m0-default-rl.json";
+      auto example = f::read_json(fs::path(COMPOSITION_TEST_ROOT) /
+          "experiments/configs/module-composition" / filename);
+      DP_EXPECT_EQ(example.at("dataset"), config.at("dataset"));
+      for (const auto* stage : {"partition", "local_build", "merge"})
+        DP_EXPECT_EQ(example.at(stage), config.at(stage));
+      example["workspace"] = config.at("workspace");
+      example["run_id"] = config.at("run_id");
+      config = example;
+    }
     const auto status = invoke(root, config);
     DP_EXPECT_EQ(status, 0);
     std::cout << combination << " exit=" << status << " evidence=" << root << '\n';

@@ -85,6 +85,7 @@ bool cancelled(const StageContext& context) {
 
 class CppMainP0 final : public PartitionStrategy {
  public:
+  explicit CppMainP0(std::string version = "1.0.0") : version_(std::move(version)) {}
   StageResult run(const ArtifactRef& dataset,
                   const std::filesystem::path& stage_manifest_path,
                   StageContext& context) override {
@@ -94,11 +95,11 @@ class CppMainP0 final : public PartitionStrategy {
       }
       CppMainVectorAccessor binding(context.workspace, dataset);
       const auto parameters = read_json(stage_manifest_path);
-      validate_p0_parameters(parameters.dump(), binding.dataset_identity().global_node_count);
-      const auto r = parameters.at("R").get<std::uint32_t>();
-      const auto budget = parameters.at("build_DRAM_budget_gib").get<double>();
-      const auto replication = parameters.at("replication_factor").get<std::uint32_t>();
-      const auto probability = parameters.at("sample_probability").get<double>();
+      const auto parsed = parse_p0_parameters(parameters.dump(),
+          binding.dataset_identity().global_node_count, version_);
+      const auto budget = parsed.build_dram_budget_gib;
+      const auto replication = parsed.replication_factor;
+      const auto probability = parsed.sample_probability;
       if (cancelled(context)) {
         return {StageStatus::kCancelled, std::nullopt, {}};
       }
@@ -109,9 +110,12 @@ class CppMainP0 final : public PartitionStrategy {
       const auto output_prefix = native_directory / "p0";
       context.metrics_sink->event(
           "cpp_main.p0.partition_with_ram_budget");
+      if (version_ == "1.1.0") {
+        context.metrics_sink->increment("cpp_main.p0.v1_1.graph_degree", parsed.local_degree);
+      }
       const auto partition_count = partition_with_ram_budget<float>(
           binding.native_payload_path().string(), probability, budget,
-          2U * r / 3U, output_prefix.string(), replication);
+          parsed.local_degree, output_prefix.string(), replication);
       if (partition_count < 2) {
         throw PipelineError(ErrorCategory::kNodeCountMismatch,
                             "P0 did not produce a sharded Partition set");
@@ -218,6 +222,8 @@ class CppMainP0 final : public PartitionStrategy {
       return {StageStatus::kFailed, std::nullopt, {}};
     }
   }
+ private:
+  const std::string version_;
 };
 
 }  // namespace
@@ -249,6 +255,10 @@ void validate_p0_parameters(const std::string& json, NodeCount global_node_count
 
 std::unique_ptr<PartitionStrategy> make_p0_partition() {
   return std::make_unique<CppMainP0>();
+}
+
+std::unique_ptr<PartitionStrategy> make_p0_partition_v1_1() {
+  return std::make_unique<CppMainP0>("1.1.0");
 }
 
 }  // namespace diskann_pipeline::cpp_main

@@ -23,7 +23,8 @@ ctest --test-dir build/composition -R '^module_composition_native$' --output-on-
 不下载或自动寻找论文源码；OGP 需要 `-DGPANN_SOURCE_DIR=/绝对路径/已核验的gp-ann源码`，
 以及其固定子模块和原生依赖。未选择 OGP 时不会运行 OGP 的源码/可执行文件准入。
 
-以下 ID 均使用实现版本 `1.0.0`，简称仅用于说明：
+以下 ID 均保留实现版本 `1.0.0`；组合入口额外注册相同 ID 的 P0/B0 `1.1.0`。
+简称仅用于说明：
 
 | 阶段/简称 | implementation_id | 构建选项 |
 |---|---|---|
@@ -39,6 +40,19 @@ ctest --test-dir build/composition -R '^module_composition_native$' --output-on-
 实际组合由原有 descriptor、兼容性检查、实际运行时服务、input_admission 和产物校验决定。
 B0/B1 使用绑定已校验 Dataset 的原生向量访问器；距离服务明确提供平方 L2；M1 的数据集
 绑定要求及 M0/M1 的原生映射/图格式检查继续生效。
+
+P0/B0 `1.0.0` 仍冻结 R=16、B0 L=32。`1.1.0` 允许 P0 的 R、B0 的 R/L
+显式配置：R 必须是 `[2, 4294967295]` 内的 JSON 整数，L 必须是
+`[1, 4294967295]` 内的 JSON 整数；先检查类型/范围，再用 uint64 计算
+`floor(2R/3)` 并检查非零及转换范围。两版共用原生执行和产物生成路径；入口及工厂
+按所选版本调用同一个解析器，不按参数值猜测版本。旧注册函数仍只注册三个 `1.0.0`
+实现，旧专用入口、schema 和配置保持不变。新版 B0 绑定相同的 `b0_input_admission`。
+参数关系不增加上游未要求的 L/R 限制；数值可表示也不代表资源足够。
+
+P0 仍使用 0.6 GiB 构图预算、双副本、`min(1, 256000/N)` 抽样及原生随机性，
+按预算确定分块数。B0 仍使用线程数 6、alpha=1.2、候选上限 750、关闭 PQ/OPQ 和
+saturation。新版 R=64、L=100 时局部度数上限为 42；有效 filter_list_size 随 L 为 100。
+M0 保留 `1.0.0` 和原算法，R 独立配置。公共兼容性检查不要求所有阶段 R 相等。
 
 ## 配置与执行
 
@@ -126,6 +140,18 @@ P0 的 `sample_probability` 必须符合冻结推导 `min(1, 256000/N)`；示例
 OGP 的 `requested_num_clusters` 是原生请求参数，执行器以实际产物中的分块数调度 B0，
 不将该参数强行解释成 KMeans 的精确 K。
 
+追加示例 [`p0-b0-m0-default-rl.json`](../../experiments/configs/module-composition/p0-b0-m0-default-rl.json)
+和 [`ogp-b0-m0-default-rl.json`](../../experiments/configs/module-composition/ogp-b0-m0-default-rl.json)：
+P0 `1.1.0` 使用 R=64，两组 B0 `1.1.0` 使用 R=64/L=100，两组 M0 `1.0.0`
+使用 R=64/use_filters=false，线程预算和 B0 线程数均为 6。这里采用的是**上游默认 R/L**，
+不是全部上游默认参数；两组 B0/M0 参数一致由这两个配置保证。
+DatasetRef 仍对应上述 96×4 fixture，须先按上述 `--prepare` 命令准备工作区；
+实际数据须替换完整 ArtifactRef、workspace.root 及 P0 的抽样概率，不能只改路径。
+用相应 JSON 替换上述 execute 的 `--request`，并使用不同的新结果文件名即可执行。
+OGP 还需启用 `DISKANN_GP_ANN_OGP=ON` 并准入固定源码及匹配的原生 Partition 构建。
+请求簇数 4 仅用于此小数据示例；SIFT1M 正式请求值仍待 P0 实际分块结果确定。
+新版及其新参数配置不继承旧冻结配置的认证结论。
+
 `workspace` 仅允许绝对路径 `root`、正整数 `memory_budget_bytes` 和正 uint32
 `thread_budget`。选择 B0 时 thread_budget 必须为冻结值 6。内存预算不是原生分配器硬限额；
 B1 等模块已有的资源检查保持原样。预算应覆盖整条流水线。run_id 只能包含字母、数字、
@@ -155,6 +181,11 @@ OpenMP/MKL 线程设置仍由运行环境提供，执行前应与配置预算一
 父阶段 Manifest 通过配置来源绑定该入口构建记录；已有阶段自有执行 Manifest 保留，
 两者不互相冒充。分阶段 source 分别使用固定 DiskANN、固定 GP-ANN 或项目内 B1/M1
 适配实现的身份。Artifact、BuildManifest、EvaluationReport 保持分离。
+选择新版 P0/B0 时，entry-build 的 parameters 和父 Manifest 的 source_config 另记
+`native_effective_parameters`（由同一解析器推导）；结果的 `native_parameter_observations`
+记录 P0 传入的度数、B0 实际原生 builder 的度数/L/filter_list_size 及保存后校验上限。
+这些记录不进入 Artifact，也不声明质量或性能结论。局部 Artifact 的 declared_max_degree
+与保存后校验上限均为 `floor(2R/3)`，observed_max_degree 可以更小。
 入口构建记录的时间是本次准入记录创建时间，实际配置/构建命令和耗时见验证日志；
 `configured_compile_database` 保存 CMake 配置的命令集合，不声称其中每个未选目标均已构建。
 

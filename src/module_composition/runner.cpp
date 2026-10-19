@@ -39,8 +39,12 @@ constexpr const char* kVersion = "module-composition-run/v1";
 class Metrics final : public dp::MetricsSink {
  public:
   void event(const std::string& name) override { events.push_back(name); }
-  void increment(const std::string&, std::uint64_t) override {}
+  void increment(const std::string& name, std::uint64_t amount) override {
+    if (name.find("cpp_main.p0.v1_1.") == 0 || name.find("cpp_main.b0.v1_1.") == 0)
+      counters[name] = counters.value(name, std::uint64_t{0}) + amount;
+  }
   std::vector<std::string> events;
+  Json counters = Json::object();
 };
 class NeverCancelled final : public dp::CancellationToken {
  public:
@@ -97,6 +101,9 @@ void register_modules(dp::ImplementationRegistry& registry, const std::string& p
                       const native::SourceBuildEvidence& native_evidence,
                       dp::SourceIdentity& partition_source) {
   native::register_cpp_main_stage_bindings(registry);
+  registry.register_partition(native::p0_descriptor_v1_1(), native::make_p0_partition_v1_1);
+  registry.register_local_build(native::b0_descriptor_v1_1(), native::make_b0_local_build_v1_1,
+                                native::b0_input_admission);
 #ifdef DISKANN_KMEANS_PARTITION
   registry.register_partition(dp::diskann_kmeans::descriptor(), [native_evidence] {
     return dp::diskann_kmeans::make_partition(native_evidence);
@@ -134,9 +141,10 @@ void validate_parameters(const dp::ImplementationDescriptor& descriptor, Json& p
   if (parameters.contains("partition_id")) reject("partition_id is executor-owned");
   dp::detail::validate_implementation_parameters(descriptor, parameters.dump(), COMPOSITION_ROOT);
   const auto& id = descriptor.implementation_id;
-  if (id == native::kP0ImplementationId) native::validate_p0_parameters(parameters.dump(), count);
+  if (id == native::kP0ImplementationId)
+    static_cast<void>(native::parse_p0_parameters(parameters.dump(), count, descriptor.implementation_version));
   else if (id == native::kB0ImplementationId) {
-    native::validate_b0_parameters(parameters.dump());
+    static_cast<void>(native::parse_b0_parameters(parameters.dump(), descriptor.implementation_version));
     if (threads != parameters.at("num_threads")) reject("B0 requires thread_budget equal to frozen num_threads=6");
   } else if (id == native::kM0ImplementationId) native::validate_m0_parameters(parameters.dump());
 #ifdef DISKANN_KMEANS_PARTITION
@@ -162,6 +170,29 @@ void validate_parameters(const dp::ImplementationDescriptor& descriptor, Json& p
   }
 #endif
   else reject("no parameter binding for implementation " + id);
+}
+
+// Derived execution parameters are provenance, not extra configuration inputs.
+Json native_effective_parameters(const Json& config, dp::NodeCount nodes) {
+  Json result = Json::object();
+  const auto& p = config.at("partition");
+  if (p.at("implementation_id") == native::kP0ImplementationId &&
+      p.at("implementation_version") == "1.1.0") {
+    const auto parsed = native::parse_p0_parameters(p.at("parameters").dump(), nodes, "1.1.0");
+    result["partition"] = {{"graph_degree", parsed.local_degree},
+        {"R", parsed.r}, {"build_DRAM_budget_gib", parsed.build_dram_budget_gib},
+        {"replication_factor", parsed.replication_factor}, {"sample_probability", parsed.sample_probability}};
+  }
+  const auto& b = config.at("local_build");
+  if (b.at("implementation_id") == native::kB0ImplementationId &&
+      b.at("implementation_version") == "1.1.0") {
+    const auto parsed = native::parse_b0_parameters(b.at("parameters").dump(), "1.1.0");
+    result["local_build"] = {{"R", parsed.r}, {"L", parsed.l},
+        {"local_degree", parsed.local_degree}, {"filter_list_size", parsed.l},
+        {"num_threads", 6}, {"alpha", 1.2}, {"max_occlusion_size", 750},
+        {"build_pq_bytes", 0}, {"use_opq", false}, {"saturation", false}};
+  }
+  return result;
 }
 
 dp::BuildManifest entry_manifest(const native::SourceBuildEvidence& evidence, const Json& config,
@@ -219,6 +250,12 @@ dp::BuildManifest entry_manifest(const native::SourceBuildEvidence& evidence, co
                                {"selected_module_libraries", libraries},
                                {"configured_compile_database", commands},
                                {"build_cache", file_identity(root / "CMakeCache.txt")}}.dump();
+  const auto effective = native_effective_parameters(config, dataset.global_node_count);
+  if (!effective.empty()) {
+    auto parameters = Json::parse(build.parameters_json);
+    parameters["native_effective_parameters"] = effective;
+    build.parameters_json = parameters.dump();
+  }
   // This describes the already built entry, not certification of this run.
   build.status = dp::StageStatus::kSucceeded;
   return build;
@@ -340,6 +377,12 @@ int main(int argc, char** argv) {
     request.merge_parameters_json = config.at("merge").at("parameters").dump();
     request.source_config_json = Json{{"configuration_sha256", dp::sha256_bytes(bytes)},
                                       {"effective_config", config}, {"entry_build_manifest", result.at("entry_build_manifest")}}.dump();
+    const auto native_effective = native_effective_parameters(config, vectors.dataset_identity().global_node_count);
+    if (!native_effective.empty()) {
+      auto provenance = Json::parse(request.source_config_json);
+      provenance["native_effective_parameters"] = native_effective;
+      request.source_config_json = provenance.dump();
+    }
     request.source = evidence.source;
     request.stage_sources = sources;
     request.toolchain = build.toolchain;
@@ -350,6 +393,7 @@ int main(int argc, char** argv) {
     result["stage_invocations"] = {{"partition", execution.invocations.partition}, {"local_build", execution.invocations.local_build}, {"merge", execution.invocations.merge}};
     result["stage_order"] = execution.stage_order;
     result["events"] = metrics.events;
+    if (!metrics.counters.empty()) result["native_parameter_observations"] = metrics.counters;
     result["local_graphs"] = Json::array();
     if (execution.partition_artifact) result["partition"] = reference(*execution.partition_artifact);
     if (execution.artifact) result["global_graph"] = reference(*execution.artifact);

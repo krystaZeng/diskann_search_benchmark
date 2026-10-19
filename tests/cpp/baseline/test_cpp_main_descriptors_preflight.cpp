@@ -101,6 +101,66 @@ int main() {
   dp::ImplementationRegistry registry(dp::RegistryAdmissionPolicy::kProduction);
   native::register_cpp_main_stage_bindings(registry);
   DP_EXPECT_EQ(registry.size(), std::size_t{3});
+  DP_EXPECT_EQ(p0.implementation_version, "1.0.0");
+  DP_EXPECT_EQ(b0.implementation_version, "1.0.0");
+  DP_EXPECT_EQ(m0.implementation_version, "1.0.0");
+  DP_EXPECT_THROW(registry.resolve_partition_factory(native::kP0ImplementationId, "1.1.0"));
+  DP_EXPECT_THROW(registry.resolve_local_build_factory(native::kB0ImplementationId, "1.1.0"));
+  const auto configurable_p0 = native::p0_descriptor_v1_1();
+  const auto configurable_b0 = native::b0_descriptor_v1_1();
+  DP_EXPECT_EQ(configurable_p0.implementation_id, p0.implementation_id);
+  DP_EXPECT_EQ(configurable_b0.implementation_id, b0.implementation_id);
+  DP_EXPECT_EQ(configurable_p0.implementation_version, "1.1.0");
+  DP_EXPECT_EQ(configurable_b0.implementation_version, "1.1.0");
+  DP_EXPECT_EQ(configurable_p0.provides.capabilities, p0.provides.capabilities);
+  DP_EXPECT_EQ(configurable_b0.requires.required_capabilities, b0.requires.required_capabilities);
+  using Json = nlohmann::json;
+  Json pp = {{"R", 64}, {"build_DRAM_budget_gib", 0.6},
+             {"replication_factor", 2}, {"sample_probability", 1.0}};
+  Json bp = {{"R", 64}, {"L", 100}, {"alpha", 1.2}, {"build_pq_bytes", 0},
+             {"max_occlusion_size", 750}, {"num_threads", 6},
+             {"saturation", false}, {"use_opq", false}};
+  dp::detail::validate_implementation_parameters(configurable_p0, pp.dump(), kRepository);
+  dp::detail::validate_implementation_parameters(configurable_b0, bp.dump(), kRepository);
+  DP_EXPECT_THROW(native::parse_p0_parameters(pp.dump(), 96, "1.0.0"));
+  DP_EXPECT_THROW(native::parse_b0_parameters(bp.dump(), "1.0.0"));
+  DP_EXPECT_THROW(native::parse_p0_parameters(pp.dump(), 96, "1.2.0"));
+  DP_EXPECT_THROW(native::parse_b0_parameters(bp.dump(), "1.2.0"));
+  for (const auto r : {16U, 64U}) {
+    pp["R"] = bp["R"] = r;
+    bp["L"] = r == 16 ? 32 : 100;
+    DP_EXPECT_EQ(native::parse_p0_parameters(pp.dump(), 96, "1.1.0").local_degree,
+                 r == 16 ? 10U : 42U);
+    const auto parsed = native::parse_b0_parameters(bp.dump(), "1.1.0");
+    DP_EXPECT_EQ(parsed.local_degree, r == 16 ? 10U : 42U);
+    DP_EXPECT_EQ(parsed.l, r == 16 ? 32U : 100U);
+  }
+  // Count-only boundaries: never allocate/build with these large values.
+  pp["R"] = bp["R"] = 4294967295ULL;
+  bp["L"] = 4294967295ULL;
+  DP_EXPECT_EQ(native::parse_p0_parameters(pp.dump(), 96, "1.1.0").local_degree, 2863311530U);
+  DP_EXPECT_EQ(native::parse_b0_parameters(bp.dump(), "1.1.0").local_degree, 2863311530U);
+  bp["L"] = 1;  // Do not invent L >= R or L >= local_degree restrictions.
+  DP_EXPECT_EQ(native::parse_b0_parameters(bp.dump(), "1.1.0").l, 1U);
+  const std::vector<Json> bad_r{0, 1, -1, 16.0, true, "64", nullptr,
+                              4294967296ULL, 4294967312ULL, 18446744073709551615ULL};
+  for (const auto& value : bad_r) {
+    pp["R"] = bp["R"] = value;
+    DP_EXPECT_THROW(native::parse_p0_parameters(pp.dump(), 96, "1.1.0"));
+    DP_EXPECT_THROW(native::parse_b0_parameters(bp.dump(), "1.1.0"));
+  }
+  pp["R"] = bp["R"] = 64;
+  for (const auto& value : std::vector<Json>{0, -1, 100.0, true, "100", nullptr,
+                                            4294967296ULL, 18446744073709551615ULL}) {
+    bp["L"] = value;
+    DP_EXPECT_THROW(native::parse_b0_parameters(bp.dump(), "1.1.0"));
+  }
+  DP_EXPECT_THROW(native::parse_p0_parameters(pp.dump(), 0, "1.1.0"));
+  pp["sample_probability"] = 0.5;
+  DP_EXPECT_THROW(native::parse_p0_parameters(pp.dump(), 96, "1.1.0"));
+  pp["sample_probability"] = 1.0;
+  pp["replication_factor"] = 4294967298ULL;
+  DP_EXPECT_THROW(native::parse_p0_parameters(pp.dump(), 96, "1.1.0"));
   DP_EXPECT_THROW(native::register_cpp_main_stage_bindings(registry));
   DP_EXPECT_THROW(registry.resolve_partition_factory("missing", "1.0.0"));
 

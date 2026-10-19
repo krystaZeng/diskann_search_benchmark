@@ -1,0 +1,46 @@
+{
+  "config_version": "module-composition-run/v1",
+  "dataset": {
+    "aggregate_checksum": "76442cf17cbdb4451ace896881416190ef2a39146f4a26df9daee67bd14c7cc8",
+    "artifact_type": "dataset",
+    "format_version": "diskann-float32-dataset/v1",
+    "metadata_path": "dataset/artifact.json"
+  },
+  "local_build": {
+    "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+    "implementation_version": "1.1.0",
+    "parameters": {
+      "L": 100,
+      "R": 64,
+      "alpha": 1.2,
+      "build_pq_bytes": 0,
+      "max_occlusion_size": 750,
+      "num_threads": 6,
+      "saturation": false,
+      "use_opq": false
+    }
+  },
+  "merge": {
+    "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {
+      "R": 64,
+      "use_filters": false
+    }
+  },
+  "partition": {
+    "implementation_id": "gp_ann_ogp_partition_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {
+      "requested_num_clusters": 4,
+      "requested_overlap": 0.2,
+      "partitioning_mode": "default"
+    }
+  },
+  "run_id": "composition-ogp-b0-m0-default-rl",
+  "workspace": {
+    "memory_budget_bytes": 1073741824,
+    "root": "/workspace/build/module-composition-demo/workspace",
+    "thread_budget": 6
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/baseline-v1/cpp-main-b0-parameters-v1.1.0.schema.json",
+  "$defs": {
+    "local_build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["L", "R", "alpha", "build_pq_bytes", "max_occlusion_size", "num_threads", "saturation", "use_opq"],
+      "properties": {
+        "L": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "R": {"type": "integer", "minimum": 2, "maximum": 4294967295},
+        "alpha": {"type": "number", "const": 1.2},
+        "build_pq_bytes": {"type": "integer", "const": 0},
+        "max_occlusion_size": {"type": "integer", "const": 750},
+        "num_threads": {"type": "integer", "const": 6},
+        "saturation": {"type": "boolean", "const": false},
+        "use_opq": {"type": "boolean", "const": false}
+      },
+      "$comment": "Runtime parser checks native integer bounds. local_degree=floor(2R/3), effective filter_list_size=L. No additional L/R relation. partition_id remains executor-owned."
+    }
+  }
+}

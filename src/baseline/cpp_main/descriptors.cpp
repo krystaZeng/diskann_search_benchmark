@@ -78,6 +78,22 @@ CompatibilityResult b0_input_admission(
   return check_native_partition_maps(known_inputs);
 }
 
+ImplementationDescriptor p0_descriptor_v1_1() {
+  auto descriptor = p0_descriptor();
+  descriptor.implementation_version = "1.1.0";
+  descriptor.parameter_schema_path =
+      "contracts/baseline-v1/schemas/cpp-main-p0-parameters-v1.1.0.schema.json";
+  return descriptor;
+}
+
+ImplementationDescriptor b0_descriptor_v1_1() {
+  auto descriptor = b0_descriptor();
+  descriptor.implementation_version = "1.1.0";
+  descriptor.parameter_schema_path =
+      "contracts/baseline-v1/schemas/cpp-main-b0-parameters-v1.1.0.schema.json";
+  return descriptor;
+}
+
 CompatibilityResult m0_input_admission(
     const std::vector<ValidatedArtifact>& known_inputs, const StageContext&) {
   return check_native_merge_inputs(known_inputs);

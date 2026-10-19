@@ -295,3 +295,19 @@ inputs before Merge factory creation. Legal JSON maps/graphs remain valid Artifa
 consumers reject them before their factories. No new persisted label, format version, algorithm,
 ID, checksum rule or M0 semantic is introduced. Existing native artifacts need no rewrite.
 Manual factories wrapping B0/M0 must bind the corresponding admission callback.
+
+## Composition-only P0/B0 1.1.0 extension
+
+The existing IDs retain their frozen 1.0.0 descriptors and factories. Only the composition entry
+additionally registers P0/B0 1.1.0, with the same requires/provides and B0 input admission.
+`register_cpp_main_stage_bindings()` still registers exactly P0/B0/M0 1.0.0; M0 is unchanged.
+The new parameter schemas are `contracts/baseline-v1/schemas/cpp-main-p0-parameters-v1.1.0.schema.json`
+and `contracts/baseline-v1/schemas/cpp-main-b0-parameters-v1.1.0.schema.json` (repository-relative).
+The shared version-aware parser is authoritative for integer ranges and derived arithmetic.
+P0 accepts R; B0 accepts R/L; all other frozen rules and native call sequences remain in force.
+Both derive floor(2R/3) after widening R; R is an integer in [2, UINT32_MAX], L in [1, UINT32_MAX].
+B0 uses that bound for native construction, saved graph validation and Artifact declaration, and
+its effective filter_list_size equals L. No all-stage equal-R compatibility rule is introduced.
+The existing Artifact contracts and validators require no version change. New configurations
+carry exact implementation versions, effective parameters and source/build evidence; they do not
+inherit any certification of the frozen profile.

@@ -150,6 +150,7 @@ void verify_shard_rows(const CppMainVectorAccessor& accessor,
 
 class CppMainB0 final : public LocalGraphBuilder {
  public:
+  explicit CppMainB0(std::string version = "1.0.0") : version_(std::move(version)) {}
   StageResult build(const ArtifactRef& partition_artifact,
                     PartitionId partition_id,
                     const LocalBuildConfig& config,
@@ -172,7 +173,7 @@ class CppMainB0 final : public LocalGraphBuilder {
                             "B0 PartitionArtifact failed fresh validation");
       }
       const auto parameters = read_json(config.stage_manifest_path);
-      validate_parameters(parameters);
+      const auto parsed = parse_b0_parameters(parameters.dump(), version_);
       if (parameters.contains("partition_id") &&
           parameters.at("partition_id").get<PartitionId>() != partition_id) {
         throw PipelineError(
@@ -240,7 +241,7 @@ class CppMainB0 final : public LocalGraphBuilder {
       verify_shard_rows(*accessor, map, shard);
 
       const auto write_parameters =
-          diskann::IndexWriteParametersBuilder(32, 10)
+          diskann::IndexWriteParametersBuilder(parsed.l, parsed.local_degree)
               .with_filter_list_size(0)
               .with_saturate_graph(false)
               .with_num_threads(6)
@@ -248,11 +249,17 @@ class CppMainB0 final : public LocalGraphBuilder {
       if (write_parameters.alpha != diskann::defaults::ALPHA ||
           write_parameters.max_occlusion_size !=
               diskann::defaults::MAX_OCCLUSION_SIZE ||
-          write_parameters.max_degree != 10 ||
-          write_parameters.search_list_size != 32 ||
-          write_parameters.filter_list_size != 32) {
+          write_parameters.max_degree != parsed.local_degree ||
+          write_parameters.search_list_size != parsed.l ||
+          write_parameters.filter_list_size != parsed.l) {
         throw PipelineError(ErrorCategory::kInternal,
                             "B0 native parameter construction drifted");
+      }
+      const auto observation = "cpp_main.b0.v1_1.partition." + std::to_string(partition_id) + ".";
+      if (version_ == "1.1.0") {
+        context.metrics_sink->increment(observation + "max_degree", write_parameters.max_degree);
+        context.metrics_sink->increment(observation + "search_list_size", write_parameters.search_list_size);
+        context.metrics_sink->increment(observation + "filter_list_size", write_parameters.filter_list_size);
       }
       diskann::Index<float> index(
           diskann::Metric::L2, accessor->dimension(), local_count,
@@ -271,7 +278,10 @@ class CppMainB0 final : public LocalGraphBuilder {
         return {StageStatus::kCancelled, std::nullopt, {}};
       }
       const auto graph_facts =
-          validate_local_graph(index_prefix, local_count, 10);
+          validate_local_graph(index_prefix, local_count, parsed.local_degree);
+      if (version_ == "1.1.0") {
+        context.metrics_sink->increment(observation + "validation_max_degree", parsed.local_degree);
+      }
       validate_local_graph_data(index_prefix.string() + ".data", local_count,
                                 accessor->dataset_identity().vector_dimension);
       if (sha256_file(shard) !=
@@ -297,7 +307,7 @@ class CppMainB0 final : public LocalGraphBuilder {
           {"structural",
            {{"partition_id", partition_id},
             {"local_node_count", local_count},
-            {"declared_max_degree", 10},
+            {"declared_max_degree", parsed.local_degree},
             {"observed_max_degree", graph_facts.observed_max_degree},
             {"source_partition_checksum",
              partition_artifact.aggregate_checksum}}},
@@ -326,6 +336,8 @@ class CppMainB0 final : public LocalGraphBuilder {
       return {StageStatus::kFailed, std::nullopt, {}};
     }
   }
+ private:
+  const std::string version_;
 };
 
 }  // namespace
@@ -336,6 +348,10 @@ void validate_b0_parameters(const std::string& json) {
 
 std::unique_ptr<LocalGraphBuilder> make_b0_local_build() {
   return std::make_unique<CppMainB0>();
+}
+
+std::unique_ptr<LocalGraphBuilder> make_b0_local_build_v1_1() {
+  return std::make_unique<CppMainB0>("1.1.0");
 }
 
 }  // namespace diskann_pipeline::cpp_main

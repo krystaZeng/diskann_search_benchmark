@@ -194,3 +194,14 @@ uint32 encoding. Generic accessors may satisfy the public vector service contrac
 satisfy this implementation's concrete dependency. No new accessor capability or Artifact tag
 is added. Dataset binding and the existing direct B0 defenses remain unchanged; legacy native
 artifacts and parameters remain usable after affected components are rebuilt.
+
+## Configurable 1.1.0 binding
+
+The composition entry also exposes this same implementation ID at 1.1.0, using the same wrapper
+and admission callback with a version-bound parameter parser. Only R and L become configurable;
+the 1.0.0 schema, specialized entry and frozen R=16/L=32 behavior remain unchanged. R=64/L=100
+derives local_degree=42 and effective filter_list_size=100, consistently used in native parameter
+checks, saved graph validation, Artifact declaration and composition Manifest provenance.
+See [stage-bindings.md](stage-bindings.md#composition-only-p0b0-110-extension) for ranges and
+registration scope. The native build algorithm and public Artifact representation are unchanged;
+this extension supplies no new Baseline certification.

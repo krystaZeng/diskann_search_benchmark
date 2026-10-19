@@ -6,6 +6,7 @@ target_sources(
 add_library(
   diskann_cpp_main_stages STATIC
   descriptors.cpp
+  parameters.cpp
   cpp_main_vector_accessor.cpp
   native_reference_capture.cpp
   p0_partition.cpp

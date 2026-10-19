@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/baseline-v1/cpp-main-p0-parameters-v1.1.0.schema.json",
+  "$defs": {
+    "partition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["R", "build_DRAM_budget_gib", "replication_factor", "sample_probability"],
+      "properties": {
+        "R": {"type": "integer", "minimum": 2, "maximum": 4294967295},
+        "build_DRAM_budget_gib": {"type": "number", "const": 0.6},
+        "replication_factor": {"type": "integer", "const": 2},
+        "sample_probability": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      },
+      "$comment": "Runtime parser checks types/ranges before narrowing, computes floor(2R/3) in uint64, and requires p=min(1,256000/N). No configurable K or seed."
+    }
+  }
+}

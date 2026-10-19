@@ -97,3 +97,17 @@ must not be inferred from this table alone. Line ranges are bound to the commit 
 
 Registry physical admission is framework integration only; the mapped algorithm is unchanged.
 See [contracts/stage-bindings.md](contracts/stage-bindings.md) for validated encoding and actual-service checks before consumer factories.
+
+## P0/B0 parameterized wrapper version 1.1.0
+
+This addition remains bound to Microsoft DiskANN `cpp_main` commit
+`78256bbab4685e1774e78d331e081a153be26823`; it does not revise the frozen 1.0.0 profile.
+`apps/build_disk_index.cpp:52-55` declares CLI defaults R=64/L=100. SM-013 and SM-019 map
+configured R to floor(2R/3); SM-022 maps unfiltered filter_list_size=0 to configured L.
+Project `src/baseline/cpp_main/parameters.cpp` checks and derives those values for the shared
+P0/B0 wrappers, whose 1.1.0 descriptors are registered only by `src/module_composition/runner.cpp`.
+R=16/L=32 and R=64/L=100 therefore give local bounds 10 and 42 respectively. Calling these
+values “upstream default R/L” does not mean all upstream defaults: the wrapper retains budget
+0.6 GiB, T=6 and the existing PQ/OPQ/saturation rules. Random sampling, Lloyd iteration behavior,
+budget-driven shard count and M0 semantics remain those mapped above. This is a source mapping,
+not evidence of parity, SIFT1M/SIFT10M execution, quality or performance.
