@@ -95,10 +95,50 @@ The Python Harness writes one strict Feature-private request containing only:
 - operation parameters and resource budget;
 - candidate/output paths.
 
-For `pq`, parameters are the R-004 projection (`B=0.03`, QD=0, chunks=32, sample rate 0.256,
+For `pq` version 1.0.0, parameters are the historical R-004 projection (`B=0.03`, QD=0, chunks=32, sample rate 0.256,
 OPQ=false, L2). For `disk_layout`, parameters are full-precision float32, disk PQ 0, reorder false,
-labels false, end-to-end entry policy, and the effective medoid/centroid policy. The C++ runner
-rejects any other value; it does not normalize a second time.
+labels false, end-to-end entry policy, and medoid-vector fallback. The C++ runner independently
+validates operation, implementation identity/version and parameter types before input admission.
+
+### General PQ policy 1.1.0
+
+New experiments explicitly select the same implementation ID with version 1.1.0:
+
+```json
+{
+  "operation": "pq",
+  "implementation": {
+    "implementation_id": "cpp_main_post_graph_pq_v1",
+    "implementation_version": "1.1.0",
+    "reproduction_mode": "upstream_faithful"
+  },
+  "parameters": {"B": 0.03, "QD": 0}
+}
+```
+
+This illustrates the policy fields; retain DatasetArtifactRef, workspace/run identity and resource
+budget in the complete request. B is a finite positive GiB value; QD is a JSON integer in [0,512]
+and must not exceed the validated Dataset dimension. Derived chunks/sample rate and alternative
+OPQ/metric/centroid controls are not request fields. Only the C++ private policy implementation
+derives effective parameters, after validated actual N and dimension are available.
+
+The Python `materialize --operation pq|disk_layout --request ... --runner ...` path normalizes
+before launching the runner. It forwards a temporary normalized document and preserves the
+original request bytes. Unknown versions, parameter drift and CLI/request operation mismatch fail.
+Historical implicit native requests (no implementation, empty PQ parameters or empty/fallback-only
+layout parameters) remain explicitly frozen 1.0.0 after normalization; they never select 1.1.0
+based on N. Explicit 1.0.0 requests retain the full frozen parameter document.
+
+PQ 1.0.0 retains its <=1M gate. PQ 1.1.0 and the existing DiskLayout 1.0.0 remove only the artificial
+1M gate; native formats, ID/length/checksum/lineage checks still apply. This technical admission
+does not authorize large runs. No Artifact or SearchObservation format changes.
+
+The new PQ BuildManifest records requested B/QD, actual point_count/dimension, effective_budget_bytes,
+effective pq_chunks/sample_rate, fixed constraints and the pinned derivation reference, alongside
+existing project/upstream source, binary, toolchain and declared resources. Declared budgets are
+neither measured peak memory nor hard allocation limits. Artifact metadata retains structural
+facts and Dataset lineage only; EvaluationReport remains separate. Reusing a run/output identity
+cannot overwrite existing records.
 
 Planned invocation:
 

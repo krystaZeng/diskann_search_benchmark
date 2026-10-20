@@ -58,15 +58,26 @@ def test_materialization_request_is_strict_and_fixed(tmp_path: Path) -> None:
         search.normalize_materialization_request(changed)
 
 
+@pytest.mark.parametrize("version", ["1.0.0", "1.1.0"])
 def test_materialize_cli_uses_one_cpp_runner_invocation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str,
 ) -> None:
     request = tmp_path / "request.json"
-    request.write_text("{}", encoding="utf-8")
+    declaration = _pq_v11_request(tmp_path)
+    declaration["implementation"]["implementation_version"] = version
+    if version == "1.0.0":
+        declaration["parameters"] = dict(search._PQ_PARAMETERS)
+    request.write_text(json.dumps(declaration), encoding="utf-8")
+    original = request.read_bytes()
     observed: list[list[str]] = []
 
     def fake_run(argv: list[str]) -> int:
         observed.append(argv)
+        forwarded = json.loads(Path(argv[-1]).read_text(encoding="utf-8"))
+        assert forwarded == search.normalize_materialization_request(declaration)
+        assert forwarded["parameters"] == (
+            search._PQ_PARAMETERS if version == "1.0.0" else {"B": 0.03, "QD": 32}
+        )
         return 0
 
     monkeypatch.setattr(search, "_run_argv", fake_run)
@@ -84,14 +95,190 @@ def test_materialize_cli_uses_one_cpp_runner_invocation(
         )
         == 0
     )
-    assert observed == [
-        [
-            "/tmp/diskann_search_evaluation_runner",
-            "materialize",
-            "--request",
-            str(request),
-        ]
+    assert len(observed) == 1
+    assert observed[0][:3] == [
+        "/tmp/diskann_search_evaluation_runner", "materialize", "--request",
     ]
+    assert request.read_bytes() == original
+
+
+def _pq_v11_request(tmp_path: Path) -> dict:
+    return {
+        "request_id": "pq-derived", "run_id": "pq-derived",
+        "workspace": {"root": str(tmp_path)}, "operation": "pq",
+        "dataset": {"artifact_type": "dataset", "format_version": "diskann-float32-dataset/v1",
+                    "aggregate_checksum": "a" * 64, "metadata_path": "dataset/artifact.json"},
+        "implementation": {"implementation_id": "cpp_main_post_graph_pq_v1",
+                           "implementation_version": "1.1.0", "reproduction_mode": "upstream_faithful"},
+        "parameters": {"B": 0.03, "QD": 32},
+        "resource_budget": {"memory_budget_bytes": 67108864, "thread_budget": 1},
+        "candidate_path": "temporary/pq-derived/candidate/artifact.json",
+    }
+
+
+def _frozen_materialization_request(tmp_path: Path, operation: str) -> dict:
+    request = _pq_v11_request(tmp_path)
+    request["operation"] = operation
+    request["implementation"]["implementation_version"] = "1.0.0"
+    request["parameters"] = dict(search._PQ_PARAMETERS)
+    if operation == "disk_layout":
+        request["implementation"]["implementation_id"] = "cpp_main_post_graph_disk_layout_v1"
+        request["parameters"] = dict(search._LAYOUT_PARAMETERS)
+        request["global_graph"] = {
+            **request["dataset"], "artifact_type": "global_graph",
+            "format_version": "global-graph-artifact/v2",
+        }
+    return request
+
+
+@pytest.mark.parametrize("operation", ["pq", "disk_layout"])
+@pytest.mark.parametrize("entrypoint", ["normalize", "cli"])
+def test_frozen_request_without_identity_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, entrypoint: str,
+) -> None:
+    request = _frozen_materialization_request(tmp_path, operation)
+    assert search.normalize_materialization_request(request) == request
+    del request["implementation"]  # The only difference from the valid request.
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(request), encoding="utf-8")
+
+    def forbidden(_argv: list[str]) -> int:
+        pytest.fail("missing implementation reached native runner")
+
+    monkeypatch.setattr(search, "_run_argv", forbidden)
+    with pytest.raises(search.SearchEvaluationError):
+        if entrypoint == "normalize":
+            search.normalize_materialization_request(request)
+        else:
+            search.main([
+                "materialize", "--operation", operation, "--request", str(path),
+                "--runner", "unused",
+            ])
+
+
+@pytest.mark.parametrize("operation", ["pq", "disk_layout"])
+@pytest.mark.parametrize("change", ["null", "incomplete", "identity", "version"])
+def test_explicit_invalid_identity_does_not_use_legacy_parameters(
+    tmp_path: Path, operation: str, change: str,
+) -> None:
+    request = _frozen_materialization_request(tmp_path, operation)
+    request["parameters"] = {}
+    if change == "null":
+        request["implementation"] = None
+    elif change == "incomplete":
+        del request["implementation"]["implementation_version"]
+    elif change == "identity":
+        request["implementation"]["implementation_id"] = "unknown"
+    else:
+        request["implementation"]["implementation_version"] = "unknown"
+    with pytest.raises(search.SearchEvaluationError, match="identity"):
+        search.normalize_materialization_request(request)
+
+
+def test_pq_v11_normalization_has_no_python_derivation(tmp_path: Path) -> None:
+    request = _pq_v11_request(tmp_path)
+    assert search.normalize_materialization_request(request) == request
+    request["parameters"]["QD"] = 0
+    assert search.normalize_materialization_request(request)["parameters"] == {"B": 0.03, "QD": 0}
+
+
+@pytest.mark.parametrize("field,value", [
+    ("B", 0), ("B", -1), ("B", True), ("B", "0.03"),
+    ("B", float("inf")), ("B", float("nan")),
+    ("QD", -1), ("QD", True), ("QD", "32"), ("QD", 32.0), ("QD", 1.5), ("QD", 513),
+    ("pq_chunks", 32), ("sample_rate", 0.0256), ("opq", True),
+])
+def test_invalid_pq_controls_do_not_invoke_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object,
+) -> None:
+    request = _pq_v11_request(tmp_path)
+    request["parameters"][field] = value
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(request), encoding="utf-8")
+    def forbidden(_argv: list[str]) -> int:
+        pytest.fail("invalid materialization reached native runner")
+    monkeypatch.setattr(search, "_run_argv", forbidden)
+    with pytest.raises(search.SearchEvaluationError):
+        search.main(["materialize", "--operation", "pq", "--request", str(path), "--runner", "unused"])
+
+
+@pytest.mark.parametrize("change", ["version", "identity", "mode", "operation", "missing_B", "missing_QD"])
+def test_materialization_identity_and_required_inputs(tmp_path: Path, change: str) -> None:
+    value = _pq_v11_request(tmp_path)
+    if change == "version":
+        value["implementation"]["implementation_version"] = "9.0.0"
+    elif change == "identity":
+        value["implementation"]["implementation_id"] = "other"
+    elif change == "mode":
+        value["implementation"]["reproduction_mode"] = "instrumented"
+    elif change == "operation":
+        value["operation"] = "unknown"
+    else:
+        value["parameters"].pop(change.removeprefix("missing_"))
+    with pytest.raises(search.SearchEvaluationError):
+        search.normalize_materialization_request(value)
+
+
+def test_legacy_implicit_materialization_is_explicitly_frozen(tmp_path: Path) -> None:
+    request = _pq_v11_request(tmp_path)
+    for field in ("implementation", "request_id", "candidate_path"):
+        request.pop(field)
+    request["parameters"] = {}
+    normalized = search.normalize_materialization_request(request)
+    assert normalized["implementation"] == {
+        "implementation_id": "cpp_main_post_graph_pq_v1",
+        "implementation_version": "1.0.0", "reproduction_mode": "upstream_faithful",
+    }
+    assert normalized["parameters"] == search._PQ_PARAMETERS
+    assert normalized["request_id"] == request["run_id"]
+    assert normalized["candidate_path"] == f"temporary/{request['run_id']}/candidate/artifact.json"
+    request["parameters"] = {"B": 0.03, "QD": 32}
+    with pytest.raises(search.SearchEvaluationError):
+        search.normalize_materialization_request(request)
+
+
+def test_cli_operation_mismatch_never_invokes_runner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(_pq_v11_request(tmp_path)), encoding="utf-8")
+    def forbidden(_argv: list[str]) -> int:
+        pytest.fail("mismatched operation reached runner")
+    monkeypatch.setattr(search, "_run_argv", forbidden)
+    with pytest.raises(search.SearchEvaluationError, match="operation"):
+        search.main(["materialize", "--operation", "disk_layout", "--request", str(path), "--runner", "unused"])
+
+
+@pytest.mark.parametrize("version", [[], {}, True, None])
+def test_materialization_version_must_be_string(tmp_path: Path, version: object) -> None:
+    request = _pq_v11_request(tmp_path)
+    request["implementation"]["implementation_version"] = version
+    with pytest.raises(search.SearchEvaluationError):
+        search.normalize_materialization_request(request)
+
+
+@pytest.mark.parametrize("parameters", [{}, {"centroid_policy": "medoid_vector_fallback"}])
+def test_legacy_layout_and_frozen_boolean_controls(tmp_path: Path, parameters: dict) -> None:
+    request = _pq_v11_request(tmp_path)
+    request.pop("implementation")
+    request["operation"] = "disk_layout"
+    request["global_graph"] = {**request["dataset"], "artifact_type": "global_graph",
+                               "format_version": "global-graph-artifact/v2"}
+    request["parameters"] = parameters
+    normalized = search.normalize_materialization_request(request)
+    assert normalized["implementation"] == {
+        "implementation_id": "cpp_main_post_graph_disk_layout_v1",
+        "implementation_version": "1.0.0", "reproduction_mode": "upstream_faithful",
+    }
+    assert normalized["parameters"] == search._LAYOUT_PARAMETERS
+    for key in ("reorder", "labels"):
+        changed = json.loads(json.dumps(normalized))
+        changed["parameters"][key] = 0
+        with pytest.raises(search.SearchEvaluationError):
+            search.normalize_materialization_request(changed)
+    pq = _pq_v11_request(tmp_path)
+    pq["implementation"]["implementation_version"] = "1.0.0"
+    pq["parameters"] = {**search._PQ_PARAMETERS, "opq": 0}
+    with pytest.raises(search.SearchEvaluationError):
+        search.normalize_materialization_request(pq)
 
 
 def test_selected_query_normalization_preserves_opaque_source_id(tmp_path: Path) -> None:

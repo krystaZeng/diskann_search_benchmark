@@ -2292,20 +2292,20 @@ def _artifact_ref(value: Any, expected_type: str) -> dict[str, Any]:
 def normalize_materialization_request(value: Any) -> dict[str, Any]:
     if type(value) is not dict:
         raise SearchEvaluationError("materialization request must be an object")
+    value = dict(value)
     allowed = {
         "request_id", "run_id", "workspace", "operation", "dataset",
         "global_graph", "implementation", "parameters", "resource_budget",
         "candidate_path",
     }
-    required = allowed - {"global_graph"}
+    # Historical direct-native requests omitted identity and used empty/fallback
+    # parameters. They remain frozen 1.0.0, never implicitly upgraded by N.
+    required = allowed - {"global_graph", "implementation", "request_id", "candidate_path"}
     if not required.issubset(value) or not set(value).issubset(allowed):
         raise SearchEvaluationError("materialization request fields are invalid")
     operation = value["operation"]
-    if operation not in {"pq", "disk_layout"}:
+    if type(operation) is not str or operation not in {"pq", "disk_layout"}:
         raise SearchEvaluationError("materialization operation is invalid")
-    expected = _PQ_PARAMETERS if operation == "pq" else _LAYOUT_PARAMETERS
-    if value["parameters"] != expected:
-        raise SearchEvaluationError("materialization parameters drifted")
     _artifact_ref(value["dataset"], "dataset")
     if operation == "pq" and "global_graph" in value:
         raise SearchEvaluationError("PQ request must not bind a GlobalGraph")
@@ -2313,18 +2313,64 @@ def normalize_materialization_request(value: Any) -> dict[str, Any]:
         if "global_graph" not in value:
             raise SearchEvaluationError("DiskLayout request requires a GlobalGraph")
         _artifact_ref(value["global_graph"], "global_graph")
-    implementation = value["implementation"]
     expected_id = (
         "cpp_main_post_graph_pq_v1"
         if operation == "pq"
         else "cpp_main_post_graph_disk_layout_v1"
     )
-    if implementation != {
+    implicit = "implementation" not in value
+    parameters = value["parameters"]
+    if implicit and not (
+        type(parameters) is dict
+        and (
+            parameters == {}
+            or operation == "disk_layout" and parameters == {"centroid_policy": "medoid_vector_fallback"}
+        )
+    ):
+        raise SearchEvaluationError("materialization implementation is required outside legacy requests")
+    implementation = value.setdefault("implementation", {
         "implementation_id": expected_id,
         "implementation_version": "1.0.0",
         "reproduction_mode": "upstream_faithful",
+    })
+    version = implementation.get("implementation_version") if type(implementation) is dict else None
+    versions = {"1.0.0", "1.1.0"} if operation == "pq" else {"1.0.0"}
+    if type(version) is not str or version not in versions or implementation != {
+        "implementation_id": expected_id,
+        "implementation_version": version,
+        "reproduction_mode": "upstream_faithful",
     }:
         raise SearchEvaluationError("materialization implementation identity is invalid")
+    expected = _PQ_PARAMETERS if operation == "pq" else _LAYOUT_PARAMETERS
+    if implicit:
+        parameters = dict(expected)
+        value["parameters"] = parameters
+    if type(parameters) is not dict:
+        raise SearchEvaluationError("materialization parameters must be an object")
+    if operation == "pq":
+        if version == "1.0.0":
+            if parameters != expected or type(parameters.get("opq")) is not bool or any(
+                type(parameters.get(key)) is not int for key in ("QD", "pq_chunks", "centroid_count")
+            ):
+                raise SearchEvaluationError("materialization parameters drifted")
+        elif set(parameters) != {"B", "QD"}:
+            raise SearchEvaluationError("PQ 1.1.0 requires only requested B and QD")
+        b, qd = parameters.get("B"), parameters.get("QD")
+        try:
+            valid_b = type(b) in (int, float) and math.isfinite(b) and b > 0
+        except OverflowError:
+            valid_b = False
+        if not valid_b or type(qd) is not int or not 0 <= qd <= 512:
+            raise SearchEvaluationError("PQ B must be finite positive and QD an integer in [0,512]")
+        # Dataset-dependent derivation and conversion checks belong solely to C++.
+    elif (
+        parameters != expected
+        or type(parameters.get("pq_disk_bytes")) is not int
+        or any(type(parameters.get(key)) is not bool for key in ("reorder", "labels"))
+    ):
+        raise SearchEvaluationError("materialization parameters drifted")
+    value.setdefault("request_id", value["run_id"])
+    value.setdefault("candidate_path", f"temporary/{value['run_id']}/candidate/artifact.json")
     budget = value["resource_budget"]
     if (
         type(budget) is not dict
@@ -2338,7 +2384,7 @@ def normalize_materialization_request(value: Any) -> dict[str, Any]:
     workspace = value["workspace"]
     if type(workspace) is not dict or set(workspace) != {"root"}:
         raise SearchEvaluationError("workspace is invalid")
-    return json.loads(json.dumps(value, sort_keys=True))
+    return json.loads(json.dumps(value, sort_keys=True, allow_nan=False))
 
 
 def _run_argv(argv: list[str]) -> int:
@@ -2388,7 +2434,17 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.operation not in {"pq", "disk_layout"} or not args.runner:
             raise SearchEvaluationError("native materialization requires pq/disk_layout and runner")
-        return _run_argv([args.runner, "materialize", "--request", args.request])
+        request = normalize_materialization_request(_read_request(args.request))
+        if request["operation"] != args.operation:
+            raise SearchEvaluationError("CLI operation differs from materialization request")
+        # Preserve the user's historical request; execute exactly the normalized
+        # document rather than forwarding unchecked bytes.
+        with tempfile.TemporaryDirectory(prefix="diskann-materialization-") as temporary:
+            normalized_path = Path(temporary) / "request.json"
+            normalized_path.write_text(
+                json.dumps(request, sort_keys=True, allow_nan=False), encoding="utf-8"
+            )
+            return _run_argv([args.runner, "materialize", "--request", str(normalized_path)])
     if args.command == "search":
         return _run_argv(
             [args.runner, "search", "--protocol", args.protocol, "--workspace", args.workspace]

@@ -15,6 +15,7 @@ struct SearchAssetDescriptor {
 };
 
 const SearchAssetDescriptor& fixed_pq_descriptor();
+const SearchAssetDescriptor& pq_descriptor(const std::string& version);
 const SearchAssetDescriptor& fixed_disk_layout_descriptor();
 
 struct SearchImplementationIdentity {

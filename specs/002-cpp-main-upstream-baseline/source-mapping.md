@@ -98,6 +98,27 @@ must not be inferred from this table alone. Line ranges are bound to the commit 
 Registry physical admission is framework integration only; the mapped algorithm is unchanged.
 See [contracts/stage-bindings.md](contracts/stage-bindings.md) for validated encoding and actual-service checks before consumer factories.
 
+## Post-graph PQ wrapper version 1.1.0
+
+Bound to the same repository/branch/commit above. SM-009/SM-034 are the authority for the
+Feature 005 private policy: `src/disk_utils.cpp:79-87` converts B to bytes, subtracting 0.25 GiB
+only when B-0.25>1.0; `:1286-1315` derives sample probability and automatic chunks, then applies
+positive QD after the lower/dimension/MAX_PQ_CHUNKS bounds. `include/pq_common.h:6-11` supplies
+256 centroids, the 256000 target and the 512-chunk bound. `src/partition.cpp:114` caps sampling
+probability at 1; `:116-140` randomly samples and reports its actual count.
+
+The wrapper passes the resulting policy directly to `generate_quantized_data<float>`
+(`src/pq.cpp:1095-1131`), preserving native randomness, training and encoding. It does not invoke
+the complete graph builder. `calculate_num_pq_chunks` at `src/disk_utils.cpp:96` is not this
+call path: it has separate compression-ratio logic and a declaration/definition parameter mismatch.
+
+Additional wrapper input checks reject unsafe numeric conversions, non-integer/negative QD and
+positive QD greater than dimension/512; they do not require dimension divisibility or constrain
+QD to budget-derived chunks. Frozen 1.0.0 remains the historical 32-chunk/0.256 profile with
+<=1M admission. General 1.1.0 is explicit, with no per-scale version switching. SM-031's native
+DiskLayout call is unchanged when the wrapper's artificial 1M limit is removed. This mapping
+does not certify large-data execution, memory sufficiency or search quality.
+
 ## P0/B0 parameterized wrapper version 1.1.0
 
 This addition remains bound to Microsoft DiskANN `cpp_main` commit

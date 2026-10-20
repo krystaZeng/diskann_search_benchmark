@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -36,6 +37,44 @@ constexpr const char* kPinnedRepository =
 constexpr const char* kPinnedBranch = "cpp_main";
 constexpr const char* kPinnedCommit =
     "78256bbab4685e1774e78d331e081a153be26823";
+
+double effective_pq_budget(double b) {
+  if (!std::isfinite(b) || b <= 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "PQ B must be a finite positive GiB value");
+  }
+#if DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE
+  const double bytes = diskann::get_memory_budget(b);
+#else
+  // Portable policy tests only: exact pinned disk_utils.cpp:79-87 rule.
+  // Native execution above always uses the pinned upstream helper.
+  const double bytes = (b - 0.25 > 1.0 ? b - 0.25 : b) * 1024 * 1024 * 1024;
+#endif
+  if (!std::isfinite(bytes) || bytes <= 0) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "PQ effective byte budget is not finite and positive");
+  }
+  return bytes;
+}
+
+void require_parameter_keys(const Json& value,
+                            const std::set<std::string>& expected) {
+  if (!value.is_object() || value.size() != expected.size()) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "materialization parameter fields are invalid");
+  }
+  for (const auto& key : expected) {
+    if (!value.contains(key)) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "materialization parameter is missing: " + key);
+    }
+  }
+}
+
+Json frozen_pq_parameters() {
+  return {{"B", 0.03}, {"QD", 0}, {"pq_chunks", 32}, {"sample_rate", 0.256},
+          {"centroid_count", 256}, {"opq", false}, {"distance_metric", "l2"}};
+}
 
 std::string now_utc() {
   const auto now = std::chrono::system_clock::now();
@@ -271,6 +310,122 @@ MaterializationResult retained_failure(const WorkspaceRef& workspace,
 
 }  // namespace
 
+PqGenerationPolicy resolve_pq_generation_policy(
+    const std::string& version, NodeCount points, std::uint32_t dimension,
+    double memory_budget_gib, std::uint32_t qd) {
+  static_cast<void>(pq_descriptor(version));
+  if (points == 0 || points > std::numeric_limits<std::uint32_t>::max() ||
+      dimension == 0) {
+    throw PipelineError(ErrorCategory::kNodeCountMismatch,
+                        "PQ dimensions exceed native header bounds");
+  }
+  PqGenerationPolicy policy;
+  if (version == "1.0.0") {
+    if (points > 1000000 || dimension < policy.pq_chunks ||
+        memory_budget_gib != policy.memory_budget_gib || qd != policy.qd) {
+      throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
+                          "Dataset or parameters are outside frozen PQ 1.0.0");
+    }
+    return policy;
+  }
+  policy.memory_budget_gib = memory_budget_gib;
+  policy.qd = qd;
+  policy.effective_budget_bytes = effective_pq_budget(memory_budget_gib);
+  const double per_point = policy.effective_budget_bytes / static_cast<double>(points);
+  // The pinned build_disk_index casts to uint64_t before clamping.
+  // Reject an unrepresentable conversion even if QD would override it.
+  if (!std::isfinite(per_point) || per_point >= std::ldexp(1.0, 64)) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "PQ per-point budget exceeds uint64 conversion range");
+  }
+  const auto automatic = static_cast<std::uint64_t>(per_point);
+  policy.pq_chunks = static_cast<std::uint32_t>(
+      std::min<std::uint64_t>({std::max<std::uint64_t>(1, automatic),
+                              dimension, 512}));
+  if (qd > dimension || qd > 512) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "PQ QD exceeds Dataset dimension or MAX_PQ_CHUNKS");
+  }
+  if (qd > 0) policy.pq_chunks = qd;
+  policy.sample_rate = std::min(1.0, 256000.0 / static_cast<double>(points));
+  return policy;
+}
+
+void configure_materialization_request(MaterializationRequest& request,
+                                       const std::string& request_json) {
+  const auto document = detail::parse_json_strict(request_json);
+  const auto operation = document.at("operation").get<std::string>();
+  if (operation != "pq" && operation != "disk_layout") {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "unsupported materialization operation");
+  }
+  const bool pq = operation == "pq";
+  const bool implicit = !document.contains("implementation");
+  auto parameters = document.at("parameters");
+  if (implicit && !(parameters == Json::object() ||
+                    (!pq && parameters == Json{{"centroid_policy", "medoid_vector_fallback"}}))) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "materialization implementation is required outside legacy requests");
+  }
+  const auto implementation = document.value(
+      "implementation",
+      Json{{"implementation_id", pq ? "cpp_main_post_graph_pq_v1"
+                                   : "cpp_main_post_graph_disk_layout_v1"},
+           {"implementation_version", "1.0.0"},
+           {"reproduction_mode", "upstream_faithful"}});
+  require_parameter_keys(implementation, {"implementation_id",
+                                         "implementation_version",
+                                         "reproduction_mode"});
+  const auto version = implementation.at("implementation_version").get<std::string>();
+  const auto& descriptor = pq ? pq_descriptor(version) : fixed_disk_layout_descriptor();
+  if (implementation.at("implementation_id") != descriptor.implementation_id ||
+      version != descriptor.implementation_version ||
+      implementation.at("reproduction_mode") != descriptor.reproduction_mode) {
+    throw PipelineError(ErrorCategory::kSchemaInvalid,
+                        "materialization implementation identity mismatch");
+  }
+  if (pq && implicit) parameters = frozen_pq_parameters();
+  if (pq) {
+    if (version == "1.0.0") {
+      require_parameter_keys(parameters, {"B", "QD", "pq_chunks", "sample_rate",
+                                          "centroid_count", "opq", "distance_metric"});
+      if (parameters != frozen_pq_parameters() ||
+          !parameters.at("QD").is_number_integer() ||
+          !parameters.at("pq_chunks").is_number_integer() ||
+          !parameters.at("centroid_count").is_number_integer()) {
+        throw PipelineError(ErrorCategory::kSchemaInvalid,
+                            "frozen PQ parameters drifted");
+      }
+    } else {
+      require_parameter_keys(parameters, {"B", "QD"});
+    }
+    if (!parameters.at("B").is_number() ||
+        !parameters.at("QD").is_number_integer() ||
+        parameters.at("QD") < 0 || parameters.at("QD") > 512) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "PQ B must be numeric and QD an integer in [0,512]");
+    }
+    const auto b = parameters.at("B").get<double>();
+    static_cast<void>(effective_pq_budget(b));
+    request.pq_implementation_version = version;
+    request.pq_memory_budget_gib = b;
+    request.pq_qd = parameters.at("QD").get<std::uint32_t>();
+  } else {
+    const Json fixed{{"scalar_type", "float32"}, {"pq_disk_bytes", 0},
+                     {"reorder", false}, {"labels", false},
+                     {"entry_policy", "end_to_end"},
+                     {"centroid_policy", "medoid_vector_fallback"}};
+    if (implicit) {
+      parameters = fixed;
+    }
+    if (parameters != fixed || !parameters.at("pq_disk_bytes").is_number_integer()) {
+      throw PipelineError(ErrorCategory::kSchemaInvalid,
+                          "frozen DiskLayout parameters drifted");
+    }
+    request.centroid_policy = "medoid_vector_fallback";
+  }
+}
+
 NativePostGraphCalls fixed_native_post_graph_calls() {
   NativePostGraphCalls result;
 #if DISKANN_SEARCH_LINUX_NATIVE_AVAILABLE
@@ -309,8 +464,8 @@ PostGraphMaterializer::PostGraphMaterializer(
 
 MaterializationResult PostGraphMaterializer::materialize_pq(
     const MaterializationRequest& request) const {
-  const auto& descriptor = fixed_pq_descriptor();
-  const PqGenerationPolicy policy;
+  const auto& descriptor = pq_descriptor(request.pq_implementation_version);
+  PqGenerationPolicy policy;
   auto manifest = base_manifest(
       request, descriptor,
       materialization_parameters(
@@ -321,6 +476,10 @@ MaterializationResult PostGraphMaterializer::materialize_pq(
                         {"centroid_count", policy.centroid_count},
                         {"opq", policy.opq},
                         {"distance_metric", policy.distance_metric}}));
+  if (request.pq_implementation_version == "1.1.0") {
+    manifest.parameters_json = materialization_parameters(
+        request, Json{{"B", request.pq_memory_budget_gib}, {"QD", request.pq_qd}});
+  }
   try {
     require_request(request, false);
     if (cancellation_ != nullptr && cancellation_->is_cancelled()) {
@@ -338,13 +497,31 @@ MaterializationResult PostGraphMaterializer::materialize_pq(
     }
     const auto& dataset = *dataset_validation.validated_artifact;
     if (dataset.reference().format_version != "diskann-float32-dataset/v1" ||
-        dataset.dataset().global_node_count > 1000000 ||
-        dataset.dataset().vector_dimension < policy.pq_chunks ||
         dataset.dataset().distance_metric != "l2") {
       throw PipelineError(ErrorCategory::kCapabilityUnsatisfied,
                           "Dataset is outside fixed PQ MVP admission");
     }
     manifest.dataset = dataset.dataset();
+    policy = resolve_pq_generation_policy(
+        request.pq_implementation_version, dataset.dataset().global_node_count,
+        dataset.dataset().vector_dimension, request.pq_memory_budget_gib,
+        request.pq_qd);
+    if (request.pq_implementation_version == "1.1.0") {
+      manifest.parameters_json = materialization_parameters(
+          request, Json{{"B", policy.memory_budget_gib}, {"QD", policy.qd},
+                        {"point_count", dataset.dataset().global_node_count},
+                        {"dimension", dataset.dataset().vector_dimension},
+                        {"effective_budget_bytes", policy.effective_budget_bytes},
+                        {"pq_chunks", policy.pq_chunks},
+                        {"sample_rate", policy.sample_rate},
+                        {"centroid_count", policy.centroid_count},
+                        {"opq", policy.opq}, {"distance_metric", policy.distance_metric},
+                        {"derivation",
+                         "cpp_main@78256bbab4685e1774e78d331e081a153be26823:"
+                         "disk_utils.cpp:79-87,1286-1315;partition.cpp:114;"
+                         "sample=min(1,256000/N);chunks=clamp(uint64(budget/N),1,min(dim,512));"
+                         "positive_QD_overrides_after_clamp"}});
+    }
     const auto& vectors = require_payload(dataset, "vectors");
     if (vectors.media_type != cpp_main::kFloat32DatasetMediaType) {
       throw PipelineError(ErrorCategory::kSchemaInvalid,
@@ -486,7 +663,6 @@ MaterializationResult PostGraphMaterializer::materialize_disk_layout(
     const auto& dataset = *dataset_validation.validated_artifact;
     const auto& global = *global_validation.validated_artifact;
     if (dataset.reference().format_version != "diskann-float32-dataset/v1" ||
-        dataset.dataset().global_node_count > 1000000 ||
         dataset.dataset().dataset_checksum !=
             global.dataset().dataset_checksum) {
       throw PipelineError(ErrorCategory::kSourceMismatch,

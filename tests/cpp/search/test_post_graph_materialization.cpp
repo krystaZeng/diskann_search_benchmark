@@ -7,16 +7,19 @@
 #include "support/test_assert.hpp"
 
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
+#include <limits>
 #include <numeric>
 #include <sstream>
 
 #if DISKANN_SEARCH_LINUX_NATIVE_TEST
 #include <immintrin.h>
 #include "linux_aligned_file_reader.h"
+#include "disk_utils.h"
 #include "pq_flash_index.h"
 #include <sys/wait.h>
 #include <unistd.h>
@@ -146,6 +149,236 @@ void expect_terminal_times(const std::filesystem::path& path,
                request.started_at);
   DP_EXPECT_TRUE(manifest.at("ended_at").get<std::string>() >=
                  request.started_at);
+}
+
+void pq_policy_versions() {
+  const auto derive = [](dp::NodeCount n, std::uint32_t dim, double b,
+                         std::uint32_t qd = 0) {
+    return ds::resolve_pq_generation_policy("1.1.0", n, dim, b, qd);
+  };
+  const auto one = derive(1000000, 128, 0.03);
+  DP_EXPECT_EQ(one.pq_chunks, 32U);
+  DP_EXPECT_EQ(one.sample_rate, 0.256);
+  const auto ten = derive(10000000, 128, 0.03);
+  DP_EXPECT_EQ(ten.pq_chunks, 3U);
+  DP_EXPECT_EQ(ten.sample_rate, 0.0256);
+  DP_EXPECT_EQ(derive(10000000, 128, 0.03, 32).pq_chunks, 32U);
+  DP_EXPECT_EQ(derive(2048, 33, 0.03, 7).pq_chunks, 7U);
+  DP_EXPECT_EQ(derive(2048, 33, 0.03, 7).sample_rate, 1.0);
+  DP_EXPECT_EQ(derive(256000, 128, 0.03).sample_rate, 1.0);
+  DP_EXPECT_EQ(derive(10000000, 128, 1e-12).pq_chunks, 1U);
+  DP_EXPECT_EQ(derive(6, 33, 0.03).pq_chunks, 33U);
+  DP_EXPECT_EQ(derive(6, 1024, 0.03).pq_chunks, 512U);
+  // The cache reserve applies only when B - 0.25 > 1.0.
+  constexpr double gib = 1024.0 * 1024 * 1024;
+  for (double b : {0.03, 1.0, 1.25, std::nextafter(1.25, 2.0), 2.0}) {
+    const auto policy = derive(10000000, 128, b);
+    const auto expected = (b - 0.25 > 1.0 ? b - 0.25 : b) * gib;
+    DP_EXPECT_EQ(policy.effective_budget_bytes, expected);
+#if DISKANN_SEARCH_LINUX_NATIVE_TEST
+    DP_EXPECT_EQ(policy.effective_budget_bytes, diskann::get_memory_budget(b));
+#endif
+  }
+  DP_EXPECT_EQ(derive(1024, 128, 32.0 * 1024 / gib).pq_chunks, 32U);
+  DP_EXPECT_EQ(derive(1024, 128, std::nextafter(32.0 * 1024 / gib, 0.0)).pq_chunks, 31U);
+  for (double b : {0.0, -1.0, std::numeric_limits<double>::infinity(),
+                   std::numeric_limits<double>::quiet_NaN(),
+                   std::numeric_limits<double>::max(), std::ldexp(1.0, 64)}) {
+    DP_EXPECT_THROW(derive(1, 128, b));
+  }
+  DP_EXPECT_THROW(derive(0, 128, 0.03));
+  DP_EXPECT_THROW(derive(1, 0, 0.03));
+  DP_EXPECT_THROW(derive(1ULL << 32, 128, 0.03));
+  DP_EXPECT_THROW(derive(10000000, 128, 0.03, 129));
+  DP_EXPECT_THROW(derive(10000000, 1024, 0.03, 513));
+  DP_EXPECT_THROW(ds::resolve_pq_generation_policy("9.0.0", 6, 32, 0.03, 0));
+  const auto old = ds::resolve_pq_generation_policy("1.0.0", 6, 32, 0.03, 0);
+  DP_EXPECT_EQ(old.sample_rate, 0.256);
+  DP_EXPECT_EQ(old.pq_chunks, 32U);
+  DP_EXPECT_EQ(ds::resolve_pq_generation_policy("1.0.0", 1000000, 128, 0.03, 0).pq_chunks, 32U);
+  DP_EXPECT_THROW(ds::resolve_pq_generation_policy("1.0.0", 1000001, 128, 0.03, 0));
+  DP_EXPECT_THROW(ds::resolve_pq_generation_policy("1.0.0", 6, 31, 0.03, 0));
+  DP_EXPECT_THROW(ds::resolve_pq_generation_policy("1.0.0", 6, 32, 0.3, 0));
+  DP_EXPECT_EQ(ds::pq_descriptor("1.1.0").implementation_id,
+               ds::fixed_pq_descriptor().implementation_id);
+  DP_EXPECT_EQ(ds::pq_descriptor("1.1.0").implementation_version, "1.1.0");
+}
+
+Json pq_request_controls() {
+  return {{"operation", "pq"},
+          {"implementation", {{"implementation_id", "cpp_main_post_graph_pq_v1"},
+                              {"implementation_version", "1.1.0"},
+                              {"reproduction_mode", "upstream_faithful"}}},
+          {"parameters", {{"B", 0.03}, {"QD", 7}}}};
+}
+
+void request_control_validation() {
+  ds::MaterializationRequest parsed;
+  const auto controls = pq_request_controls();
+  ds::configure_materialization_request(parsed, controls.dump());
+  DP_EXPECT_EQ(parsed.pq_implementation_version, "1.1.0");
+  DP_EXPECT_EQ(parsed.pq_memory_budget_gib, 0.03);
+  DP_EXPECT_EQ(parsed.pq_qd, 7U);
+  for (const Json& qd : {Json(-1), Json(1.5), Json(32.0), Json(true),
+                         Json("32"), Json(513), Json(1ULL << 32)}) {
+    auto changed = controls;
+    changed["parameters"]["QD"] = qd;
+    DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  }
+  for (const Json& b : {Json(0), Json(-1), Json(true), Json("0.03"), Json(nullptr)}) {
+    auto changed = controls;
+    changed["parameters"]["B"] = b;
+    DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  }
+  for (const auto& field : {"B", "QD"}) {
+    auto changed = controls;
+    changed["parameters"].erase(field);
+    DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  }
+  for (const auto& field : {"pq_chunks", "sample_rate", "opq"}) {
+    auto changed = controls;
+    changed["parameters"][field] = 1;
+    DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  }
+  for (const auto& field : {"implementation_id", "implementation_version",
+                           "reproduction_mode"}) {
+    auto changed = controls;
+    changed["implementation"][field] = "unknown";
+    DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  }
+  auto changed = controls;
+  changed["operation"] = "unknown";
+  DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  changed = controls;
+  changed.erase("implementation");
+  DP_EXPECT_THROW(ds::configure_materialization_request(parsed, changed.dump()));
+  // Historical implicit native requests remain the frozen v1 policy.
+  ds::configure_materialization_request(
+      parsed, Json{{"operation", "pq"}, {"parameters", Json::object()}}.dump());
+  DP_EXPECT_EQ(parsed.pq_implementation_version, "1.0.0");
+  DP_EXPECT_EQ(parsed.pq_memory_budget_gib, 0.03);
+  DP_EXPECT_EQ(parsed.pq_qd, 0U);
+
+  for (const auto& operation : {std::string("pq"), std::string("disk_layout")}) {
+    const bool pq = operation == "pq";
+    const Json frozen = pq
+        ? Json{{"B", 0.03}, {"QD", 0}, {"pq_chunks", 32}, {"sample_rate", 0.256},
+               {"centroid_count", 256}, {"opq", false}, {"distance_metric", "l2"}}
+        : Json{{"scalar_type", "float32"}, {"pq_disk_bytes", 0}, {"reorder", false},
+               {"labels", false}, {"entry_policy", "end_to_end"},
+               {"centroid_policy", "medoid_vector_fallback"}};
+    Json explicit_request{
+        {"operation", operation}, {"parameters", frozen},
+        {"implementation", {
+            {"implementation_id", pq ? "cpp_main_post_graph_pq_v1"
+                                     : "cpp_main_post_graph_disk_layout_v1"},
+            {"implementation_version", "1.0.0"},
+            {"reproduction_mode", "upstream_faithful"}}}};
+    // Prove the explicit control document is valid before removing only identity.
+    // No Dataset or files participate in this configuration-stage check.
+    ds::configure_materialization_request(parsed, explicit_request.dump());
+    auto missing_identity = explicit_request;
+    missing_identity.erase("implementation");
+    DP_EXPECT_THROW(ds::configure_materialization_request(parsed, missing_identity.dump()));
+
+    for (const Json& invalid_identity : {
+             Json(nullptr), Json::object(),
+             Json{{"implementation_id", explicit_request["implementation"]["implementation_id"]}}}) {
+      auto invalid = explicit_request;
+      invalid["parameters"] = Json::object();
+      invalid["implementation"] = invalid_identity;
+      DP_EXPECT_THROW(ds::configure_materialization_request(parsed, invalid.dump()));
+    }
+    for (const auto& field : {"implementation_id", "implementation_version", "reproduction_mode"}) {
+      auto invalid = explicit_request;
+      invalid["parameters"] = Json::object();
+      invalid["implementation"][field] = "unknown";
+      DP_EXPECT_THROW(ds::configure_materialization_request(parsed, invalid.dump()));
+    }
+  }
+  for (const Json& parameters : {
+           Json::object(), Json{{"centroid_policy", "medoid_vector_fallback"}}}) {
+    parsed.centroid_policy = "unset";
+    ds::configure_materialization_request(
+        parsed, Json{{"operation", "disk_layout"}, {"parameters", parameters}}.dump());
+    DP_EXPECT_EQ(parsed.centroid_policy, "medoid_vector_fallback");
+  }
+}
+
+void derived_materialization_consistency() {
+  Inputs inputs;
+  Token token;
+  int calls = 0;
+  ds::PqGenerationPolicy observed;
+  ds::NativePostGraphCalls native;
+  native.generate_pq = [&](const auto&, const auto& pivots, const auto& codes,
+                           const auto& policy) {
+    ++calls;
+    observed = policy;
+    dp::test::overwrite_file(pivots, dp::search::test::pq_pivots_bytes(32, policy.pq_chunks));
+    dp::test::overwrite_file(codes, dp::search::test::pq_codes_bytes(6, policy.pq_chunks));
+  };
+  ds::PostGraphMaterializer materializer(inputs.workspace, native, &token);
+  auto value = request(inputs, "derived-small");
+  value.global_graph.reset();
+  ds::configure_materialization_request(value, pq_request_controls().dump());
+  const auto result = materializer.materialize_pq(value);
+  DP_EXPECT_EQ(result.status, dp::StageStatus::kSucceeded);
+  DP_EXPECT_EQ(calls, 1);
+  DP_EXPECT_EQ(observed.pq_chunks, 7U);  // 32 is not divisible by 7.
+  DP_EXPECT_EQ(observed.sample_rate, 1.0);
+  const auto manifest = native_fixture::read_json(result.build_manifest_path);
+  const auto& params = manifest.at("parameters");
+  DP_EXPECT_EQ(manifest.at("implementation").at("implementation_version"), "1.1.0");
+  DP_EXPECT_EQ(params.at("B"), 0.03);
+  DP_EXPECT_EQ(params.at("QD"), 7);
+  DP_EXPECT_EQ(params.at("point_count"), 6);
+  DP_EXPECT_EQ(params.at("dimension"), 32);
+  DP_EXPECT_EQ(params.at("effective_budget_bytes"), observed.effective_budget_bytes);
+  DP_EXPECT_EQ(params.at("pq_chunks"), observed.pq_chunks);
+  DP_EXPECT_EQ(params.at("sample_rate"), observed.sample_rate);
+  DP_EXPECT_TRUE(!params.at("derivation").get<std::string>().empty());
+  DP_EXPECT_TRUE(dp::Validator(inputs.workspace).validate_with_lineage(*result.artifact).valid());
+  const auto metadata_path = dp::test::metadata_path(inputs.workspace, *result.artifact);
+  const auto metadata = native_fixture::read_json(metadata_path);
+  DP_EXPECT_EQ(metadata.at("structural").at("pq_chunks"), observed.pq_chunks);
+  DP_EXPECT_EQ(metadata.at("structural").at("point_count"), 6);
+  DP_EXPECT_TRUE(!metadata.contains("parameters"));
+  const auto before = dp::sha256_file(metadata_path);
+  // A repeated invocation must not replace the published Artifact or Manifest.
+  try {
+    DP_EXPECT_TRUE(materializer.materialize_pq(value).status != dp::StageStatus::kSucceeded);
+  } catch (const dp::PipelineError&) {}
+  DP_EXPECT_EQ(dp::sha256_file(metadata_path), before);
+  DP_EXPECT_EQ(native_fixture::read_json(result.build_manifest_path), manifest);
+  for (const auto& version : {"1.1.0", "unknown"}) {
+    value.run_id = std::string("invalid-") + version;
+    value.pq_implementation_version = version;
+    value.pq_qd = 33;
+    const auto prior = calls;
+    try {
+      const auto rejected = materializer.materialize_pq(value);
+      DP_EXPECT_EQ(rejected.status, dp::StageStatus::kFailed);
+    } catch (const dp::PipelineError&) {}
+    DP_EXPECT_EQ(calls, prior);
+  }
+  value.run_id = "derived-source-mismatch";
+  value.pq_implementation_version = "1.1.0";
+  value.pq_qd = 7;
+  value.dataset.aggregate_checksum = std::string(64, 'f');
+  const auto prior = calls;
+  DP_EXPECT_EQ(materializer.materialize_pq(value).status, dp::StageStatus::kFailed);
+  DP_EXPECT_EQ(calls, prior);
+  value.dataset = inputs.dataset.reference;
+  value.run_id = "derived-corrupt-output";
+  native.generate_pq = [](const auto&, const auto& pivots, const auto& codes, const auto&) {
+    dp::test::overwrite_file(pivots, "broken");
+    dp::test::overwrite_file(codes, "broken");
+  };
+  ds::PostGraphMaterializer corrupt(inputs.workspace, native, &token);
+  const auto invalid = corrupt.materialize_pq(value);
+  DP_EXPECT_EQ(invalid.status, dp::StageStatus::kInvalidOutput);
+  DP_EXPECT_TRUE(invalid.quarantine_id.has_value());
 }
 
 #if DISKANN_SEARCH_LINUX_NATIVE_TEST
@@ -327,6 +560,35 @@ void real_post_graph_closure() {
       workspace.temporary_root /
       ("load-probe-" + pq.aggregate_checksum.substr(0, 12) + "-" +
        layout.aggregate_checksum.substr(0, 12) + "-native-index")));
+  // Exercise the actual runner, native training/encoding, validators and loader
+  // for both automatic and QD-overridden 1.1.0 policies on the same small data.
+  for (std::uint32_t qd : {0U, 7U}) {
+    auto derived = native_fixture::read_json(pq_request_path);
+    const auto run_id = "search-pq-native-derived-" + std::to_string(qd);
+    derived["run_id"] = run_id;
+    derived["implementation"] = {
+        {"implementation_id", "cpp_main_post_graph_pq_v1"},
+        {"implementation_version", "1.1.0"}, {"reproduction_mode", "upstream_faithful"}};
+    derived["parameters"] = {{"B", 0.000004}, {"QD", qd}};
+    const auto path = request_root / (run_id + ".json");
+    native_fixture::write_text(path, derived.dump());
+    DP_EXPECT_EQ(run_feature_runner({"materialize", "--request", path.string()}), 0);
+    const auto artifact = published_reference(
+        workspace, run_id + "/cpp_main_post_graph_pq_v1/artifact.json");
+    const auto metadata = native_fixture::read_json(dp::test::metadata_path(workspace, artifact));
+    const auto manifest = native_fixture::read_json(workspace.manifest_root / (run_id + ".json"));
+    const auto expected_chunks = qd == 0 ? 2U : qd;
+    DP_EXPECT_EQ(metadata.at("structural").at("pq_chunks"), expected_chunks);
+    DP_EXPECT_EQ(manifest.at("parameters").at("pq_chunks"), expected_chunks);
+    DP_EXPECT_EQ(manifest.at("parameters").at("sample_rate"), 1.0);
+    DP_EXPECT_EQ(manifest.at("parameters").at("QD"), qd);
+    DP_EXPECT_EQ(manifest.at("parameters").at("point_count"), kPoints);
+    DP_EXPECT_TRUE(dp::Validator(workspace).validate_with_lineage(artifact).valid());
+    DP_EXPECT_EQ(run_feature_runner(
+        {"load-probe", "--workspace", workspace.root.string(),
+         "--pq-artifact", artifact.metadata_path.string(),
+         "--disk-layout-artifact", layout.metadata_path.string()}), 0);
+  }
   if (std::getenv("DISKANN_SEARCH_REAL_FIXTURE_ROOT") != nullptr) {
     native_fixture::write_text(
         retained_root / "fixture.json",
@@ -407,6 +669,9 @@ void runner_provenance_closure(const Inputs& inputs) {
 }  // namespace
 
 int main() {
+  pq_policy_versions();
+  request_control_validation();
+  derived_materialization_consistency();
   DP_EXPECT_EQ(ds::fixed_pq_descriptor().implementation_id,
                std::string("cpp_main_post_graph_pq_v1"));
   DP_EXPECT_EQ(ds::fixed_disk_layout_descriptor().implementation_id,

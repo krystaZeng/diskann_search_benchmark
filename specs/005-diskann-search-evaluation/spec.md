@@ -43,6 +43,33 @@ need not share Partition/LocalGraph artifacts. QuerySet, GroundTruth, hardware/r
 cache and timing conditions must be stated, with differences and unknowns limiting conclusions.
 This amendment adds no automatic cross-plan or cross-machine comparison service.
 
+## General post-graph scale extension: PQ 1.1.0
+
+This additive extension supersedes only the historical MVP scale restrictions in FR-005/SC-016
+for explicitly selected PQ 1.1.0 and the existing DiskLayout materializer. The original MVP
+requirements and historical records below remain the definition of PQ 1.0.0, including its fixed
+parameters and <=1M admission. No version is selected implicitly from Dataset size.
+
+`cpp_main_post_graph_pq_v1` version 1.1.0 accepts only requested B/QD, and derives effective
+parameters from the validated actual Dataset count and dimension using pinned `build_disk_index`
+semantics: effective sample rate min(1,256000/N), native `get_memory_budget(B)`, then integer
+budget-per-point chunks clamped to [1,min(dimension,512)], followed by a valid positive QD override.
+B must be finite positive and derived conversions representable; QD must be an integer, zero for
+automatic derivation or positive and no greater than dimension/512. QD is not capped again by B.
+Non-divisible dimensions/chunks are valid. OPQ=false, L2 and 256 centroids remain fixed.
+
+The Python CLI normalizes real requests and the C++ runner independently validates them. One
+C++ effective policy feeds native generation, BuildManifest and Artifact structural declarations.
+Python does not derive the policy. Sampling remains native and random; 256000 is an expected
+training size, not a required exact count. The same version serves every technically admitted
+scale, without dataset-specific algorithms, modes or a public parameter framework.
+
+DiskLayout retains its identity, full-precision format, native call and all existing validation;
+only its artificial <=1M limit is removed. No graph stage, search formula, v2 aggregation, public
+Artifact/SearchObservation format or historical report is changed. The fixed upstream remains
+read-only. Technical admission and manual authorization are separate: this extension authorizes
+only development and small-data validation, not SIFT1M/SIFT10M experiments.
+
 **Feature Branch**: `feature/search-evaluation`
 
 **Created**: 2026-08-18

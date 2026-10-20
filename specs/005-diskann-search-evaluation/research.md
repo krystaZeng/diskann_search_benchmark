@@ -186,6 +186,29 @@ itself prove the final admitted ABI and dependency closure.
 
 ## R-004 — PQ preparation and reuse policy
 
+**Additive policy revision 1.1.0**
+
+The decision below remains the frozen 1.0.0 profile. The same implementation ID now offers explicit
+1.1.0 with requested B/QD and a single C++ Dataset-dependent derivation. Native Linux uses pinned
+`get_memory_budget(double)` directly. Portable policy tests use the exact mapped arithmetic
+(`B - 0.25 > 1.0` determines the reserve), and Linux tests compare with the native helper.
+Do not call `calculate_num_pq_chunks`: its compression-ratio handling and declaration differ from
+the actual `build_disk_index` path mapped in SM-034.
+
+Effective sample probability is min(1,256000/N); chunks use the native budget/N conversion,
+lower bound 1, dimension bound and MAX_PQ_CHUNKS=512, then positive QD overrides. The wrapper
+rejects non-finite/non-positive B, unsafe conversions, non-integer/negative QD and QD exceeding
+dimension/512 rather than passing unsafe values into native code. It introduces no divisibility
+restriction and never re-clamps a valid QD to the budget-derived count.
+
+Examples: N=1M/dim=128/B=0.03/QD=0 gives (0.256,32); N=10M gives (0.0256,3);
+the same 10M input with QD=32 gives (0.0256,32). These are arithmetic checks, not execution or
+Recall evidence. Native random sampling/train/compress and per-Dataset immutable PQ reuse are
+unchanged. B/effective_budget_bytes are policy inputs, not peak-RSS estimates or hard memory caps.
+The 1.1.0 Manifest records actual inputs and effective outputs; historical 1.0.0 records are
+neither rewritten nor reinterpreted. DiskLayout drops its artificial 1M gate without changing
+its implementation identity or native semantics. All large-scale execution gates remain.
+
 **Decision**
 
 Generate a single PQArtifact for the admitted Dataset and reuse its exact bytes for all searches

@@ -11,6 +11,7 @@ namespace diskann_pipeline::search {
 
 struct PqGenerationPolicy {
   double memory_budget_gib{0.03};
+  double effective_budget_bytes{0};
   std::uint32_t qd{0};
   std::uint32_t pq_chunks{32};
   double sample_rate{0.256};
@@ -52,8 +53,21 @@ struct MaterializationRequest {
   std::filesystem::path runner_binary_path;
   std::string runner_binary_sha256;
   std::string centroid_policy{"medoid_vector_fallback"};
+  std::string pq_implementation_version{"1.0.0"};
+  double pq_memory_budget_gib{0.03};
+  std::uint32_t pq_qd{0};
   std::string started_at;
 };
+
+// Feature-private policy boundary; no Dataset I/O or native training.
+PqGenerationPolicy resolve_pq_generation_policy(
+    const std::string& version, NodeCount points, std::uint32_t dimension,
+    double memory_budget_gib, std::uint32_t qd);
+
+// Validates operation/identity/parameter types before any expensive admission.
+// Historical implicit native requests select only the frozen 1.0.0 profile.
+void configure_materialization_request(MaterializationRequest& request,
+                                       const std::string& request_json);
 
 struct MaterializationResult {
   StageStatus status{StageStatus::kFailed};

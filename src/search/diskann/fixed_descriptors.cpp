@@ -1,4 +1,5 @@
 #include "search/diskann/fixed_descriptors.hpp"
+#include "diskann_pipeline/errors.hpp"
 
 namespace diskann_pipeline::search {
 
@@ -38,6 +39,20 @@ const SearchAssetDescriptor& fixed_disk_layout_descriptor() {
         "search.disk_vectors_full_precision/v1",
         "search.entry_end_to_end/v1", "search.pqflash_loadable/v1"}}};
   return descriptor;
+}
+
+const SearchAssetDescriptor& pq_descriptor(const std::string& version) {
+  if (version == "1.0.0") return fixed_pq_descriptor();
+  if (version == "1.1.0") {
+    static const auto descriptor = [] {
+      auto value = fixed_pq_descriptor();
+      value.implementation_version = "1.1.0";
+      return value;
+    }();
+    return descriptor;
+  }
+  throw PipelineError(ErrorCategory::kSchemaInvalid,
+                      "unsupported PQ implementation version");
 }
 
 const SearchImplementationIdentity& fixed_oracle_identity() {

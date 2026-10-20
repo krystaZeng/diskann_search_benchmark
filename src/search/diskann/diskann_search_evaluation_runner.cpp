@@ -201,6 +201,8 @@ class NeverCancelled final : public dp::CancellationToken {
 int materialize(const std::filesystem::path& request_path,
                 const std::filesystem::path& executable_path) {
   const auto json = read_json(request_path);
+  ds::MaterializationRequest request;
+  ds::configure_materialization_request(request, json.dump());
   const auto workspace = dp::create_workspace(
       json.at("workspace").at("root").get<std::string>());
   const auto runner_binary = std::filesystem::weakly_canonical(executable_path);
@@ -208,7 +210,6 @@ int materialize(const std::filesystem::path& request_path,
     throw dp::PipelineError(dp::ErrorCategory::kPayloadMissing,
                             "materialization runner binary is missing");
   }
-  ds::MaterializationRequest request;
   request.run_id = json.at("run_id").get<std::string>();
   request.dataset = artifact_ref(json.at("dataset"));
   if (json.contains("global_graph")) {
@@ -220,8 +221,6 @@ int materialize(const std::filesystem::path& request_path,
   request.resource_budget = {
       json.at("resource_budget").at("memory_budget_bytes").get<std::uint64_t>(),
       json.at("resource_budget").at("thread_budget").get<std::uint32_t>()};
-  request.centroid_policy =
-      json.at("parameters").value("centroid_policy", "medoid_vector_fallback");
   request.runner_binary_path = runner_binary;
   request.runner_binary_sha256 = dp::sha256_file(runner_binary);
   request.started_at = now_utc();
