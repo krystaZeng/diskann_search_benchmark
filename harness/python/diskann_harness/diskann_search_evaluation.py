@@ -21,7 +21,8 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, ValidationError
 
-from .manifests import write_immutable_json
+from .checksum import aggregate_checksum
+from .manifests import ImmutableWriteError, write_immutable_json
 from .runner import _schema_validator
 
 
@@ -493,13 +494,296 @@ def _input_evidence(
     return evidence
 
 
+def _input_path(root: Path, value: Any) -> Path:
+    """Confine input lifecycle paths, including symlinks, outside upstream trees."""
+    if type(value) is not str or not value or Path(value).is_absolute() or ".." in Path(value).parts:
+        raise SearchEvaluationError("input path escapes workspace")
+    path = (root / value).resolve()
+    if not path.is_relative_to(root):
+        raise SearchEvaluationError("input path escapes workspace")
+    if any(path.is_relative_to(base / "upstream") for base in (root, _repository_root())):
+        raise SearchEvaluationError("input path targets protected upstream")
+    return path
+
+
+def _input_output_path(root: Path, value: Any) -> Path:
+    # Inspect the original directory entry before resolve() hides a dangling link.
+    if type(value) is not str or not value or Path(value).is_absolute() or ".." in Path(value).parts:
+        raise SearchEvaluationError("input path escapes workspace")
+    original = root / value
+    if original.is_symlink() or original.exists():
+        raise SearchEvaluationError("immutable input output already exists")
+    path = _input_path(root, value)
+    for parent in original.parents:
+        if parent == root:
+            break
+        if (parent.is_symlink() and not parent.exists()) or (parent.exists() and not parent.is_dir()):
+            raise SearchEvaluationError("input output parent is not an existing directory")
+    if path.exists() or path.is_symlink():
+        raise SearchEvaluationError("immutable input output already exists")
+    return path
+
+
+def _input_output_paths(root: Path, request: dict[str, Any], *extra: str) -> dict[str, Path]:
+    names = ("reference_path", "manifest_path", "validation_evidence_path", *extra)
+    paths = {name: _input_output_path(root, request[name]) for name in names}
+    values = list(paths.values())
+    if any(a == b or a in b.parents or b in a.parents
+           for i, a in enumerate(values) for b in values[i + 1:]):
+        raise SearchEvaluationError("input output paths must be distinct and not nested")
+    return paths
+
+
+def _input_dataset_identity(root: Path, request: dict[str, Any]) -> dict[str, Any]:
+    reference = _artifact_ref(request["dataset_artifact"], "dataset")
+    _schema_validator("artifact-ref.schema.json", _repository_root()).validate(reference)
+    path = _input_path(root, "normal/" + reference["metadata_path"])
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    schema = json.loads((_repository_root() / "contracts/baseline-v1/schemas/cpp-main-dataset-artifact.schema.json").read_text())
+    Draft202012Validator(schema).validate(metadata)
+    if any(metadata[key] != reference[key] for key in ("artifact_type", "format_version", "aggregate_checksum")):
+        raise SearchEvaluationError("Dataset ArtifactRef identity mismatch")
+    dataset = metadata["dataset"]
+    payload = metadata["payloads"][0]
+    projection = {key: metadata[key] for key in (
+        "schema_version", "canonicalization", "artifact_type", "format_version",
+        "id_space", "source_artifacts", "structural",
+    )}
+    projection.update(dataset_checksum=dataset["dataset_checksum"], capabilities=sorted(metadata["capabilities"]),
+                      payloads=[{key: payload[key] for key in ("role", "byte_length", "sha256")}])
+    if aggregate_checksum(projection) != reference["aggregate_checksum"]:
+        raise SearchEvaluationError("Dataset aggregate checksum mismatch")
+    if (any(dataset[key] != value for key, value in metadata["structural"].items())
+            or payload["sha256"] != dataset["dataset_checksum"]
+            or payload["byte_length"] != 8 + dataset["global_node_count"] * dataset["vector_dimension"] * 4):
+        raise SearchEvaluationError("Dataset metadata identity mismatch")
+    declared = request["dataset_identity"]
+    if (declared != dataset
+            or any(type(identity[key]) is not int for identity in (declared, dataset)
+                   for key in ("global_node_count", "vector_dimension"))
+            or not 0 < dataset["global_node_count"] <= 4294967295):
+        raise SearchEvaluationError("Dataset request identity mismatch")
+    return dataset
+
+
+def _native_query_header(path: Path) -> tuple[int, int]:
+    with path.open("rb") as handle:
+        header = handle.read(8)
+        if len(header) != 8:
+            raise SearchEvaluationError("QuerySet header is incomplete")
+        count, dimension = struct.unpack("<II", header)
+        if not count or not dimension or path.stat().st_size != 8 + count * dimension * 4:
+            raise SearchEvaluationError("QuerySet header/length is invalid")
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            if not all(math.isfinite(value[0]) for value in struct.iter_unpack("<f", block)):
+                raise SearchEvaluationError("QuerySet vector is not finite")
+    return count, dimension
+
+
+def _truth_reference_version(request: dict[str, Any]) -> str:
+    version = request.get("reference_version", "1.0.0")
+    if version not in ("1.0.0", "1.1.0"):
+        raise SearchEvaluationError("unknown GroundTruth reference version")
+    if "rank_100_tie_group_closed" in request and request["rank_100_tie_group_closed"] is not True:
+        raise SearchEvaluationError("omit unverified GroundTruth closure; null/false are invalid")
+    return version
+
+
+def _truth_closure_verified(path: Path, query_count: int, width: int) -> bool:
+    # A strictly greater stored distance after rank 100 is a witness that the
+    # rank-100 tie ends inside the supplied (declared nearest-neighbor) rows.
+    # This is not a recomputation or certification of exact nearest neighbors.
+    if width <= 100:
+        return False
+    _, distances = _read_ground_truth(path, query_count, width)
+    return all(row[99] < row[-1] for row in distances)
+
+
+def _materialize_existing_input(request: dict[str, Any], operation: str) -> dict[str, Any]:
+    root = Path(request["workspace_root"]).resolve()
+    source_identity = _git_source_identity(_repository_root())
+    toolchain = _python_harness_toolchain()
+    started = _now_utc()
+    implementation = f"native_{operation}_file_import_v1"
+    parameters: dict[str, Any] = {"input_mode": "import_existing"}
+    mapping_relative = None
+    try:
+        if request.get("input_mode") != "import_existing":
+            raise SearchEvaluationError("existing files require explicit input_mode=import_existing")
+        generation_fields = {
+            "source_csv", "source_byte_length", "source_sha256", "compute_groundtruth_binary",
+            "compute_groundtruth_sha256", "dataset_payload", "query_payload", "payload_path",
+            "stdout_path", "stderr_path", "toolchain",
+        }
+        if generation_fields & request.keys():
+            raise SearchEvaluationError("import and generation fields cannot be mixed")
+        outputs = _input_output_paths(root, request)
+        manifest_path = outputs["manifest_path"]
+        evidence_path = outputs["validation_evidence_path"]
+        declaration = request.get("source_file")
+        if type(declaration) is not dict or set(declaration) != {"path", "format", "byte_length", "sha256"}:
+            raise SearchEvaluationError("source_file must declare path, format, byte_length and sha256")
+        expected_format = "diskann-float32-bin" if operation == "query_set" else "diskann-truthset"
+        if declaration["format"] != expected_format:
+            raise SearchEvaluationError("unsupported native input format")
+        source = _input_path(root, declaration["path"])
+        if not source.is_file() or type(declaration["byte_length"]) is not int:
+            raise SearchEvaluationError("native input file identity is invalid")
+        if source.stat().st_size != declaration["byte_length"] or _sha256(source) != declaration["sha256"]:
+            raise SearchEvaluationError("native input checksum/length mismatch")
+        parameters["source_file"] = {**declaration, "path": str(source)}
+        dataset = _input_dataset_identity(root, request)
+        parameters["dataset_artifact"] = _artifact_ref(request["dataset_artifact"], "dataset")
+        parameters["output_reference"] = request["reference_path"]
+        payload_ref = dict(declaration)
+        if operation == "query_set":
+            count, dimension = _native_query_header(source)
+            if dimension != dataset["vector_dimension"]:
+                raise SearchEvaluationError("QuerySet Dataset dimension mismatch")
+            for key, actual in (("query_count", count), ("dimension", dimension)):
+                if key in request and (type(request[key]) is not int or request[key] != actual):
+                    raise SearchEvaluationError(f"QuerySet {key} mismatch")
+            query_id = request["query_set_id"]
+            # Validate before deriving an output path from the logical identity.
+            schema = _feature_validator("search-protocol.schema.json").schema
+            if not Draft202012Validator(schema["$defs"]["stableId"]).is_valid(query_id) or "/" in query_id:
+                raise SearchEvaluationError("QuerySet id is invalid for an output name")
+            mapping_relative = f"inputs/{query_id}-rows.json"
+            mapping_path = _input_output_path(root, mapping_relative)
+            if any(mapping_path == path or mapping_path in path.parents or path in mapping_path.parents
+                   for path in outputs.values()):
+                raise SearchEvaluationError("immutable row mapping output already exists or overlaps")
+            mapping = [{"query_row_index": row, "source_query_id": f"query_row_{row}"} for row in range(count)]
+            mapping_bytes = (json.dumps(mapping, indent=2, sort_keys=True) + "\n").encode()
+            reference = {
+                "reference_version": "1.0.0", "query_set_id": query_id,
+                "logical_source": declaration["path"], "source": payload_ref,
+                "query_count": count, "dimension": dimension, "scalar_type": "float32",
+                "query_identity": "query_row_index", "source_query_id_semantics": "opaque",
+                "self_match_policy": "no_id_based_exclusion", "native_payload": payload_ref,
+                "row_mapping": {"path": mapping_relative, "format": "json", "byte_length": len(mapping_bytes),
+                                "sha256": hashlib.sha256(mapping_bytes).hexdigest()},
+                "conversion_manifest_path": request["manifest_path"],
+                "validation_evidence_path": request["validation_evidence_path"],
+            }
+            parameters.update(query_identity="query_row_index", source_query_id_semantics="row_labels_not_dataset_ids")
+            message = "Imported native float32 bytes; header, length, finite values and row order checked; labels are query rows, not Dataset IDs"
+        else:
+            version = _truth_reference_version(request)
+            query = request["query_set"]
+            schema = _feature_validator("search-protocol.schema.json").schema
+            Draft202012Validator({"$ref": "#/$defs/querySetRef", "$defs": schema["$defs"]}).validate(query)
+            query_checksum = _canonical_digest({k: v for k, v in query.items() if k != "canonical_checksum"})
+            if query_checksum != query["canonical_checksum"] or query_checksum != request["query_set_checksum"]:
+                raise SearchEvaluationError("GroundTruth QuerySet checksum mismatch")
+            query_file = _input_path(root, query["native_payload"]["path"])
+            if _sha256(query_file) != query["native_payload"]["sha256"] or query_file.stat().st_size != query["native_payload"]["byte_length"]:
+                raise SearchEvaluationError("GroundTruth query payload checksum/length mismatch")
+            mapping_ref = query["row_mapping"]
+            mapping_file = _input_path(root, mapping_ref["path"])
+            if _sha256(mapping_file) != mapping_ref["sha256"] or mapping_file.stat().st_size != mapping_ref["byte_length"]:
+                raise SearchEvaluationError("GroundTruth query mapping checksum/length mismatch")
+            mapping = json.loads(mapping_file.read_text())
+            if (type(mapping) is not list or len(mapping) != query["query_count"]
+                    or any(type(row) is not dict or type(row.get("query_row_index")) is not int
+                           or row["query_row_index"] != index or type(row.get("source_query_id")) is not str
+                           for index, row in enumerate(mapping))):
+                raise SearchEvaluationError("GroundTruth query row mapping is invalid")
+            count, dimension = _native_query_header(query_file)
+            if (count, dimension) != (query["query_count"], query["dimension"]) or dimension != dataset["vector_dimension"]:
+                raise SearchEvaluationError("GroundTruth QuerySet count/dimension mismatch")
+            with source.open("rb") as handle:
+                header = handle.read(8)
+            if len(header) != 8:
+                raise SearchEvaluationError("GroundTruth header is incomplete")
+            actual_count, width = struct.unpack("<II", header)
+            if actual_count != count or width < 100:
+                raise SearchEvaluationError("GroundTruth query count/width mismatch")
+            for key, actual in (("query_count", count), ("width", width)):
+                if key in request and (type(request[key]) is not int or request[key] != actual):
+                    raise SearchEvaluationError(f"GroundTruth {key} mismatch")
+            _validate_truth_payload(source, query_count=count, width=width, node_count=dataset["global_node_count"])
+            closure_required = version == "1.0.0" or request.get("rank_100_tie_group_closed") is True
+            if closure_required and not _truth_closure_verified(source, count, width):
+                raise SearchEvaluationError("GroundTruth rank-100 tie closure cannot be verified")
+            reference = {
+                "reference_version": version, "ground_truth_id": request["ground_truth_id"],
+                "payload": payload_ref, "query_count": count, "width": width, "id_space": "global",
+                "distance_metric": "l2_squared_float32", "dataset_artifact": parameters["dataset_artifact"],
+                "query_set_checksum": query_checksum, "self_match_policy": "no_id_based_exclusion",
+                "generation_manifest_path": request["manifest_path"],
+                "validation_evidence_path": request["validation_evidence_path"],
+            }
+            if closure_required:
+                reference["rank_100_tie_group_closed"] = True
+            parameters.update(query_set_checksum=query_checksum, reference_version=version,
+                              exact_neighbors_recomputed=False, tie_closure_checked=closure_required)
+            message = "Imported existing truthset; header, length, ID range, finite ordered distances and declared bindings checked; exact neighbors not recomputed"
+        reference["canonical_checksum"] = _canonical_digest(reference)
+        schema = _feature_validator("search-protocol.schema.json").schema
+        definition = "querySetRef" if operation == "query_set" else "groundTruthRef"
+        Draft202012Validator({"$ref": f"#/$defs/{definition}", "$defs": schema["$defs"]}).validate(reference)
+        # Verify source again before publishing references; never write source bytes.
+        if _sha256(source) != declaration["sha256"]:
+            raise SearchEvaluationError("native source changed during import")
+        if operation == "query_set":
+            _write_immutable_bytes(_input_output_path(root, mapping_relative), mapping_bytes)
+        write_immutable_json(_input_output_path(root, request["reference_path"]), reference)
+        write_immutable_json(_input_output_path(root, request["validation_evidence_path"]), _input_evidence(
+            candidate_path=request["reference_path"], format_version=f"{operation.replace('_', '-')}-reference/v1",
+            checksum=reference["canonical_checksum"], valid=True, message=message))
+        # The success terminal record is published only after all required outputs.
+        write_immutable_json(_input_output_path(root, request["manifest_path"]), _manifest_document(
+            request, implementation_id=implementation, parameters=parameters, source=source_identity,
+            toolchain=toolchain, started_at=started, ended_at=_now_utc(), status="SUCCEEDED"))
+        return {"status": "SUCCEEDED", "reference_path": str(outputs["reference_path"]),
+                "manifest_path": str(manifest_path), "validation_evidence_path": str(evidence_path)}
+    except (SearchEvaluationError, KeyError, ValueError, OSError, ValidationError, ImmutableWriteError) as error:
+        candidate_schema = _feature_validator("search-protocol.schema.json").schema["$defs"]["relativePath"]
+        records = [("manifest_path", _manifest_document(
+            request, implementation_id=implementation, parameters=parameters, source=source_identity,
+            toolchain=toolchain, started_at=started, ended_at=_now_utc(), status="FAILED",
+            failure={"category": "schema_invalid", "reason": str(error)}))]
+        if Draft202012Validator(candidate_schema).is_valid(request.get("reference_path")):
+            records.append(("validation_evidence_path", _input_evidence(
+                candidate_path=request["reference_path"], format_version=f"{operation.replace('_', '-')}-reference/v1",
+                checksum="0" * 64, valid=False, message=str(error))))
+        for name, document in records:
+            try:
+                target = _input_output_path(root, request[name])
+                # Failure records cannot occupy another required output's path.
+                other_values = [request.get(key) for key in ("reference_path", "manifest_path", "validation_evidence_path") if key != name]
+                if mapping_relative is not None:
+                    other_values.append(mapping_relative)
+                conflict = False
+                for value in other_values:
+                    try:
+                        other = _input_path(root, value)
+                    except (SearchEvaluationError, OSError):
+                        continue
+                    conflict |= target == other or target in other.parents or other in target.parents
+                if not conflict:
+                    write_immutable_json(target, document)
+            except (SearchEvaluationError, OSError, ImmutableWriteError):
+                # Best-effort diagnostics must not replace the original failure.
+                continue
+        if isinstance(error, (KeyError, ValueError, OSError, ValidationError)):
+            raise SearchEvaluationError(f"invalid native input: {error}") from error
+        raise
+
+
 def materialize_query_set_request(request_path: str | Path) -> dict[str, Any]:
     request = _read_request(request_path)
+    if "source_file" in request or request.get("input_mode", "generate") != "generate":
+        return _materialize_existing_input(request, "query_set")
     root = Path(request["workspace_root"]).resolve()
     project_source = _git_source_identity(_repository_root())
     toolchain = _python_harness_toolchain()
     started_at = _now_utc()
     try:
+        _input_output_paths(root, request)
+        _input_path(root, f"inputs/{request['query_set_id']}.bin")
+        _input_path(root, f"inputs/{request['query_set_id']}-rows.json")
         source = Path(request["source_csv"])
         if source.stat().st_size != request["source_byte_length"] or _sha256(source) != request["source_sha256"]:
             raise SearchEvaluationError("QuerySet source identity mismatch")
@@ -548,8 +832,8 @@ def materialize_query_set_request(request_path: str | Path) -> dict[str, Any]:
         )
         return {"status": "SUCCEEDED", "reference_path": str(reference_path), "manifest_path": str(manifest_path), "validation_evidence_path": str(evidence_path)}
     except Exception as error:
-        manifest_path = root / request["manifest_path"]
-        if not manifest_path.exists():
+        try:
+            manifest_path = _input_output_path(root, request["manifest_path"])
             write_immutable_json(
                 manifest_path,
                 _manifest_document(
@@ -560,11 +844,15 @@ def materialize_query_set_request(request_path: str | Path) -> dict[str, Any]:
                     failure={"category": "schema_invalid", "reason": str(error)},
                 ),
             )
+        except (SearchEvaluationError, OSError, ImmutableWriteError):
+            pass
         raise
 
 
 def _validate_truth_payload(path: Path, *, query_count: int, width: int, node_count: int) -> None:
     payload = path.read_bytes()
+    if query_count <= 0 or width < 100 or len(payload) < 8:
+        raise SearchEvaluationError("GroundTruth header/count/width is invalid")
     expected = 8 + query_count * width * 8
     if len(payload) != expected:
         raise SearchEvaluationError("GroundTruth file size is invalid")
@@ -580,20 +868,20 @@ def _validate_truth_payload(path: Path, *, query_count: int, width: int, node_co
         values = distances[row * width : (row + 1) * width]
         if any(values[index] > values[index + 1] for index in range(width - 1)):
             raise SearchEvaluationError("GroundTruth distances are not ordered")
-        if width > 100 and values[99] == values[-1]:
-            raise SearchEvaluationError("GroundTruth rank-100 tie group is not closed")
 
 
 def materialize_ground_truth_request(request_path: str | Path) -> dict[str, Any]:
     request = _read_request(request_path)
+    if "source_file" in request or request.get("input_mode", "generate") != "generate":
+        return _materialize_existing_input(request, "ground_truth")
     root = Path(request["workspace_root"]).resolve()
     project_source = _git_source_identity(_repository_root())
     binary = Path(request["compute_groundtruth_binary"])
-    output = root / request["payload_path"]
+    output = _input_path(root, request["payload_path"])
     argv = [str(binary), "--data_type", "float", "--dist_fn", "l2", "--base_file", request["dataset_payload"], "--query_file", request["query_payload"], "--gt_file", str(output), "--K", str(request["width"])]
-    stdout_path = root / request["stdout_path"]
-    stderr_path = root / request["stderr_path"]
-    manifest_path = root / request["manifest_path"]
+    stdout_path = _input_path(root, request["stdout_path"])
+    stderr_path = _input_path(root, request["stderr_path"])
+    manifest_path = _input_path(root, request["manifest_path"])
     binary_identity = {
         "path": str(binary),
         "expected_sha256": request["compute_groundtruth_sha256"],
@@ -608,12 +896,16 @@ def materialize_ground_truth_request(request_path: str | Path) -> dict[str, Any]
             "stderr": request["stderr_path"],
             "diskann_source": _PINNED_DISKANN_SOURCE,
             "compute_groundtruth_binary": binary_identity,
+            "input_mode": "generate",
+            "reference_version": request.get("reference_version", "1.0.0"),
         }
         if output_reference is not None:
             value["output_reference"] = output_reference
         return value
 
     try:
+        version = _truth_reference_version(request)
+        _input_output_paths(root, request, "payload_path", "stdout_path", "stderr_path")
         if not binary.is_file():
             raise SearchEvaluationError("compute_groundtruth binary is missing")
         actual_binary_sha256 = _sha256(binary)
@@ -631,19 +923,24 @@ def materialize_ground_truth_request(request_path: str | Path) -> dict[str, Any]
             raise SearchEvaluationError("compute_groundtruth returned nonzero")
         _validate_truth_payload(output, query_count=request["query_count"], width=request["width"], node_count=request["dataset_identity"]["global_node_count"])
         reference = {
-            "reference_version": "1.0.0", "ground_truth_id": request["ground_truth_id"],
+            "reference_version": version, "ground_truth_id": request["ground_truth_id"],
             "payload": {"path": request["payload_path"], "format": "diskann-truthset", "byte_length": output.stat().st_size, "sha256": _sha256(output)},
             "query_count": request["query_count"], "width": request["width"], "id_space": "global",
             "distance_metric": "l2_squared_float32", "dataset_artifact": request["dataset_artifact"],
             "query_set_checksum": request["query_set_checksum"], "self_match_policy": "no_id_based_exclusion",
-            "rank_100_tie_group_closed": True, "generation_manifest_path": request["manifest_path"],
+            "generation_manifest_path": request["manifest_path"],
             "validation_evidence_path": request["validation_evidence_path"],
         }
+        closure_required = version == "1.0.0" or request.get("rank_100_tie_group_closed") is True
+        if closure_required:
+            if not _truth_closure_verified(output, request["query_count"], request["width"]):
+                raise SearchEvaluationError("GroundTruth rank-100 tie closure cannot be verified")
+            reference["rank_100_tie_group_closed"] = True
         reference["canonical_checksum"] = _canonical_digest(reference)
         reference_path = root / request["reference_path"]
         evidence_path = root / request["validation_evidence_path"]
         write_immutable_json(reference_path, reference)
-        write_immutable_json(evidence_path, _input_evidence(candidate_path=request["reference_path"], format_version="ground-truth-reference/v1", checksum=reference["canonical_checksum"], valid=True, message="exact L2 truth header, width, ID range, distance order, checksum, and tie closure passed"))
+        write_immutable_json(evidence_path, _input_evidence(candidate_path=request["reference_path"], format_version="ground-truth-reference/v1", checksum=reference["canonical_checksum"], valid=True, message="Generated L2 truth header, width, ID range, distance order and checksum passed; " + ("rank-100 closure verified" if closure_required else "rank-100 closure not verified")))
         write_immutable_json(
             manifest_path,
             _manifest_document(
@@ -656,7 +953,8 @@ def materialize_ground_truth_request(request_path: str | Path) -> dict[str, Any]
         )
         return {"status": "SUCCEEDED", "reference_path": str(reference_path), "manifest_path": str(manifest_path), "validation_evidence_path": str(evidence_path)}
     except Exception as error:
-        if not manifest_path.exists():
+        try:
+            manifest_path = _input_output_path(root, request["manifest_path"])
             failure: dict[str, Any] = {
                 "category": "process_failed" if completed is not None and completed.returncode != 0 else "schema_invalid",
                 "reason": str(error),
@@ -673,6 +971,8 @@ def materialize_ground_truth_request(request_path: str | Path) -> dict[str, Any]
                     ended_at=_now_utc(), status="FAILED", failure=failure,
                 ),
             )
+        except (SearchEvaluationError, OSError, ImmutableWriteError):
+            pass
         raise
 
 
@@ -728,9 +1028,25 @@ def _load_evaluation_ground_truth(
         raise SearchEvaluationError("GroundTruth Dataset/QuerySet identity is incompatible")
     if truth_ref["query_count"] != query_count:
         raise SearchEvaluationError("GroundTruth query_count differs from frozen QuerySet")
-    truth_path = root / truth_ref["payload"]["path"]
+    truth_path = (
+        _input_path(root, truth_ref["payload"]["path"])
+        if truth_ref["reference_version"] == "1.1.0"
+        else root / truth_ref["payload"]["path"]
+    )
     if _sha256(truth_path) != truth_ref["payload"]["sha256"]:
         raise SearchEvaluationError("GroundTruth checksum mismatch")
+    if truth_ref["reference_version"] == "1.1.0":
+        if truth_path.stat().st_size != truth_ref["payload"]["byte_length"]:
+            raise SearchEvaluationError("GroundTruth byte length mismatch")
+        if _canonical_digest({k: v for k, v in truth_ref.items() if k != "canonical_checksum"}) != truth_ref["canonical_checksum"]:
+            raise SearchEvaluationError("GroundTruth reference checksum mismatch")
+        dataset_path = _input_path(root, "normal/" + execution["dataset_artifact"]["metadata_path"])
+        dataset = json.loads(dataset_path.read_text())["dataset"]
+        if execution["query_set"]["dimension"] != dataset["vector_dimension"]:
+            raise SearchEvaluationError("GroundTruth QuerySet/Dataset dimension mismatch")
+        _validate_truth_payload(truth_path, query_count=query_count, width=truth_ref["width"], node_count=dataset["global_node_count"])
+        if truth_ref.get("rank_100_tie_group_closed") is True and not _truth_closure_verified(truth_path, query_count, truth_ref["width"]):
+            raise SearchEvaluationError("GroundTruth rank-100 tie closure cannot be verified")
     return _read_ground_truth(truth_path, query_count, truth_ref["width"])
 
 
@@ -1292,6 +1608,11 @@ def _evaluate_observation_directory(
             quality_compatible=True,
             performance_admitted=performance_admitted,
         )
+        if truth_ref["reference_version"] == "1.1.0" and "rank_100_tie_group_closed" not in truth_ref:
+            evaluated["quality_eligibility_reason"] = (
+                f"compatible; Recall uses supplied GT width={truth_ref['width']}; "
+                "rank-100 tie closure not verified; ties beyond stored width are unknown"
+            )
         result = {
             "observation_id": document["observation_id"], "path": relative,
             "sha256": file_checksum, "cache_mode": cache_mode,

@@ -369,6 +369,27 @@ IDs are legal GlobalNodeIds, rows are nondecreasing by distance, count/dimension
 every rank-100 boundary tie is closed before the final stored rank. GroundTruth changes create a new
 evaluation identity but do not invalidate or force rerun of a compatible SearchObservation.
 
+### 4.3 Explicit GroundTruthReference 1.1.0 revision
+
+The 1.0.0 definition above retains its original interpretation. A request must explicitly
+select `reference_version: "1.1.0"` to publish the revised reference. Its structure is the
+same except `rank_100_tie_group_closed` is optional. Omission means no verified closure is
+claimed; explicit null/false are invalid. True requires an actual stored-boundary check.
+Content validation (header/length, finite ordered distances, ID range, checksum and bindings)
+is independent of closure. It does not prove that imported neighbors are exact.
+
+Native file import uses the existing QuerySetReference, GroundTruthReference, BuildManifest
+and ValidationEvidence structures. A reference's historical `conversion_manifest_path` or
+`generation_manifest_path` names the actual process record, which distinguishes import from
+execution of a generator. Import preserves binary bytes and query row order; synthesized
+query IDs are explicitly opaque row labels, never Dataset node IDs.
+
+SearchProtocol 1.0.0 permits only GroundTruthReference 1.0.0. Protocol 1.1.0 / evaluator v2
+permits either reference revision. New references and protocols receive new canonical
+checksums; historical references, reports and frozen certification inputs are not rewritten.
+An omitted closure claim adds a GT-width/boundary limitation to the existing quality reason,
+without changing Recall, performance formulas, eligibility or median aggregation scope.
+
 ## 5. SearchProtocol/v1
 
 SearchProtocol is a Feature-local versioned immutable config, not an Artifact.

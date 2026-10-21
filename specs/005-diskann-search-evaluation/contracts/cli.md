@@ -190,6 +190,98 @@ Only small fixtures run during `/speckit-implement`. Formal SIFT1M QuerySet norm
 GroundTruth generation remain exact-request operations inside the non-task manual execution
 boundary and require explicit user approval.
 
+## Import existing native search inputs
+
+The same Python `materialize --operation query_set|ground_truth --request ...` commands
+also accept an explicit `input_mode: "import_existing"`. Omitting generator parameters
+never selects import. Existing requests without `input_mode` retain the CSV conversion /
+`compute_groundtruth` generation route; `input_mode: "generate"` selects that route explicitly.
+
+Both imports require the existing `workspace_root`, `run_id`, `dataset_identity`,
+`resource_budget`, `reference_path`, `manifest_path`, and `validation_evidence_path`, plus
+`dataset_artifact` (the declared admitted Dataset ArtifactRef) and:
+
+```json
+{
+  "input_mode": "import_existing",
+  "source_file": {
+    "path": "existing/query.fbin",
+    "format": "diskann-float32-bin",
+    "byte_length": 40,
+    "sha256": "<actual 64-hex SHA-256>"
+  },
+  "query_set_id": "native-query"
+}
+```
+
+This fragment illustrates a two-row, four-dimensional file; counts/dimensions are always
+read from the actual little-endian uint32 header and checked against the Dataset dimension.
+Optional `query_count` / `dimension` declarations must match. Vectors remain in the source
+float32 file, with their bytes and order unchanged. The immutable row mapping uses
+`query_row_index=0..Nq-1` and opaque `source_query_id="query_row_<index>"` labels. These
+labels have no Dataset node-ID meaning and never trigger self exclusion. The existing
+QuerySetReference 1.0.0 structure is retained; `conversion_manifest_path` points to the
+actual import manifest, whose implementation is `native_query_set_file_import_v1`.
+
+For precomputed GT, replace the source declaration and operation-specific fields with:
+
+```json
+{
+  "input_mode": "import_existing",
+  "source_file": {
+    "path": "existing/truth.bin",
+    "format": "diskann-truthset",
+    "byte_length": "<actual integer byte length>",
+    "sha256": "<actual 64-hex SHA-256>"
+  },
+  "ground_truth_id": "precomputed-truth",
+  "reference_version": "1.1.0",
+  "query_set": "<complete validated QuerySetReference object>",
+  "query_set_checksum": "<that reference's canonical checksum>"
+}
+```
+
+The truthset header supplies actual query count and width (at least 100 for the existing
+Recall@10/100 evaluator). Optional `query_count` / `width` must match. Payload length,
+checksum, uint32 ID range, finite nonnegative float32 distances, per-row distance ordering,
+QuerySet payload/mapping, dimension and declared bindings are checked. No GT generation
+binary is invoked, no source bytes are rewritten, and original generation logs are not
+required. The `native_ground_truth_file_import_v1` BuildManifest records the resolved
+source path, actual byte length/SHA, declared Dataset/QuerySet bindings and
+`exact_neighbors_recomputed: false`. ValidationEvidence proves these content checks,
+not exact-neighbor correctness or original generator execution. The existing field name
+`generation_manifest_path` points to this import record; it does not imply generation.
+
+Import requests reject CSV/generator fields (`source_csv`, `source_byte_length`,
+`source_sha256`, `compute_groundtruth_binary`, `compute_groundtruth_sha256`,
+`dataset_payload`, `query_payload`, `payload_path`, `stdout_path`, `stderr_path`, `toolchain`).
+Actual import toolchain/source identity comes from the running Python harness. All imported
+source and output paths are workspace-relative, confined after symlink resolution and
+outside protected upstream trees. Existing outputs and overlapping output paths are rejected.
+For files currently outside the workspace, first copy the query and truthset bytes unchanged
+into the workspace and verify that the copied files' SHA-256 values match the originals;
+then import those workspace-relative paths. External source paths remain unsupported.
+Failure retains a FAILED manifest and INVALID evidence when safe writable destinations are
+available and the candidate path is representable by the existing evidence schema. An invalid
+candidate path retains the FAILED manifest without inventing an evidence candidate identity.
+No valid reference is published on input-validation failure. Sources must remain
+immutable after import and are checksum-bound on reuse.
+
+GT requests explicitly choose `reference_version: "1.1.0"` for the revised semantics;
+absence still selects old 1.0.0. In 1.1.0, omit `rank_100_tie_group_closed` to make no closure
+claim. Never send null or false. Requesting true runs the boundary check and is accepted
+only when every row includes a strictly greater stored distance after rank 100. Old 1.0.0
+always requires this check, so an unknown GT100 boundary cannot be published as true.
+Generated GT can also explicitly select 1.1.0; it still records the executed argv,
+binary identity and stdout/stderr, and only checks/claims closure when required.
+
+Protocol 1.0.0 still accepts only old GT references with their original constraints.
+Protocol 1.1.0 / evaluator v2 accepts both reference revisions. Unverified closure alone
+blocks neither quality/performance values nor otherwise eligible aggregation. Recall uses
+the fixed upstream formula within the supplied width; the existing quality-reason field
+states that width and that ties beyond it are unknown. Frozen certification policies remain
+bound to their original input, protocol and evaluator checksums; import does not extend them.
+
 ## PQFlash load probe
 
 ```bash

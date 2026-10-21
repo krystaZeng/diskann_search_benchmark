@@ -818,3 +818,17 @@ def test_unknown_runner_result_requires_failure() -> None:
     del result["failure"]
     with pytest.raises(ValidationError):
         _validator("runner-result.schema.json").validate(result)
+
+
+def test_imported_truth_protocol_matches_python_normalization() -> None:
+    from diskann_harness import diskann_search_evaluation as search
+
+    path = REPOSITORY_ROOT / "tests/fixtures/search/imported-truth-protocol.json"
+    protocol = json.loads(path.read_text())
+    assert protocol == search.normalize_search_protocol(protocol)
+    truth = protocol["evaluation"]["ground_truth"]
+    assert truth["reference_version"] == "1.1.0"
+    assert "rank_100_tie_group_closed" not in truth
+    assert 'null' not in path.read_text()
+    projection = {k: v for k, v in protocol.items() if k != "protocol_checksum"}
+    assert search._canonical_digest(projection) == protocol["protocol_checksum"]

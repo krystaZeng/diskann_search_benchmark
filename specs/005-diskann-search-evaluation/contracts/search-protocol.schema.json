@@ -31,6 +31,7 @@
         "properties": {
           "evaluation": {
             "properties": {
+              "ground_truth": {"properties": {"reference_version": {"const": "1.0.0"}}},
               "evaluator": {
                 "const": {
                   "implementation_id": "cpp_main_search_metrics_evaluator_v1",
@@ -143,11 +144,15 @@
       "required": [
         "reference_version", "ground_truth_id", "payload", "query_count", "width",
         "id_space", "distance_metric", "dataset_artifact", "query_set_checksum",
-        "self_match_policy", "rank_100_tie_group_closed", "generation_manifest_path",
+        "self_match_policy", "generation_manifest_path",
         "validation_evidence_path", "canonical_checksum"
       ],
+      "allOf": [{
+        "if": {"properties": {"reference_version": {"const": "1.0.0"}}},
+        "then": {"required": ["rank_100_tie_group_closed"]}
+      }],
       "properties": {
-        "reference_version": {"const": "1.0.0"},
+        "reference_version": {"enum": ["1.0.0", "1.1.0"]},
         "ground_truth_id": {"$ref": "#/$defs/stableId"},
         "payload": {"$ref": "#/$defs/fileRef"},
         "query_count": {"type": "integer", "minimum": 1},

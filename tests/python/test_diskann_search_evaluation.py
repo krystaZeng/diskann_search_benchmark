@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 
 from diskann_harness import diskann_search_evaluation as search
+from diskann_harness.checksum import aggregate_checksum
+from diskann_harness.native_dataset import dataset_identity_projection, MEDIA
 from diskann_harness.manifests import ImmutableWriteError
 
 
@@ -1055,22 +1057,29 @@ def _offline_fixture(
     protocol = _protocol(cache_mode)
     protocol["search_execution"]["L_search"] = list(lengths)
     dataset_metadata = tmp_path / "normal/dataset/artifact.json"
-    dataset_metadata.parent.mkdir(parents=True)
-    dataset_metadata.write_text(
-        json.dumps(
-            {
-                "dataset": {
-                    "dataset_id": "small-search-dataset",
-                    "dataset_checksum": "d" * 64,
-                    "global_node_count": 256,
-                    "vector_dimension": 4,
-                    "scalar_type": "float32",
-                    "distance_metric": "l2",
+    dataset_metadata.parent.mkdir(parents=True, exist_ok=True)
+    if dataset_metadata.exists():
+        metadata = json.loads(dataset_metadata.read_text())
+        reference = {key: metadata[key] for key in ("artifact_type", "format_version", "aggregate_checksum")}
+        reference["metadata_path"] = "dataset/artifact.json"
+        protocol["search_execution"]["dataset_artifact"] = reference
+        protocol["evaluation"]["ground_truth"]["dataset_artifact"] = reference
+    else:
+        dataset_metadata.write_text(
+            json.dumps(
+                {
+                    "dataset": {
+                        "dataset_id": "small-search-dataset",
+                        "dataset_checksum": "d" * 64,
+                        "global_node_count": 256,
+                        "vector_dimension": 4,
+                        "scalar_type": "float32",
+                        "distance_metric": "l2",
+                    }
                 }
-            }
-        ),
-        encoding="utf-8",
-    )
+            ),
+            encoding="utf-8",
+        )
     truth = protocol["evaluation"]["ground_truth"]
     truth["width"] = 101
     truth["query_count"] = 2
@@ -2785,3 +2794,563 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
             search._sha256(workspace / reference["path"]) == reference["sha256"]
             for reference in observation_references
         )
+
+
+def _import_dataset(root: Path) -> tuple[dict, dict]:
+    """A real, small native DatasetArtifact; no admission or generator mock."""
+    directory = root / "normal/dataset"
+    directory.mkdir(parents=True)
+    vectors = directory / "vectors.bin"
+    vectors.write_bytes(struct.pack("<II", 256, 4) + struct.pack("<1024f", *range(1024)))
+    structural = {"global_node_count": 256, "vector_dimension": 4,
+                  "scalar_type": "float32", "distance_metric": "l2"}
+    payload = {"role": "vectors", "path": "vectors.bin", "media_type": MEDIA,
+               "byte_length": vectors.stat().st_size, "sha256": search._sha256(vectors)}
+    projection = dataset_identity_projection(payload["sha256"], structural, payload)
+    identity = {"dataset_id": "small", "dataset_checksum": payload["sha256"], **structural}
+    metadata = {k: v for k, v in projection.items() if k != "dataset_checksum"}
+    metadata.update(dataset=identity, payloads=[payload], aggregate_checksum=aggregate_checksum(projection))
+    schema = json.loads((search._repository_root() / "contracts/baseline-v1/schemas/cpp-main-dataset-artifact.schema.json").read_text())
+    search.Draft202012Validator(schema).validate(metadata)
+    (directory / "artifact.json").write_text(json.dumps(metadata))
+    reference = {k: metadata[k] for k in ("artifact_type", "format_version", "aggregate_checksum")}
+    reference["metadata_path"] = "dataset/artifact.json"
+    return identity, reference
+
+
+@pytest.fixture
+def imported_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Offline native inputs; invoking any external tool is a test failure."""
+    host = search.platform.platform()
+    monkeypatch.setattr(search.platform, "platform", lambda: host)
+    monkeypatch.setattr(search, "_git_source_identity", lambda root: {
+        "repository": "https://example.invalid/project.git", "branch": "fixture",
+        "commit": "a" * 40, "dirty_worktree": False,
+    })
+    monkeypatch.setattr(search.subprocess, "run", lambda *a, **k: pytest.fail("import must not execute tools"))
+    source = tmp_path / "existing/query.bin"
+    source.parent.mkdir()
+    source.write_bytes(struct.pack("<II8f", 2, 4, 9, -0.0, 4, 1, -3, 2, 8, 7))
+    dataset, artifact = _import_dataset(tmp_path)
+    common = {
+        "workspace_root": str(tmp_path), "input_mode": "import_existing",
+        "dataset_identity": dataset,
+        "dataset_artifact": artifact,
+        "resource_budget": {"memory_budget_bytes": 4096, "thread_budget": 1},
+    }
+    query = {**common, "run_id": "import-query", "query_set_id": "import-query",
+             "source_file": {"path": "existing/query.bin", "format": "diskann-float32-bin",
+                             "byte_length": source.stat().st_size, "sha256": search._sha256(source)},
+             "reference_path": "inputs/import-query.json", "manifest_path": "manifests/import-query.json",
+             "validation_evidence_path": "manifests/evidence/import-query.json"}
+    return common, query
+
+
+def _import_request(root: Path, operation: str, request: dict) -> dict:
+    path = root / f"{operation}-import-request.json"
+    path.write_text(json.dumps(request))
+    original = path.read_bytes()
+    assert search.main(["materialize", "--operation", operation, "--request", str(path)]) == 0
+    assert path.read_bytes() == original
+    return json.loads((root / request["reference_path"]).read_text())
+
+
+def _import_truth_request(root: Path, common: dict, query: dict, width: int = 100) -> dict:
+    source = root / "existing/truth.bin"
+    ids = list(range(width)) + list(range(101, 101 + width))
+    # For wide fixtures use repeated rows to stay within the 256-node Dataset.
+    if width > 155:
+        ids = list(range(width)) * 2
+    source.write_bytes(struct.pack("<II", 2, width) + struct.pack(f"<{len(ids)}I", *ids)
+                       + struct.pack(f"<{len(ids)}f", *([float(i) for i in range(width)] * 2)))
+    return {**common, "run_id": "import-truth", "ground_truth_id": "import-truth",
+            "reference_version": "1.1.0", "query_set": query,
+            "query_set_checksum": query["canonical_checksum"],
+            "source_file": {"path": "existing/truth.bin", "format": "diskann-truthset",
+                            "byte_length": source.stat().st_size, "sha256": search._sha256(source)},
+            "reference_path": "inputs/import-truth.json", "manifest_path": "manifests/import-truth.json",
+            "validation_evidence_path": "manifests/evidence/import-truth.json"}
+
+
+def test_native_import_preserves_bytes_rows_and_provenance(tmp_path: Path, imported_inputs) -> None:
+    common, request = imported_inputs
+    before = (tmp_path / "existing/query.bin").read_bytes()
+    query = _import_request(tmp_path, "query_set", request)
+    assert (tmp_path / query["native_payload"]["path"]).read_bytes() == before
+    mapping = json.loads((tmp_path / query["row_mapping"]["path"]).read_text())
+    assert mapping == [{"query_row_index": i, "source_query_id": f"query_row_{i}"} for i in range(2)]
+    assert query["query_identity"] == "query_row_index"
+    assert query["source_query_id_semantics"] == "opaque"
+    assert (query["query_count"], query["dimension"]) == (2, 4)
+    truth_request = _import_truth_request(tmp_path, common, query)
+    truth_before = (tmp_path / "existing/truth.bin").read_bytes()
+    truth = _import_request(tmp_path, "ground_truth", truth_request)
+    assert (tmp_path / truth["payload"]["path"]).read_bytes() == truth_before
+    assert truth["width"] == 100
+    assert "rank_100_tie_group_closed" not in truth
+    assert 'null' not in json.dumps(truth)
+    for declaration in (request, truth_request):
+        manifest = json.loads((tmp_path / declaration["manifest_path"]).read_text())
+        search._schema_validator("build-manifest.schema.json", search._repository_root()).validate(manifest)
+        parameters = manifest["parameters"]
+        assert parameters["input_mode"] == "import_existing"
+        assert parameters["source_file"]["sha256"] == declaration["source_file"]["sha256"]
+        assert parameters["source_file"]["path"] == str((tmp_path / declaration["source_file"]["path"]).resolve())
+        assert parameters["dataset_artifact"] == common["dataset_artifact"]
+        assert not {"argv", "compute_groundtruth_binary", "stdout", "stderr"} & parameters.keys()
+        evidence = json.loads((tmp_path / declaration["validation_evidence_path"]).read_text())
+        search._schema_validator("validation-evidence.schema.json", search._repository_root()).validate(evidence)
+        assert evidence["result"] == "VALID"
+    assert parameters["query_set_checksum"] == query["canonical_checksum"]
+    assert parameters["exact_neighbors_recomputed"] is False
+
+
+def test_native_import_gt100_evaluates_without_closure(tmp_path: Path, imported_inputs) -> None:
+    common, request = imported_inputs
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    query = _import_request(tmp_path, "query_set", request)
+    truth = _import_request(tmp_path, "ground_truth", _import_truth_request(tmp_path, common, query))
+    revised = _v2_protocol(tmp_path, original)
+    protocol = json.loads(revised.read_text())
+    protocol["search_execution"]["query_set"] = query
+    protocol["evaluation"]["ground_truth"] = truth
+    protocol = search.normalize_search_protocol(protocol)
+    revised.write_text(json.dumps(protocol))
+    for path in observations.glob("*.json"):
+        observation = json.loads(path.read_text())
+        observation["query_set_checksum"] = query["canonical_checksum"]
+        observation["search_execution"]["canonical_checksum"] = protocol["search_execution_checksum"]
+        observation["protocol"] = {"path": revised.relative_to(tmp_path).as_posix(), "protocol_id": protocol["protocol_id"], "protocol_checksum": protocol["protocol_checksum"]}
+        _save_observation(path, observation)
+    _search_manifest(tmp_path, revised, observations)
+    report = search.evaluate_observation_directory(protocol_path=revised, observations_path=observations, workspace=tmp_path)["report"]
+    for item in report["observation_results"]:
+        assert item["quality_eligible"] and item["performance_valid"]
+        assert "100" in item["quality_eligibility_reason"] and "not verified" in item["quality_eligibility_reason"]
+        assert item["quality_metrics"] == {"recall_at_10": 100.0, "recall_at_100": 100.0}
+        assert item["performance_metrics"] == {"qps_k100": 1000.0, "mean_latency_us_k100": 20.0, "p99_9_latency_us_k100": 30.0, "mean_ios_k100": 3.0}
+    assert report["aggregates"]["quality"][0]["eligible_count"] == 3
+    assert report["aggregates"]["performance"][0]["median_performance_metrics"]["qps_k100"] == 1000.0
+
+
+@pytest.mark.parametrize("case", ["checksum", "count", "dimension", "nan", "inf", "length", "source-escape", "output-escape", "upstream", "existing-output", "mixed", "no-mode", "format"])
+def test_native_import_query_rejections(tmp_path: Path, imported_inputs, case: str) -> None:
+    _, request = imported_inputs
+    source = tmp_path / request["source_file"]["path"]
+    if case == "checksum": request["source_file"]["sha256"] = "0" * 64
+    if case == "count": request["query_count"] = 3
+    if case == "dimension": request["dataset_identity"]["vector_dimension"] = 3
+    if case in ("nan", "inf", "length"):
+        payload = bytearray(source.read_bytes())
+        if case == "length": payload.pop()
+        else: struct.pack_into("<f", payload, 8, float(case))
+        source.write_bytes(payload)
+        request["source_file"].update(byte_length=len(payload), sha256=search._sha256(source))
+    if case == "source-escape": request["source_file"]["path"] = "../query.bin"
+    if case == "output-escape": request["reference_path"] = "../escaped-reference.json"
+    if case == "upstream": request["reference_path"] = "upstream/forbidden.json"
+    if case == "existing-output":
+        p = tmp_path / request["reference_path"]; p.parent.mkdir(); p.write_bytes(b"preserve")
+    if case == "mixed": request["source_csv"] = "unused.csv"
+    if case == "no-mode": request.pop("input_mode")
+    if case == "format": request["source_file"]["format"] = "csv"
+    path = tmp_path / "invalid-import.json"; path.write_text(json.dumps(request))
+    with pytest.raises(search.SearchEvaluationError): search.materialize_query_set_request(path)
+    if case == "existing-output": assert p.read_bytes() == b"preserve"
+    assert not (tmp_path / "inputs/import-query-rows.json").exists()
+    manifest = json.loads((tmp_path / request["manifest_path"]).read_text())
+    assert manifest["status"] == "FAILED"
+    evidence_path = tmp_path / request["validation_evidence_path"]
+    if evidence_path.exists():
+        search._schema_validator("validation-evidence.schema.json", search._repository_root()).validate(json.loads(evidence_path.read_text()))
+
+
+@pytest.mark.parametrize("case", ["id-range", "nan", "inf", "order", "length", "checksum", "query-count", "query-dimension", "query-checksum", "mixed", "null", "false", "old-unknown"])
+def test_native_import_truth_rejections(tmp_path: Path, imported_inputs, case: str) -> None:
+    common, request = imported_inputs
+    query = _import_request(tmp_path, "query_set", request)
+    request = _import_truth_request(tmp_path, common, query)
+    source = tmp_path / request["source_file"]["path"]
+    payload = bytearray(source.read_bytes())
+    if case == "id-range": struct.pack_into("<I", payload, 8, 256)
+    if case in ("nan", "inf"): struct.pack_into("<f", payload, 808, float(case))
+    if case == "order": struct.pack_into("<f", payload, 808, 5.0)
+    if case == "length": payload.pop()
+    if case == "query-count": struct.pack_into("<I", payload, 0, 1)
+    source.write_bytes(payload)
+    request["source_file"].update(byte_length=len(payload), sha256=search._sha256(source))
+    if case == "checksum": request["source_file"]["sha256"] = "0" * 64
+    if case == "query-checksum": request["query_set_checksum"] = "0" * 64
+    if case == "query-dimension": request["dataset_identity"]["vector_dimension"] = 3
+    if case == "mixed": request["compute_groundtruth_binary"] = "unused"
+    if case in ("null", "false"): request["rank_100_tie_group_closed"] = None if case == "null" else False
+    if case == "old-unknown": request["reference_version"] = "1.0.0"
+    path = tmp_path / "invalid-truth-import.json"; path.write_text(json.dumps(request))
+    with pytest.raises(search.SearchEvaluationError): search.materialize_ground_truth_request(path)
+    assert not (tmp_path / request["reference_path"]).exists()
+    assert json.loads((tmp_path / request["manifest_path"]).read_text())["status"] == "FAILED"
+
+
+@pytest.mark.parametrize("reference_version,protocol_version,closure,valid", [
+    ("1.1.0", "1.1.0", "omit", True), ("1.1.0", "1.1.0", True, True),
+    ("1.1.0", "1.1.0", None, False), ("1.1.0", "1.1.0", False, False),
+    ("1.1.0", "1.0.0", "omit", False), ("1.1.0", "1.0.0", True, False),
+    ("1.0.0", "1.0.0", "omit", False), ("1.0.0", "1.1.0", "omit", False),
+    ("1.0.0", "1.0.0", True, True), ("1.0.0", "1.1.0", True, True),
+])
+def test_native_import_protocol_revision(reference_version, protocol_version, closure, valid) -> None:
+    protocol = _protocol("zero")
+    protocol["protocol_version"] = protocol_version
+    if protocol_version == "1.1.0":
+        protocol["evaluation"]["evaluator"].update(implementation_id="cpp_main_search_metrics_evaluator_v2", version="2.0.0")
+        protocol["evaluation"]["performance_eligibility_policy"] = "complete_valid_measurement_single_invocation_v2"
+    truth = protocol["evaluation"]["ground_truth"]
+    truth["reference_version"] = reference_version
+    if closure == "omit": truth.pop("rank_100_tie_group_closed")
+    else: truth["rank_100_tie_group_closed"] = closure
+    if valid:
+        assert search.normalize_search_protocol(protocol)["evaluation"]["ground_truth"] == truth
+    else:
+        with pytest.raises(search.SearchEvaluationError): search.normalize_search_protocol(protocol)
+
+
+def test_native_import_content_validation_is_separate_from_closure(tmp_path: Path) -> None:
+    path = tmp_path / "ties.bin"
+    path.write_bytes(struct.pack("<II", 1, 101) + struct.pack("<101I", *range(101)) + struct.pack("<101f", *([0.0] * 101)))
+    search._validate_truth_payload(path, query_count=1, width=101, node_count=256)
+
+
+def _existing_query_reference(root: Path) -> dict:
+    query = _protocol("zero")["search_execution"]["query_set"]
+    source = root / "existing/query.bin"
+    query["source"] = query["native_payload"] = {
+        "path": "existing/query.bin", "format": "diskann-float32-bin",
+        "byte_length": source.stat().st_size, "sha256": search._sha256(source),
+    }
+    mapping = root / "existing/rows.json"
+    mapping.write_text(json.dumps([{"query_row_index": i, "source_query_id": f"row-{i}"} for i in range(2)]))
+    query["row_mapping"] = {"path": "existing/rows.json", "format": "json", "byte_length": mapping.stat().st_size, "sha256": search._sha256(mapping)}
+    query.pop("canonical_checksum")
+    query["canonical_checksum"] = search._canonical_digest(query)
+    return query
+
+
+def test_native_import_gt100_dispatch_before_generator_fields(tmp_path: Path, imported_inputs) -> None:
+    common, _ = imported_inputs
+    query = _existing_query_reference(tmp_path)
+    request = _import_truth_request(tmp_path, common, query)
+    reference = _import_request(tmp_path, "ground_truth", request)
+    assert reference["width"] == 100 and reference["query_count"] == 2
+    assert "rank_100_tie_group_closed" not in reference
+
+
+@pytest.mark.parametrize("version,width,claim,accepted", [
+    ("1.0.0", 100, False, False), ("1.0.0", 200, False, True),
+    ("1.1.0", 100, False, True), ("1.1.0", 200, False, True),
+    ("1.1.0", 100, True, False), ("1.1.0", 200, True, True),
+])
+def test_native_import_generated_truth_closure_policy(tmp_path: Path, imported_inputs, monkeypatch: pytest.MonkeyPatch, version, width, claim, accepted) -> None:
+    common, _ = imported_inputs
+    request = _import_truth_request(tmp_path, common, _existing_query_reference(tmp_path), width)
+    source_bytes = (tmp_path / request.pop("source_file")["path"]).read_bytes()
+    request.pop("query_set")
+    request.update(input_mode="generate", reference_version=version, width=width, query_count=2,
+                   compute_groundtruth_binary=str(tmp_path / "fixture-binary"),
+                   dataset_payload="fixture-base.bin", query_payload="fixture-query.bin",
+                   payload_path="inputs/generated.bin", stdout_path="logs/gt.stdout", stderr_path="logs/gt.stderr",
+                   toolchain=search._python_harness_toolchain())
+    binary = Path(request["compute_groundtruth_binary"]); binary.write_bytes(b"offline stub")
+    request["compute_groundtruth_sha256"] = search._sha256(binary)
+    if claim: request["rank_100_tie_group_closed"] = True
+    calls = []
+    def generate(argv, **kwargs):
+        calls.append(argv)
+        Path(argv[argv.index("--gt_file") + 1]).write_bytes(source_bytes)
+        return subprocess.CompletedProcess(argv, 0, "stub generation", "")
+    monkeypatch.setattr(search.subprocess, "run", generate)
+    if not accepted:
+        with pytest.raises(search.SearchEvaluationError, match="closure"):
+            _import_request(tmp_path, "ground_truth", request)
+        assert not (tmp_path / request["reference_path"]).exists()
+    else:
+        reference = _import_request(tmp_path, "ground_truth", request)
+        assert (tmp_path / reference["payload"]["path"]).read_bytes() == source_bytes
+        assert ("rank_100_tie_group_closed" in reference) == (version == "1.0.0" or claim)
+        manifest = json.loads((tmp_path / request["manifest_path"]).read_text())
+        assert manifest["parameters"]["argv"] == calls[0]
+        assert manifest["parameters"]["input_mode"] == "generate"
+        ids, distances = search._read_ground_truth(tmp_path / reference["payload"]["path"], 2, width)
+        assert search._diskann_recall_one(ids[0], distances[0], list(range(100)), 100) == 100.0
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("claim,accepted", [(False, True), (True, False)])
+def test_native_import_unclosed_wide_truth_is_valid_without_claim(tmp_path: Path, imported_inputs, claim, accepted) -> None:
+    common, _ = imported_inputs
+    request = _import_truth_request(tmp_path, common, _existing_query_reference(tmp_path), 101)
+    source = tmp_path / request["source_file"]["path"]
+    payload = bytearray(source.read_bytes())
+    for row in range(2):
+        struct.pack_into("<f", payload, 8 + 202 * 4 + (row * 101 + 100) * 4, 99.0)
+    source.write_bytes(payload)
+    request["source_file"]["sha256"] = search._sha256(source)
+    if claim: request["rank_100_tie_group_closed"] = True
+    if accepted:
+        reference = _import_request(tmp_path, "ground_truth", request)
+        assert "rank_100_tie_group_closed" not in reference
+    else:
+        with pytest.raises(search.SearchEvaluationError, match="closure"):
+            _import_request(tmp_path, "ground_truth", request)
+
+
+@pytest.mark.parametrize("case", ["symlink", "mapping-checksum", "mapping-order", "existing-reference", "existing-manifest", "source-as-output"])
+def test_native_import_preserves_path_and_mapping_guards(tmp_path: Path, imported_inputs, case) -> None:
+    common, _ = imported_inputs
+    query = _existing_query_reference(tmp_path)
+    request = _import_truth_request(tmp_path, common, query)
+    preserved = None
+    if case == "symlink":
+        (tmp_path / "outside").symlink_to(tmp_path.parent, target_is_directory=True)
+        request["reference_path"] = "outside/forbidden.json"
+    if case in ("mapping-checksum", "mapping-order"):
+        mapping = tmp_path / query["row_mapping"]["path"]
+        mapping.write_text(json.dumps([{"query_row_index": 1, "source_query_id": "a"}] * 2))
+        if case == "mapping-order":
+            query["row_mapping"].update(byte_length=mapping.stat().st_size, sha256=search._sha256(mapping))
+            query.pop("canonical_checksum")
+            query["canonical_checksum"] = search._canonical_digest(query)
+            request["query_set_checksum"] = query["canonical_checksum"]
+    if case in ("existing-reference", "existing-manifest"):
+        key = "reference_path" if case == "existing-reference" else "manifest_path"
+        preserved = tmp_path / request[key]
+        preserved.parent.mkdir(parents=True, exist_ok=True); preserved.write_bytes(b"keep original")
+    if case == "source-as-output":
+        request["reference_path"] = request["source_file"]["path"]
+        preserved = tmp_path / request["reference_path"]
+    before = preserved.read_bytes() if preserved else None
+    with pytest.raises(search.SearchEvaluationError):
+        _import_request(tmp_path, "ground_truth", request)
+    if preserved: assert preserved.read_bytes() == before
+
+
+@pytest.mark.parametrize("case", ["id", "nan", "order", "length", "checksum", "query-binding", "dataset-binding"])
+def test_native_import_evaluation_revalidates_new_truth(tmp_path: Path, imported_inputs, case) -> None:
+    common, _ = imported_inputs
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    query = _existing_query_reference(tmp_path)
+    truth = _import_request(tmp_path, "ground_truth", _import_truth_request(tmp_path, common, query))
+    revised = _v2_protocol(tmp_path, original)
+    protocol = json.loads(revised.read_text())
+    protocol["search_execution"]["query_set"] = query
+    protocol["evaluation"]["ground_truth"] = truth
+    source = tmp_path / truth["payload"]["path"]
+    payload = bytearray(source.read_bytes())
+    if case == "id": struct.pack_into("<I", payload, 8, 256)
+    if case == "nan": struct.pack_into("<f", payload, 808, float("nan"))
+    if case == "order": struct.pack_into("<f", payload, 808, 2.0)
+    if case == "length": payload.pop()
+    source.write_bytes(payload)
+    truth["payload"].update(sha256=search._sha256(source), byte_length=len(payload))
+    if case == "checksum": truth["payload"]["sha256"] = "0" * 64
+    if case == "query-binding": truth["query_set_checksum"] = "0" * 64
+    if case == "dataset-binding": truth["dataset_artifact"] = {**truth["dataset_artifact"], "aggregate_checksum": "0" * 64}
+    truth.pop("canonical_checksum")
+    truth["canonical_checksum"] = search._canonical_digest(truth)
+    revised.write_text(json.dumps(search.normalize_search_protocol(protocol)))
+    with pytest.raises(search.SearchEvaluationError):
+        search.evaluate_observation_directory(protocol_path=revised, observations_path=observations, workspace=tmp_path)
+    assert not (tmp_path / "reports/search-evaluation").exists()
+
+
+def test_native_import_evaluation_rejects_symlink_before_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    original, _ = _offline_fixture(tmp_path, lengths=(100,))
+    protocol = json.loads(original.read_text())
+    truth = protocol["evaluation"]["ground_truth"]
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.bin"
+    outside.write_bytes((tmp_path / truth["payload"]["path"]).read_bytes())
+    link = tmp_path / "inputs/outside-link.bin"
+    link.symlink_to(outside)
+    truth["payload"]["path"] = "inputs/outside-link.bin"
+    truth["reference_version"] = "1.1.0"
+    truth.pop("rank_100_tie_group_closed")
+    truth.pop("canonical_checksum")
+    truth["canonical_checksum"] = search._canonical_digest(truth)
+    original_sha = search._sha256
+    def guarded_sha(path):
+        assert Path(path).resolve() != outside, "must reject outside source before reading bytes"
+        return original_sha(path)
+    monkeypatch.setattr(search, "_sha256", guarded_sha)
+    with pytest.raises(search.SearchEvaluationError, match="escapes workspace"):
+        search._load_evaluation_ground_truth(tmp_path, protocol)
+
+
+@pytest.mark.parametrize("case", ["node-count", "dimension", "metadata-checksum", "reference-checksum", "structural-identity"])
+def test_native_import_bound_dataset_rejections(tmp_path: Path, imported_inputs, case: str) -> None:
+    common, query_request = imported_inputs
+    operation = "query_set"
+    request = query_request
+    metadata_path = tmp_path / "normal/dataset/artifact.json"
+    if case == "node-count":
+        query = _import_request(tmp_path, "query_set", query_request)
+        request = _import_truth_request(tmp_path, common, query)
+        operation = "ground_truth"
+        request["dataset_identity"] = {**common["dataset_identity"], "global_node_count": 512}
+        source = tmp_path / request["source_file"]["path"]
+        payload = bytearray(source.read_bytes())
+        struct.pack_into("<I", payload, 8, 300)
+        source.write_bytes(payload)
+        request["source_file"]["sha256"] = search._sha256(source)
+    elif case == "dimension":
+        # The native query agrees with the request, but not the bound Dataset.
+        request["dataset_identity"] = {**common["dataset_identity"], "vector_dimension": 8}
+        source = tmp_path / request["source_file"]["path"]
+        source.write_bytes(struct.pack("<II16f", 2, 8, *range(16)))
+        request["source_file"].update(byte_length=source.stat().st_size, sha256=search._sha256(source))
+    elif case == "reference-checksum":
+        request["dataset_artifact"] = {**common["dataset_artifact"], "aggregate_checksum": "0" * 64}
+    else:
+        metadata = json.loads(metadata_path.read_text())
+        if case == "metadata-checksum":
+            metadata["structural"]["global_node_count"] = 512
+            metadata["dataset"]["global_node_count"] = 512
+            request["dataset_identity"] = dict(metadata["dataset"])
+        else:
+            metadata["dataset"]["vector_dimension"] = 8
+        metadata_path.write_text(json.dumps(metadata))
+    source = tmp_path / request["source_file"]["path"]
+    before = source.read_bytes()
+    with pytest.raises(search.SearchEvaluationError, match="Dataset"):
+        _import_request(tmp_path, operation, request)
+    assert source.read_bytes() == before
+    assert not (tmp_path / request["reference_path"]).exists()
+    assert json.loads((tmp_path / request["manifest_path"]).read_text())["status"] == "FAILED"
+
+
+def test_native_import_output_parent_file_is_rejected_before_publication(tmp_path: Path, imported_inputs) -> None:
+    _, request = imported_inputs
+    blocked = tmp_path / "blocked"
+    blocked.write_bytes(b"preserve parent")
+    request["reference_path"] = "blocked/reference.json"
+    with pytest.raises((search.SearchEvaluationError, OSError)):
+        _import_request(tmp_path, "query_set", request)
+    assert blocked.read_bytes() == b"preserve parent"
+    manifest = json.loads((tmp_path / request["manifest_path"]).read_text())
+    assert manifest["status"] == "FAILED"
+    assert not (tmp_path / "inputs/import-query-rows.json").exists()
+    evidence = json.loads((tmp_path / request["validation_evidence_path"]).read_text())
+    assert evidence["result"] == "INVALID"
+
+
+@pytest.mark.parametrize("failed_output", ["reference_path", "validation_evidence_path", "manifest_path"])
+def test_native_import_publication_failure_keeps_original_failure(
+    tmp_path: Path, imported_inputs, monkeypatch: pytest.MonkeyPatch, failed_output: str,
+) -> None:
+    _, request = imported_inputs
+    original_write = search.write_immutable_json
+    injected = False
+    def fail_once(path, document):
+        nonlocal injected
+        if Path(path) == tmp_path / request[failed_output] and not injected:
+            injected = True
+            raise OSError("injected publication failure")
+        return original_write(path, document)
+    monkeypatch.setattr(search, "write_immutable_json", fail_once)
+    with pytest.raises(search.SearchEvaluationError, match="injected publication failure"):
+        _import_request(tmp_path, "query_set", request)
+    assert injected
+    manifest = json.loads((tmp_path / request["manifest_path"]).read_text())
+    assert manifest["status"] == "FAILED"
+    assert "injected publication failure" in manifest["failure"]["reason"]
+    if failed_output == "reference_path":
+        assert not (tmp_path / request["reference_path"]).exists()
+        assert json.loads((tmp_path / request["validation_evidence_path"]).read_text())["result"] == "INVALID"
+
+
+@pytest.mark.parametrize("output", ["reference_path", "manifest_path", "validation_evidence_path", "row_mapping"])
+def test_native_import_dangling_outputs_are_never_followed(tmp_path: Path, imported_inputs, output: str) -> None:
+    _, request = imported_inputs
+    relative = "inputs/import-query-rows.json" if output == "row_mapping" else request[output]
+    link = tmp_path / relative
+    link.parent.mkdir(parents=True, exist_ok=True)
+    target = tmp_path / "must-not-be-created.json"
+    link.symlink_to(target)
+    original_target = os.readlink(link)
+    with pytest.raises(search.SearchEvaluationError, match="already exists"):
+        _import_request(tmp_path, "query_set", request)
+    assert link.is_symlink() and os.readlink(link) == original_target
+    assert not target.exists()
+    assert not (tmp_path / request["reference_path"]).exists()
+
+
+@pytest.mark.parametrize("kind", ["file", "directory", "live-link"])
+def test_native_import_occupied_reference_is_preserved(tmp_path: Path, imported_inputs, kind: str) -> None:
+    _, request = imported_inputs
+    target = tmp_path / request["reference_path"]
+    target.parent.mkdir()
+    if kind == "directory": target.mkdir()
+    elif kind == "file": target.write_bytes(b"existing")
+    else:
+        (tmp_path / "existing-target").write_bytes(b"existing")
+        target.symlink_to(tmp_path / "existing-target")
+    with pytest.raises(search.SearchEvaluationError, match="already exists"):
+        _import_request(tmp_path, "query_set", request)
+    if kind == "directory": assert target.is_dir()
+    else: assert target.read_bytes() == b"existing"
+    if kind == "live-link": assert target.is_symlink()
+
+
+def test_native_import_failure_record_write_cannot_mask_original_error(
+    tmp_path: Path, imported_inputs, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, request = imported_inputs
+    request["source_file"]["sha256"] = "0" * 64
+    original_write = search.write_immutable_json
+    def unavailable_manifest(path, document):
+        if Path(path) == tmp_path / request["manifest_path"]:
+            raise PermissionError("failure record destination unavailable")
+        return original_write(path, document)
+    monkeypatch.setattr(search, "write_immutable_json", unavailable_manifest)
+    with pytest.raises(search.SearchEvaluationError, match="native input checksum/length mismatch"):
+        _import_request(tmp_path, "query_set", request)
+    assert not (tmp_path / request["reference_path"]).exists()
+
+
+def test_native_import_success_requires_all_published_outputs(
+    tmp_path: Path, imported_inputs, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, request = imported_inputs
+    original_write = search.write_immutable_json
+    observed_success = []
+    def check_success(path, document):
+        if document.get("status") == "SUCCEEDED":
+            assert (tmp_path / request["reference_path"]).is_file()
+            assert (tmp_path / "inputs/import-query-rows.json").is_file()
+            assert json.loads((tmp_path / request["validation_evidence_path"]).read_text())["result"] == "VALID"
+            observed_success.append(path)
+        return original_write(path, document)
+    monkeypatch.setattr(search, "write_immutable_json", check_success)
+    _import_request(tmp_path, "query_set", request)
+    assert observed_success == [tmp_path / request["manifest_path"]]
+
+
+@pytest.mark.parametrize("reference", ["manifests", "inputs"])
+def test_native_import_nested_outputs_are_rejected_before_writing(tmp_path: Path, imported_inputs, reference) -> None:
+    _, request = imported_inputs
+    request["reference_path"] = reference
+    with pytest.raises(search.SearchEvaluationError, match="nested|overlaps"):
+        _import_request(tmp_path, "query_set", request)
+    assert not (tmp_path / reference).exists()
+    assert not (tmp_path / "inputs/import-query-rows.json").exists()
+
+
+def test_native_import_generation_failure_also_preserves_dangling_manifest(tmp_path: Path, imported_inputs) -> None:
+    _, request = imported_inputs
+    request.pop("source_file")
+    request["input_mode"] = "generate"
+    manifest = tmp_path / request["manifest_path"]
+    manifest.parent.mkdir()
+    target = tmp_path / "unwritten.json"
+    manifest.symlink_to(target)
+    with pytest.raises(search.SearchEvaluationError, match="already exists"):
+        _import_request(tmp_path, "query_set", request)
+    assert manifest.is_symlink() and not target.exists()

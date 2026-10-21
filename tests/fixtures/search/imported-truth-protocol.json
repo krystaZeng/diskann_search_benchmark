@@ -1,0 +1,155 @@
+{
+  "canonicalization": "diskann-search-protocol-c14n-v1",
+  "evaluation": {
+    "aggregation_policy": "median_eligible",
+    "evaluator": {
+      "implementation_id": "cpp_main_search_metrics_evaluator_v2",
+      "reproduction_mode": "instrumented",
+      "version": "2.0.0"
+    },
+    "ground_truth": {
+      "canonical_checksum": "5df9cf4f95b9b259b353ce6b3db7fc5e59d5ffd31bf8922871b2717a653fa213",
+      "dataset_artifact": {
+        "aggregate_checksum": "c3bfe6f31964a65327a6f7c24e4d2e1b7b41b0fc349f2649f3d934041d674014",
+        "artifact_type": "dataset",
+        "format_version": "diskann-float32-dataset/v1",
+        "metadata_path": "dataset/artifact.json"
+      },
+      "distance_metric": "l2_squared_float32",
+      "generation_manifest_path": "manifests/import-truth.json",
+      "ground_truth_id": "import-truth",
+      "id_space": "global",
+      "payload": {
+        "byte_length": 1608,
+        "format": "diskann-truthset",
+        "path": "existing/truth.bin",
+        "sha256": "c3054dcbcd8949f0b1d849f7fd66ec95e6ee410814a27f5713bc0b1bf6ec81a8"
+      },
+      "query_count": 2,
+      "query_set_checksum": "7d33c7690897d68b6f3bbb4a8f595dc87471c8b599248d78a48d9968f886ef7f",
+      "reference_version": "1.1.0",
+      "self_match_policy": "no_id_based_exclusion",
+      "validation_evidence_path": "manifests/evidence/import-truth.json",
+      "width": 100
+    },
+    "metrics": [
+      "recall_at_10",
+      "recall_at_100",
+      "qps_k100",
+      "mean_latency_us_k100",
+      "p99_9_latency_us_k100",
+      "mean_ios_k100"
+    ],
+    "performance_eligibility_policy": "complete_valid_measurement_single_invocation_v2",
+    "quality_eligibility_policy": "complete_valid_ground_truth_identity_search_semantics_v1",
+    "replacement_repetitions": false
+  },
+  "protocol_checksum": "81100016b6e61b1e83efa83a4aa0c83d4a9605d287e7d63d9aaa4e67970e789a",
+  "protocol_id": "protocol-zero",
+  "protocol_version": "1.1.0",
+  "search_execution": {
+    "K": 100,
+    "L_search": [
+      100,
+      200,
+      400
+    ],
+    "beamwidth": 2,
+    "cache": {
+      "mode": "zero",
+      "requested_nodes": 0
+    },
+    "dataset_artifact": {
+      "aggregate_checksum": "c3bfe6f31964a65327a6f7c24e4d2e1b7b41b0fc349f2649f3d934041d674014",
+      "artifact_type": "dataset",
+      "format_version": "diskann-float32-dataset/v1",
+      "metadata_path": "dataset/artifact.json"
+    },
+    "disk_layout_artifact": {
+      "aggregate_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifact_type": "disk_layout",
+      "format_version": "disk-layout-artifact/v1",
+      "metadata_path": "layout/artifact.json"
+    },
+    "diskann_source_commit": "78256bbab4685e1774e78d331e081a153be26823",
+    "distance_metric": "l2",
+    "entry_policy": "end_to_end",
+    "environment": {
+      "direct_io": "required_and_probed",
+      "linux_aio": "required_and_probed",
+      "os": "linux",
+      "remote_storage_allowed": false,
+      "storage": "local_ssd"
+    },
+    "execution_id": "small-zero",
+    "global_graph_artifact": {
+      "aggregate_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifact_type": "global_graph",
+      "format_version": "global-graph-artifact/v1",
+      "metadata_path": "graph/artifact.json"
+    },
+    "implementation": {
+      "implementation_id": "cpp_main_pqflash_search_instrumented_v1",
+      "reproduction_mode": "instrumented",
+      "version": "1.0.0"
+    },
+    "io_limit": 4294967295,
+    "pq_artifact": {
+      "aggregate_checksum": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifact_type": "pq",
+      "format_version": "pq-artifact/v1",
+      "metadata_path": "pq/artifact.json"
+    },
+    "query_order": "query_row_index_ascending",
+    "query_set": {
+      "canonical_checksum": "7d33c7690897d68b6f3bbb4a8f595dc87471c8b599248d78a48d9968f886ef7f",
+      "conversion_manifest_path": "manifests/import-query.json",
+      "dimension": 4,
+      "logical_source": "existing/query.bin",
+      "native_payload": {
+        "byte_length": 40,
+        "format": "diskann-float32-bin",
+        "path": "existing/query.bin",
+        "sha256": "44a1e91a2c5f4205cb62397626fd514d52b65abb04c8a32eb8ff715edce9160f"
+      },
+      "query_count": 2,
+      "query_identity": "query_row_index",
+      "query_set_id": "import-query",
+      "reference_version": "1.0.0",
+      "row_mapping": {
+        "byte_length": 147,
+        "format": "json",
+        "path": "inputs/import-query-rows.json",
+        "sha256": "11f76d4917874e11c75addd1dd2119ddc450f71e3274c020e861f214862f5e6d"
+      },
+      "scalar_type": "float32",
+      "self_match_policy": "no_id_based_exclusion",
+      "source": {
+        "byte_length": 40,
+        "format": "diskann-float32-bin",
+        "path": "existing/query.bin",
+        "sha256": "44a1e91a2c5f4205cb62397626fd514d52b65abb04c8a32eb8ff715edce9160f"
+      },
+      "source_query_id_semantics": "opaque",
+      "validation_evidence_path": "manifests/evidence/import-query.json"
+    },
+    "repetition_count": 3,
+    "runner_build": {
+      "binary_path": "bin/runner",
+      "binary_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "build_manifest_path": "manifests/build.json",
+      "build_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "project_branch": "feature/search-evaluation",
+      "project_commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "project_dirty": false,
+      "project_repository": "https://example.invalid/project.git"
+    },
+    "schedule": "repetition_major_then_L_order",
+    "storage_placement": "fixture",
+    "thread_count": 6,
+    "timing_boundary": "cpp_main_search_disk_index_query_batch_v1",
+    "warmup_policy": "none"
+  },
+  "search_execution_checksum": "9f13b43c618a3835f62fac7c39e7c3957ce400ae17bf87f4da2ccdf8183728fa",
+  "status": "frozen"
+}

@@ -3,6 +3,9 @@
 #include "support/test_assert.hpp"
 
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -171,6 +174,28 @@ int main() {
   DP_EXPECT_THROW(dp::canonicalize_restricted_json(R"({"a":null})"));
   DP_EXPECT_THROW(dp::canonicalize_restricted_json(R"({"a":1.5})"));
   DP_EXPECT_THROW(dp::canonicalize_restricted_json(R"({"a":1,"a":2})"));
+
+  // Shared full protocol serialized by Python; the GT 1.1.0 reference omits
+  // an unverified closure claim. Null remains forbidden by the same parser.
+  const auto protocol_path = std::filesystem::path(__FILE__).parent_path()
+      .parent_path().parent_path() / "fixtures/search/imported-truth-protocol.json";
+  std::ifstream protocol_input(protocol_path);
+  DP_EXPECT_TRUE(protocol_input.is_open());
+  const std::string protocol_json((std::istreambuf_iterator<char>(protocol_input)),
+                                  std::istreambuf_iterator<char>());
+  const std::regex checksum_field(R"re(  "protocol_checksum": "([0-9a-f]{64})",\n)re");
+  std::smatch checksum_match;
+  DP_EXPECT_TRUE(std::regex_search(protocol_json, checksum_match, checksum_field));
+  if (checksum_match.size() == 2) {
+    const auto projection = std::regex_replace(protocol_json, checksum_field, "");
+    DP_EXPECT_EQ(dp::sha256_bytes(dp::canonicalize_restricted_json(projection)),
+                 checksum_match[1].str());
+    DP_EXPECT_TRUE(!dp::canonicalize_restricted_json(protocol_json).empty());
+    auto with_null = protocol_json;
+    with_null.insert(with_null.find('{') + 1, "\"unverified\":null,");
+    DP_EXPECT_THROW(dp::canonicalize_restricted_json(with_null));
+  }
+
 
   DP_EXPECT_EQ(dp::aggregate_checksum(dataset_projection()),
                std::string(kDatasetAggregate));

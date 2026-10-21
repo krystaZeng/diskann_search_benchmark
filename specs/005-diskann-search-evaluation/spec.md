@@ -701,3 +701,30 @@ user preference questions.
 - Generic multi-GlobalGraph comparison or M0/M1-specific behavior in a reusable evaluator.
 - Controlled-entry evaluation in the first phase.
 - SIFT100M or larger experiments.
+
+
+### Native input import and explicit GT reference revision
+
+Ordinary protocol 1.1.0 / v2 evaluation may directly admit existing native float32 query
+matrices and uint32-ID/float32-distance truthsets via the existing materialize suboperations.
+Requests explicitly select import, source format and byte/checksum identity; generator fields
+cannot be mixed with import. Header-derived counts/dimensions/GT width, finite values, ID
+range, distance order and Dataset/QuerySet bindings remain mandatory. Queries retain original
+bytes, order and zero-based row identity. Generated row labels carry no Dataset ID semantics.
+
+GroundTruthReference 1.1.0 is an explicit additive revision accepted by protocol 1.1.0.
+Its absent `rank_100_tie_group_closed` means closure has not been declared verified; null and
+false are invalid. Basic GT validity is independent of this check. A true claim requires an
+actual boundary check; no path may unconditionally stamp true. Recall continues the fixed
+DiskANN `src/utils.cpp:129-165` formula within actual stored GT width. Unverified closure
+alone does not withhold metrics or otherwise eligible v2 aggregation. The existing quality
+reason states width and the possible unstored boundary ties. No report/evaluator version,
+shared canonicalization rule, search behavior or metric formula changes.
+
+The preceding first-phase MVP requirements, old references/protocol 1.0.0 and frozen
+certification policies keep their original scope. A legacy GT generation request defaults
+to reference 1.0.0 and must verify closure before publication; valid GT200 behavior remains.
+New semantics require an explicit request/reference revision. Import BuildManifests record
+actual source path/SHA and declared bindings, use the actual Python source/toolchain, and do
+not claim generator execution or renewed proof of exact neighbors. Original generation logs
+are optional for import. See `contracts/cli.md` and `data-model.md` for request details.
