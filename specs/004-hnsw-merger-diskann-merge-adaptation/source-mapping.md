@@ -104,3 +104,24 @@ interface extension requires rebuilding all components rather than mixing binary
 
 Registry physical admission is framework integration only; the mapped algorithm is unchanged.
 See [contracts/merge-only-execution.md](contracts/merge-only-execution.md) for validated encoding and actual-service checks before consumer factories.
+
+### M1 call-wall-clock observation
+
+`m1_merge.cpp` measures only `merge_large_first()` with `steady_clock` after
+loading/validating inputs. The call includes its vector cache allocation, lazy
+vector reads, pairwise merge computation and memory operations. The end is
+captured immediately on return/exception. Native graph/medoid output writes in
+the wrapper occur **after** this call and are excluded, unlike M0's in-call
+output writes. Both metrics measure call wall time, not CPU time or identical
+internal work.
+
+The existing stage Manifest adds `metrics.global_graph_merge_time` (`value`,
+`unit=us`, `clock=steady_clock`,
+`scope=hnsw_merger.merge_large_first_call`, `call_status`). A call that throws
+cancellation is CANCELLED; a completed call remains SUCCEEDED even if later
+cancellation/validation/publication fails. The enclosing stage and parent
+terminal states still govern usability. An unentered call has no metric. Audit
+writes are immutable and never retime the call; an audit-write failure must not
+mask the original operation error. Own/parent Manifest SHA and candidate/final
+Artifact checksum bindings use the existing pipeline mechanism. No M1 algorithm
+or Artifact identity change is implied, and no historical runs are backfilled.

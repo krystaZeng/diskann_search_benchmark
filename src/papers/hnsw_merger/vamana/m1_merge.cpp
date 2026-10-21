@@ -3,6 +3,7 @@
 #include "papers/hnsw_merger/vamana/m1_algorithm.hpp"
 
 #include "baseline/cpp_main/native_formats.hpp"
+#include "baseline/cpp_main/merge_call_record.hpp"
 #include "core/json_codec.hpp"
 #include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/document_codec.hpp"
@@ -179,18 +180,6 @@ SourceIdentity project_source() {
   return source;
 }
 
-ToolchainIdentity actual_toolchain() {
-  return {HNSW_MERGER_SYSTEM_NAME,
-          HNSW_MERGER_CXX_COMPILER,
-          HNSW_MERGER_CXX_COMPILER_VERSION,
-          HNSW_MERGER_CMAKE_VERSION,
-          HNSW_MERGER_CMAKE_GENERATOR,
-          HNSW_MERGER_BUILD_TYPE,
-          {"DISKANN_CPP_MAIN_BASELINE=ON", "DISKANN_HNSW_MERGER=ON"},
-          {std::string("cmake --build ") + HNSW_MERGER_BINARY_DIR +
-           " --target diskann_hnsw_merger_vamana"},
-          {"diskann_hnsw_merger_vamana -> diskann_s"}};
-}
 
 std::filesystem::path run_id_from(const std::filesystem::path& parameter_path) {
   if (parameter_path.filename() != "merge.json" ||
@@ -210,7 +199,12 @@ BuildManifest base_execution_manifest(
   manifest.stage = "merge";
   manifest.implementation = {kImplementationId, kImplementationVersion};
   manifest.source = project_source();
-  manifest.toolchain = actual_toolchain();
+  const auto evidence = cpp_main::admit_source_and_build(cpp_main::configured_source_build_admission());
+  manifest.toolchain = cpp_main::make_build_manifest(evidence, run_id, started_at, started_at).toolchain;
+  manifest.parameters_json = merge_record::build_provenance(manifest, evidence, project_source(),
+      HNSW_MERGER_BINARY_DIR, MERGE_LIBRARY,
+      {{MERGE_WRAPPER_FILE, MERGE_WRAPPER_SHA}, {MERGE_RECORD_FILE, MERGE_RECORD_SHA},
+       {MERGE_ALGORITHM_FILE, MERGE_ALGORITHM_SHA}}).dump();
   manifest.dataset = dataset;
   manifest.resource_budget = {context.memory_budget_bytes,
                               context.thread_budget};
@@ -278,14 +272,17 @@ class HnswMergerVamanaMerge final : public GraphMerger {
     const auto parameters = parse_parameters(read_text(parameter_path));
     auto manifest = base_execution_manifest(run_id, dataset, inputs, context,
                                             started_at);
+    const auto build_identity = Json::parse(manifest.parameters_json);
+    merge_record::CallTiming timing("hnsw_merger.merge_large_first_call");
+    StageResult result{StageStatus::kFailed, std::nullopt, {}};
+    std::exception_ptr original_error;
     try {
+      result = [&]() -> StageResult {
       if (context.cancellation_token->is_cancelled()) {
         manifest.status = StageStatus::kCancelled;
         manifest.parameters_json =
             provenance_parameters(parameters, {}).dump();
-        return {StageStatus::kCancelled, std::nullopt,
-                persist_execution_manifest(context.workspace,
-                                           std::move(manifest))};
+        return {StageStatus::kCancelled, std::nullopt, {}};
       }
       auto loaded = load_merge_inputs(context.workspace, partition, locals);
       const auto services = check_runtime_services(
@@ -297,23 +294,35 @@ class HnswMergerVamanaMerge final : public GraphMerger {
         manifest.status = StageStatus::kCancelled;
         manifest.parameters_json =
             provenance_parameters(parameters, {}).dump();
-        return {StageStatus::kCancelled, std::nullopt,
-                persist_execution_manifest(context.workspace,
-                                           std::move(manifest))};
+        return {StageStatus::kCancelled, std::nullopt, {}};
       }
-      auto merged = merge_large_first(
-          std::move(loaded.graphs), parameters.r, parameters.alpha,
-          parameters.max_candidate_size, *context.vector_accessor,
-          *context.distance_function, dataset.global_node_count,
-          context.memory_budget_bytes, context.cancellation_token,
-          context.metrics_sink);
+      auto merged = [&]() {
+      timing.start();
+      try {
+        auto returned = merge_large_first(
+            std::move(loaded.graphs), parameters.r, parameters.alpha,
+            parameters.max_candidate_size, *context.vector_accessor,
+            *context.distance_function, dataset.global_node_count,
+            context.memory_budget_bytes, context.cancellation_token,
+            context.metrics_sink);
+        const auto end = merge_record::CallTiming::Clock::now();
+        timing.finish(end, "SUCCEEDED");
+        return returned;
+      } catch (const PipelineError& error) {
+        const auto end = merge_record::CallTiming::Clock::now();
+        timing.finish(end, error.category() == ErrorCategory::kCancelled ? "CANCELLED" : "FAILED");
+        throw;
+      } catch (...) {
+        const auto end = merge_record::CallTiming::Clock::now();
+        timing.finish(end, "FAILED");
+        throw;
+      }
+      }();
       if (context.cancellation_token->is_cancelled()) {
         manifest.status = StageStatus::kCancelled;
         manifest.parameters_json =
             provenance_parameters(parameters, merged.decisions).dump();
-        return {StageStatus::kCancelled, std::nullopt,
-                persist_execution_manifest(context.workspace,
-                                           std::move(manifest))};
+        return {StageStatus::kCancelled, std::nullopt, {}};
       }
       if (merged.graph.adjacency.size() != dataset.global_node_count) {
         throw PipelineError(ErrorCategory::kMappingIncomplete,
@@ -378,28 +387,25 @@ class HnswMergerVamanaMerge final : public GraphMerger {
                                      cpp_main::kMedoidsMediaType,
                                      candidate_medoids)})}};
       metadata["aggregate_checksum"] = aggregate_for(metadata);
-      std::ofstream(candidate / "artifact.json", std::ios::binary)
-          << metadata.dump();
+      write_immutable_text(candidate / "artifact.json", metadata.dump());
       if (context.cancellation_token->is_cancelled()) {
         manifest.status = StageStatus::kCancelled;
         manifest.parameters_json =
             provenance_parameters(parameters, merged.decisions).dump();
-        return {StageStatus::kCancelled, std::nullopt,
-                persist_execution_manifest(context.workspace,
-                                           std::move(manifest))};
+        return {StageStatus::kCancelled, std::nullopt, {}};
       }
       manifest.status = StageStatus::kSucceeded;
       manifest.parameters_json =
           provenance_parameters(parameters, merged.decisions).dump();
-      const auto manifest_path =
-          persist_execution_manifest(context.workspace, std::move(manifest));
       return {StageStatus::kSucceeded,
               ArtifactRef{"candidate/artifact.json",
                           ArtifactType::kGlobalGraph,
                           "global-graph-artifact/v1",
                           metadata.at("aggregate_checksum").get<std::string>()},
-              manifest_path};
+              {}};
+      }();
     } catch (const PipelineError& error) {
+      original_error = std::current_exception();
       manifest.status = error.category() == ErrorCategory::kCancelled
                             ? StageStatus::kCancelled
                             : StageStatus::kFailed;
@@ -408,18 +414,34 @@ class HnswMergerVamanaMerge final : public GraphMerger {
         manifest.failure =
             FailureInfo{error.category(), error.what(), std::nullopt};
       }
-      return {manifest.status, std::nullopt,
-              persist_execution_manifest(context.workspace,
-                                         std::move(manifest))};
+      result.status = manifest.status;
     } catch (const std::exception& error) {
+      original_error = std::current_exception();
       manifest.status = StageStatus::kFailed;
       manifest.failure =
           FailureInfo{ErrorCategory::kInternal, error.what(), std::nullopt};
       manifest.parameters_json = provenance_parameters(parameters, {}).dump();
-      return {StageStatus::kFailed, std::nullopt,
-              persist_execution_manifest(context.workspace,
-                                         std::move(manifest))};
     }
+    manifest.status = result.status;
+    auto provenance = Json::parse(manifest.parameters_json);
+    provenance["build_identity"] = build_identity;
+    manifest.parameters_json = provenance.dump();
+    manifest.metrics_json = timing.metrics().dump();
+    if (result.output_candidate) {
+      auto output = *result.output_candidate;
+      output.metadata_path = std::filesystem::relative(
+          context.temporary_storage.stage_root / output.metadata_path, context.workspace.root);
+      manifest.output_artifacts = {output};
+    }
+    try {
+      result.build_manifest_path = persist_execution_manifest(context.workspace, manifest);
+    } catch (...) {
+      if (original_error) std::rethrow_exception(original_error);
+      if (result.status == StageStatus::kCancelled)
+        throw PipelineError(ErrorCategory::kCancelled, "M1 cancelled; stage Manifest could not be persisted");
+      throw;
+    }
+    return result;
   }
 };
 

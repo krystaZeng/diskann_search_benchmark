@@ -208,6 +208,7 @@ int main() {
     const auto failure_manifest = dp::parse_build_manifest(
         fixture::read_json(rejected.build_manifest_path).dump());
     if (!success) {
+      DP_EXPECT_TRUE(nlohmann::json::parse(failure_manifest.metrics_json).empty());
       DP_EXPECT_EQ(observed.reads, std::size_t{0});
       DP_EXPECT_EQ(distance.calls, std::size_t{0});
       DP_EXPECT_TRUE(failure_manifest.output_artifacts.empty());
@@ -299,6 +300,12 @@ int main() {
   }
   const auto execution_manifest = dp::parse_build_manifest(
       fixture::read_json(stage.build_manifest_path).dump());
+  const auto timing = nlohmann::json::parse(execution_manifest.metrics_json).at("global_graph_merge_time");
+  DP_EXPECT_EQ(timing.at("call_status"), "SUCCEEDED");
+  DP_EXPECT_EQ(timing.at("scope"), "hnsw_merger.merge_large_first_call");
+  DP_EXPECT_EQ(timing.at("unit"), "us");
+  DP_EXPECT_TRUE(std::isfinite(timing.at("value").get<double>()));
+  DP_EXPECT_TRUE(timing.at("value").get<double>() >= 0.0);
   DP_EXPECT_EQ(execution_manifest.status, dp::StageStatus::kSucceeded);
   const auto provenance = nlohmann::json::parse(
       execution_manifest.parameters_json);
@@ -322,6 +329,14 @@ int main() {
 
   fixture::TestContext cancelled_environment(workspace,
                                              "hnsw-merger-m1-cancel");
+  fixture::TestContext pre_cancelled(workspace, "m1-pre-cancelled");
+  pre_cancelled.context.vector_accessor = &vectors;
+  pre_cancelled.cancellation.cancelled = true;
+  const auto pre_parameters = workspace.manifest_root / "m1-pre-cancelled/parameters/merge.json";
+  dp::write_immutable_text(pre_parameters, kParameters);
+  const auto pre_result = m1::make_m1_merge()->merge(partition, locals, pre_parameters, pre_cancelled.context);
+  DP_EXPECT_EQ(pre_result.status, dp::StageStatus::kCancelled);
+  DP_EXPECT_TRUE(fixture::read_json(pre_result.build_manifest_path).at("metrics").empty());
   CancelOnFirstRead cancelling_vectors(
       vectors, cancelled_environment.cancellation);
   cancelled_environment.context.vector_accessor = &cancelling_vectors;
@@ -334,6 +349,8 @@ int main() {
   DP_EXPECT_EQ(cancelled.status, dp::StageStatus::kCancelled);
   DP_EXPECT_TRUE(!cancelled.output_candidate.has_value());
   DP_EXPECT_EQ(cancelling_vectors.reads(), std::size_t{1});
+  const auto cancelled_manifest = fixture::read_json(cancelled.build_manifest_path);
+  DP_EXPECT_EQ(cancelled_manifest.at("metrics").at("global_graph_merge_time").at("call_status"), "CANCELLED");
 
   fixture::TestContext budget_environment(workspace,
                                           "hnsw-merger-m1-budget");
@@ -353,5 +370,33 @@ int main() {
   DP_EXPECT_TRUE(budget_manifest.failure.has_value());
   if (budget_manifest.failure)
     DP_EXPECT_TRUE(budget_manifest.failure->reason.find("budget") != std::string::npos);
+  const auto budget_metrics = nlohmann::json::parse(budget_manifest.metrics_json);
+  DP_EXPECT_EQ(budget_metrics.at("global_graph_merge_time").at("call_status"), "FAILED");
+  for (bool block_manifest : {false, true}) {
+    const std::string label = block_manifest ? "m1-audit-failure" : "m1-publish-failure";
+    fixture::TestContext failed(workspace, label);
+    failed.context.vector_accessor = &vectors;
+    const auto parameters = workspace.manifest_root / label / "parameters/merge.json";
+    dp::write_immutable_text(parameters, kParameters);
+    const auto occupied = failed.context.temporary_storage.stage_root / "candidate/global.index";
+    dp::write_immutable_text(occupied, "existing user content");
+    const auto audit = workspace.report_root / "hnsw-merger" / label / "merge-execution.json";
+    if (block_manifest) dp::write_immutable_text(audit, "existing audit");
+    try {
+      const auto result = m1::make_m1_merge()->merge(partition, locals, parameters, failed.context);
+      DP_EXPECT_TRUE(!block_manifest);
+      DP_EXPECT_EQ(result.status, dp::StageStatus::kFailed);
+      DP_EXPECT_TRUE(!result.output_candidate.has_value());
+      const auto record = fixture::read_json(result.build_manifest_path);
+      DP_EXPECT_EQ(record.at("status"), "FAILED");
+      DP_EXPECT_EQ(record.at("metrics").at("global_graph_merge_time").at("call_status"), "SUCCEEDED");
+      DP_EXPECT_TRUE(record.at("failure").at("reason").get<std::string>().find("global.index") != std::string::npos);
+    } catch (const std::exception& error) {
+      DP_EXPECT_TRUE(block_manifest);
+      DP_EXPECT_TRUE(std::string(error.what()).find("global.index") != std::string::npos);
+    }
+    DP_EXPECT_EQ(dp::sha256_file(occupied), dp::sha256_bytes("existing user content"));
+    if (block_manifest) DP_EXPECT_EQ(dp::sha256_file(audit), dp::sha256_bytes("existing audit"));
+  }
   return dp::test::finish();
 }

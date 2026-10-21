@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@ struct PerQueryObservation {
   std::vector<float> result_distances;
   double total_us{0};
   std::uint32_t n_ios{0};
+  std::optional<std::uint32_t> n_hops;
 };
 
 struct RawSearchPoint {

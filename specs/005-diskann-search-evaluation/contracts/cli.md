@@ -468,3 +468,22 @@ itself make `quality_eligible=false`, and neither derived decision is written in
   partial query set, or protocol mismatch fails closed.
 
 No command in this contract authorizes SIFT1M execution during planning.
+
+### Explicit n-hops display (protocol 1.1.0 only)
+
+Keep the original six-metric declaration for unchanged report output. To request
+n-hops, set `evaluation.metrics` to exactly:
+
+```json
+["recall_at_10", "recall_at_100", "qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100", "mean_n_hops_k100"]
+```
+
+The optional v2 value is the mean native count of disk-reading, non-cached
+frontier expansion rounds. It is not a path length or I/O count. Missing counters
+make this item unavailable (omitted numeric field, existing reason/limitation),
+without invalidating the other valid measurements. Aggregation uses the existing
+performance members and emits a median only if every member has complete
+counters. A zero counter is a valid measured value. Protocol 1.0.0/report v1 and
+historical observations remain unchanged. Existing counters are never inferred
+or backfilled; capturing them requires a new search with its actual runner build
+identity, but no new graph/PQ/Layout is required when existing inputs validate.

@@ -1,9 +1,11 @@
 #include "baseline/cpp_main/stage_bindings.hpp"
 
 #include "baseline/cpp_main/native_formats.hpp"
+#include "baseline/cpp_main/merge_call_record.hpp"
 #include "core/json_codec.hpp"
 #include "diskann_pipeline/checksum.hpp"
 #include "diskann_pipeline/errors.hpp"
+#include "diskann_pipeline/document_codec.hpp"
 #include "diskann_pipeline/workspace.hpp"
 
 #include <immintrin.h>
@@ -317,11 +319,38 @@ class CppMainM0 final : public GraphMerger {
       const std::vector<ArtifactRef>& local_graphs,
       const std::filesystem::path& stage_manifest_path,
       StageContext& context) override {
+    const auto started = merge_record::now_utc();
+    // Executor parameters bind the parent run; standalone stage callers retain
+    // their existing temporary-stage identity and parameter path convention.
+    const auto run_id = stage_manifest_path.filename() == "merge.json" &&
+                               stage_manifest_path.parent_path().filename() == "parameters"
+        ? stage_manifest_path.parent_path().parent_path().filename().string()
+        : context.temporary_storage.stage_root.filename().string();
+    const auto evidence = admit_source_and_build(configured_source_build_admission());
+    auto manifest = make_build_manifest(evidence, run_id, started, started);
+    manifest.stage = "merge";
+    manifest.implementation = {kM0ImplementationId, "1.0.0"};
+    manifest.dataset = parse_dataset(read_json(resolve_normal_artifact_metadata(
+        context.workspace, partition_artifact.metadata_path)).at("dataset"));
+    manifest.resource_budget = {context.memory_budget_bytes, context.thread_budget};
+    manifest.input_artifacts = {partition_artifact};
+    manifest.input_artifacts.insert(manifest.input_artifacts.end(), local_graphs.begin(), local_graphs.end());
+    SourceIdentity wrapper{MERGE_PROJECT_REPOSITORY, MERGE_PROJECT_BRANCH,
+                           MERGE_PROJECT_COMMIT, bool(MERGE_PROJECT_DIRTY), std::nullopt};
+    if (wrapper.dirty_worktree) wrapper.dirty_source_checksum = MERGE_PROJECT_DIRTY_SHA;
+    auto provenance = merge_record::build_provenance(manifest, evidence, wrapper,
+        MERGE_BUILD_DIR, MERGE_LIBRARY,
+        {{MERGE_WRAPPER_FILE, MERGE_WRAPPER_SHA}, {MERGE_RECORD_FILE, MERGE_RECORD_SHA}});
+    merge_record::CallTiming timing("diskann.merge_shards_call");
+    StageResult result{StageStatus::kFailed, std::nullopt, {}};
+    std::exception_ptr original_error;
     try {
+      result = [&]() -> StageResult {
       if (cancelled(context)) {
         return {StageStatus::kCancelled, std::nullopt, {}};
       }
       const auto parameters = read_json(stage_manifest_path);
+      provenance["requested_parameters"] = parameters;
       validate_m0_parameters(parameters.dump());
       const auto r = parse_merge_degree(parameters);
       const auto partition =
@@ -363,10 +392,24 @@ class CppMainM0 final : public GraphMerger {
       const auto output_graph = native / "merged.index";
       const auto output_medoids = native / "medoids.bin";
       context.metrics_sink->event("cpp_main.m0.merge_shards");
-      if (diskann::merge_shards(prefix.string(), ".index", prefix.string(),
-                                ".ids", partition.count, r,
-                                output_graph.string(),
-                                output_medoids.string(), false, "") != 0) {
+      const auto prefix_arg = prefix.string();
+      const auto graph_arg = output_graph.string();
+      const auto medoids_arg = output_medoids.string();
+      const std::string graph_suffix = ".index", map_suffix = ".ids", no_labels;
+      int return_code;
+      timing.start();
+      try {
+        return_code = diskann::merge_shards(prefix_arg, graph_suffix, prefix_arg,
+            map_suffix, partition.count, r, graph_arg, medoids_arg, false, no_labels);
+        const auto end = merge_record::CallTiming::Clock::now();
+        timing.finish(end, "SUCCEEDED");
+      } catch (...) {
+        const auto end = merge_record::CallTiming::Clock::now();
+        timing.finish(end, "FAILED");
+        throw;
+      }
+      if (return_code != 0) {
+        timing.mark_failed_return();
         throw PipelineError(ErrorCategory::kInternal,
                             "merge_shards failed");
       }
@@ -437,8 +480,7 @@ class CppMainM0 final : public GraphMerger {
                                      kMedoidsMediaType,
                                      candidate_medoids)})}};
       output["aggregate_checksum"] = recompute_aggregate(output);
-      std::ofstream(candidate / "artifact.json", std::ios::binary)
-          << output.dump();
+      write_immutable_text(candidate / "artifact.json", output.dump());
       if (cancelled(context)) {
         return {StageStatus::kCancelled, std::nullopt, {}};
       }
@@ -448,10 +490,39 @@ class CppMainM0 final : public GraphMerger {
                           "global-graph-artifact/v1",
                           output.at("aggregate_checksum").get<std::string>()},
               {}};
+      }();
+    } catch (const PipelineError& error) {
+      original_error = std::current_exception();
+      result.status = error.category() == ErrorCategory::kCancelled
+          ? StageStatus::kCancelled : StageStatus::kFailed;
+      if (result.status == StageStatus::kFailed)
+        manifest.failure = FailureInfo{error.category(), error.what(), std::nullopt};
     } catch (const std::exception& error) {
+      original_error = std::current_exception();
+      manifest.failure = FailureInfo{ErrorCategory::kInternal, error.what(), std::nullopt};
       std::cerr << "cpp_main M0 failed: " << error.what() << '\n';
-      return {StageStatus::kFailed, std::nullopt, {}};
     }
+    manifest.status = result.status;
+    manifest.parameters_json = provenance.dump();
+    manifest.metrics_json = timing.metrics().dump();
+    if (result.output_candidate) {
+      auto output = *result.output_candidate;
+      output.metadata_path = std::filesystem::relative(
+          context.temporary_storage.stage_root / output.metadata_path, context.workspace.root);
+      manifest.output_artifacts = {output};
+    }
+    manifest.ended_at = merge_record::now_utc();
+    try {
+      result.build_manifest_path = resolve_confined_path(context.workspace.report_root,
+          std::filesystem::path("cpp-main-m0") / run_id / "merge-execution.json");
+      write_immutable_text(result.build_manifest_path, serialize_build_manifest(manifest));
+    } catch (...) {
+      if (original_error) std::rethrow_exception(original_error);
+      if (result.status == StageStatus::kCancelled)
+        throw PipelineError(ErrorCategory::kCancelled, "M0 cancelled; stage Manifest could not be persisted");
+      throw;
+    }
+    return result;
   }
 };
 

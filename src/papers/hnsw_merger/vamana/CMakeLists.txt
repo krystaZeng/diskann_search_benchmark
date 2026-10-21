@@ -32,6 +32,17 @@ target_compile_definitions(
     HNSW_MERGER_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
     HNSW_MERGER_BINARY_DIR="${CMAKE_BINARY_DIR}")
 diskann_pipeline_apply_cxx17(diskann_hnsw_merger_vamana)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/m1_merge.cpp" _m1_wrapper_sha)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/m1_algorithm.cpp" _m1_algorithm_sha)
+file(SHA256 "${PROJECT_SOURCE_DIR}/src/baseline/cpp_main/merge_call_record.hpp" _merge_record_sha)
+target_compile_definitions(diskann_hnsw_merger_vamana PRIVATE
+  MERGE_WRAPPER_FILE="${CMAKE_CURRENT_SOURCE_DIR}/m1_merge.cpp"
+  MERGE_WRAPPER_SHA="${_m1_wrapper_sha}"
+  MERGE_ALGORITHM_FILE="${CMAKE_CURRENT_SOURCE_DIR}/m1_algorithm.cpp"
+  MERGE_ALGORITHM_SHA="${_m1_algorithm_sha}"
+  MERGE_RECORD_FILE="${PROJECT_SOURCE_DIR}/src/baseline/cpp_main/merge_call_record.hpp"
+  MERGE_RECORD_SHA="${_merge_record_sha}"
+  MERGE_LIBRARY="$<TARGET_FILE:diskann_hnsw_merger_vamana>")
 
 add_executable(
   hnsw_merger_experiment_runner

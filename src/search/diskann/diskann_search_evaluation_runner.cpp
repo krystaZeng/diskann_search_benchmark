@@ -572,6 +572,7 @@ int search_protocol(const std::filesystem::path& workspace_root,
               2, std::numeric_limits<std::uint32_t>::max(), false, &stats);
           result.total_us = stats.total_us;
           result.n_ios = stats.n_ios;
+          result.n_hops = stats.n_hops;
         }
         const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - start);
@@ -584,6 +585,7 @@ int search_protocol(const std::filesystem::path& workspace_root,
                {"result_distances", row.result_distances},
                {"total_us", row.total_us},
                {"n_ios", row.n_ios}});
+          if (row.n_hops) per_query.back()["n_hops"] = *row.n_hops;
         }
         const auto point_id =
             protocol.at("protocol_id").get<std::string>() + "-L" +

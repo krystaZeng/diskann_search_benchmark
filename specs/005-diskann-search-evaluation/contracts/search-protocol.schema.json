@@ -32,6 +32,7 @@
           "evaluation": {
             "properties": {
               "ground_truth": {"properties": {"reference_version": {"const": "1.0.0"}}},
+              "metrics": {"const": ["recall_at_10", "recall_at_100", "qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100"]},
               "evaluator": {
                 "const": {
                   "implementation_id": "cpp_main_search_metrics_evaluator_v1",
@@ -290,9 +291,9 @@
         "ground_truth": {"$ref": "#/$defs/groundTruthRef"},
         "evaluator": {"$ref": "#/$defs/implementationIdentity"},
         "metrics": {
-          "const": [
-            "recall_at_10", "recall_at_100", "qps_k100", "mean_latency_us_k100",
-            "p99_9_latency_us_k100", "mean_ios_k100"
+          "enum": [
+            ["recall_at_10", "recall_at_100", "qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100"],
+            ["recall_at_10", "recall_at_100", "qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100", "mean_n_hops_k100"]
           ]
         },
         "quality_eligibility_policy": {

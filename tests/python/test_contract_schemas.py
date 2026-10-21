@@ -21,6 +21,19 @@ FEATURE_006_SCHEMAS = (
 )
 
 
+@pytest.mark.parametrize("value,valid", [(0, True), (1.5, True), (-1, False), (None, False), (False, False), ("2", False)])
+def test_v2_optional_n_hops_performance_metric(value, valid) -> None:
+    schema = json.loads((FEATURE_005_SCHEMAS / "search-evaluation-report-v2.schema.json").read_text())
+    validator = Draft202012Validator(schema["$defs"]["performanceMetrics"])
+    base = {"qps_k100": 1, "mean_latency_us_k100": 2, "p99_9_latency_us_k100": 3, "mean_ios_k100": 4}
+    assert validator.is_valid(base)
+    assert validator.is_valid({**base, "mean_n_hops_k100": value}) is valid
+    assert not validator.is_valid({**base, "other": 1})
+    incomplete = {**base, "mean_n_hops_k100": 0}
+    del incomplete["mean_ios_k100"]
+    assert not validator.is_valid(incomplete)
+
+
 def _load_schemas(directory: Path) -> dict[str, dict]:
     return {
         path.name: json.loads(path.read_text(encoding="utf-8"))

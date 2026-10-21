@@ -209,7 +209,46 @@ int main(int argc, char** argv) {
       fixture::read_json(m0.build_manifest_paths.back()).dump());
   const auto m0_parameters =
       nlohmann::json::parse(m0_manifest.parameters_json);
-  DP_EXPECT_TRUE(!m0_parameters.contains("stage_execution_manifest"));
+  DP_EXPECT_TRUE(m0_parameters.contains("stage_execution_manifest"));
+  for (const auto* parent : {&m0_manifest, &m1_manifest}) {
+    const auto parameters = nlohmann::json::parse(parent->parameters_json);
+    if (!parameters.contains("stage_execution_manifest")) continue;
+    const auto reference = parameters.at("stage_execution_manifest");
+    const auto path = dp::resolve_confined_path(workspace.root, reference.at("path").get<std::string>());
+    DP_EXPECT_EQ(reference.at("sha256"), dp::sha256_file(path));
+    const auto own = dp::parse_build_manifest(fixture::read_json(path).dump());
+    DP_EXPECT_EQ(own.status, dp::StageStatus::kSucceeded);
+    DP_EXPECT_EQ(own.run_id, parent->run_id);
+    const auto metrics = nlohmann::json::parse(own.metrics_json);
+    DP_EXPECT_TRUE(metrics.contains("global_graph_merge_time"));
+    if (metrics.contains("global_graph_merge_time")) {
+      const auto timing = metrics.at("global_graph_merge_time");
+      DP_EXPECT_EQ(timing.at("unit"), "us");
+      DP_EXPECT_EQ(timing.at("clock"), "steady_clock");
+      DP_EXPECT_EQ(timing.at("call_status"), "SUCCEEDED");
+      DP_EXPECT_EQ(timing.at("scope"), parent == &m0_manifest ? "diskann.merge_shards_call" : "hnsw_merger.merge_large_first_call");
+      DP_EXPECT_TRUE(timing.at("value").get<double>() >= 0.0);
+    }
+    DP_EXPECT_TRUE(parent->validation_evidence_path.has_value());
+    DP_EXPECT_EQ(parent->output_artifacts.size(), std::size_t{1});
+    if (parent->validation_evidence_path) {
+      const auto valid = fixture::read_json(workspace.root / *parent->validation_evidence_path);
+      DP_EXPECT_EQ(valid.at("result"), "VALID");
+      DP_EXPECT_EQ(valid.at("artifact_candidate").at("claimed_aggregate_checksum"), parent->output_artifacts[0].aggregate_checksum);
+    }
+    DP_EXPECT_EQ(own.output_artifacts.size(), std::size_t{1});
+    if (!own.output_artifacts.empty())
+      DP_EXPECT_EQ(own.output_artifacts[0].aggregate_checksum, parent->output_artifacts[0].aggregate_checksum);
+    const auto own_parameters = nlohmann::json::parse(own.parameters_json);
+    const auto build = parent == &m0_manifest ? own_parameters : own_parameters.at("build_identity");
+    DP_EXPECT_EQ(build.at("runner_binary").at("sha256"), dp::sha256_file("/proc/self/exe"));
+    for (const auto key : {"native_library", "wrapper_library"})
+      DP_EXPECT_EQ(build.at(key).at("sha256"), dp::sha256_file(build.at(key).at("path").get<std::string>()));
+    for (const auto& file : build.at("source_files_sha256").items())
+      DP_EXPECT_EQ(file.value(), dp::sha256_file(file.key()));
+    DP_EXPECT_TRUE(!own.toolchain.compile_commands.empty());
+    DP_EXPECT_TRUE(!own.toolchain.link_commands.empty());
+  }
   const auto m1_parameters =
       nlohmann::json::parse(m1_manifest.parameters_json);
   DP_EXPECT_TRUE(m1_parameters.contains("stage_execution_manifest"));
@@ -263,6 +302,28 @@ int main(int argc, char** argv) {
   const auto conflict = executor.execute(conflicting, conflict_context);
   DP_EXPECT_EQ(conflict.status, dp::StageStatus::kFailed);
   DP_EXPECT_EQ(conflict.invocations.merge, std::size_t{0});
+
+  for (bool paper : {false, true}) {
+    const std::string run_id = paper ? "publication-blocked-m1" : "publication-blocked-m0";
+    const auto occupied = workspace.normal_root / run_id / "merge";
+    dp::write_immutable_text(occupied, "existing publication target");
+    auto fail_context = environment.context;
+    const auto failed = executor.execute(request(run_id, dataset.reference, partition, locals,
+        paper ? m1::kImplementationId : native::kM0ImplementationId,
+        paper ? kM1Parameters : R"({"R":16,"use_filters":false})"), fail_context);
+    DP_EXPECT_EQ(failed.status, dp::StageStatus::kFailed);
+    DP_EXPECT_TRUE(!failed.artifact.has_value());
+    DP_EXPECT_EQ(dp::sha256_file(occupied), dp::sha256_bytes("existing publication target"));
+    const auto parent = dp::parse_build_manifest(fixture::read_json(failed.build_manifest_paths.back()).dump());
+    DP_EXPECT_EQ(parent.status, dp::StageStatus::kFailed);
+    DP_EXPECT_TRUE(parent.output_artifacts.empty());
+    const auto reference = nlohmann::json::parse(parent.parameters_json).at("stage_execution_manifest");
+    const auto own_path = workspace.root / reference.at("path").get<std::string>();
+    DP_EXPECT_EQ(reference.at("sha256"), dp::sha256_file(own_path));
+    const auto own = fixture::read_json(own_path);
+    DP_EXPECT_EQ(own.at("status"), "SUCCEEDED"); // candidate complete; publication failed
+    DP_EXPECT_EQ(own.at("metrics").at("global_graph_merge_time").at("call_status"), "SUCCEEDED");
+  }
 
   if (argc == 3 && std::string(argv[1]) == "--emit-request") {
     const auto target = std::filesystem::absolute(argv[2]);

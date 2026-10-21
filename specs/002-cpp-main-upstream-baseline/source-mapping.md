@@ -160,3 +160,23 @@ This is a faithful use of the listed native primitives with an independent exper
 policy; it makes no frozen-budget parity, memory-sufficiency, scale or quality claim.
 Source, actual library/binary hashes and compiler/link commands are recorded in the new
 stage Manifest; requested/effective parameters and observed counts are not Artifact fields.
+
+### M0 call-wall-clock observation
+
+The wrapper measures only the pinned `diskann::merge_shards()` call with
+`std::chrono::steady_clock`. Arguments and staged inputs are prepared first;
+the end is captured immediately on return or exception, before return-code or
+post-call cancellation checks. This includes native reads, graph/medoid writes,
+computation and memory operations, not only CPU time. Wrapper validation,
+candidate construction, publication and provenance collection are excluded.
+
+The stage's `BuildManifest.metrics.global_graph_merge_time` records `value` in
+`us`, `clock=steady_clock`, `scope=diskann.merge_shards_call`, and `call_status`.
+It is absent if the call never started. The own Manifest binds the candidate
+checksum; the existing parent Manifest binds the own record by path/SHA and the
+published GlobalGraph plus VALID evidence. A successful call followed by failure
+or cancellation is not a successful merge result. Parent publication must also
+succeed. No metric is added to GlobalGraphArtifact, and no historical timing is
+inferred from stage start/end timestamps. The shared private
+`merge_call_record.hpp` records actual wrapper/source, executable, native and
+wrapper archives, and build commands outside the measured call.

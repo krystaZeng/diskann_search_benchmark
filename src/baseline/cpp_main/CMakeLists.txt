@@ -20,6 +20,23 @@ target_include_directories(
   diskann_cpp_main_stages
   PRIVATE "${PROJECT_SOURCE_DIR}/src")
 diskann_pipeline_apply_cxx17(diskann_cpp_main_stages)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/m0_merge.cpp" _m0_wrapper_sha)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/merge_call_record.hpp" _merge_record_sha)
+execute_process(COMMAND git -c safe.directory=${PROJECT_SOURCE_DIR} remote get-url origin
+  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" OUTPUT_VARIABLE _merge_project_repository
+  OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+target_compile_definitions(diskann_cpp_main_stages PRIVATE
+  MERGE_BUILD_DIR="${CMAKE_BINARY_DIR}"
+  MERGE_WRAPPER_FILE="${CMAKE_CURRENT_SOURCE_DIR}/m0_merge.cpp"
+  MERGE_WRAPPER_SHA="${_m0_wrapper_sha}"
+  MERGE_RECORD_FILE="${CMAKE_CURRENT_SOURCE_DIR}/merge_call_record.hpp"
+  MERGE_RECORD_SHA="${_merge_record_sha}"
+  MERGE_LIBRARY="$<TARGET_FILE:diskann_cpp_main_stages>"
+  MERGE_PROJECT_REPOSITORY="${_merge_project_repository}"
+  MERGE_PROJECT_BRANCH="${DISKANN_PIPELINE_SOURCE_BRANCH}"
+  MERGE_PROJECT_COMMIT="${DISKANN_PIPELINE_SOURCE_COMMIT}"
+  MERGE_PROJECT_DIRTY=${DISKANN_PIPELINE_SOURCE_DIRTY}
+  MERGE_PROJECT_DIRTY_SHA="${DISKANN_PIPELINE_SOURCE_DIRTY_CHECKSUM}")
 
 add_executable(
   cpp_main_baseline_runner

@@ -1,19 +1,45 @@
 #include "baseline/cpp_main/stage_bindings.hpp"
+#include "baseline/cpp_main/merge_call_record.hpp"
 
 #include "baseline/cpp_main_stage_test_support.hpp"
 #include "diskann_pipeline/compatibility.hpp"
+#include "diskann_pipeline/document_codec.hpp"
 #include "support/contract_artifact_fixture.hpp"
 #include "support/test_assert.hpp"
 
 #include <algorithm>
 #include <array>
 #include <numeric>
+#include <cmath>
 
 namespace dp = diskann_pipeline;
 namespace native = diskann_pipeline::cpp_main;
 namespace fixture = diskann_pipeline::cpp_main::test;
 
 namespace {
+
+class CancelAfterCall final : public dp::CancellationToken {
+ public:
+  bool is_cancelled() const noexcept override { return ++checks >= 3; }
+  mutable unsigned checks{0};
+};
+
+class CorruptStagedMap final : public dp::MetricsSink {
+ public:
+  explicit CorruptStagedMap(std::filesystem::path path) : path_(std::move(path)) {}
+  void event(const std::string& name) override {
+    if (name == "cpp_main.m0.merge_shards") {
+      // The source Artifact remains valid and untouched. Inject a native-read
+      // failure in the wrapper's private copy, after its input preparation.
+      auto bytes = fixture::id_matrix({0});
+      bytes[4] = 2;
+      fixture::write_bytes(path_, bytes);
+    }
+  }
+  void increment(const std::string&, std::uint64_t) override {}
+ private:
+  std::filesystem::path path_;
+};
 
 void check_ascending_input(bool ascending, bool declared) {
   fixture::TemporaryDirectory temporary("m0-ascending");
@@ -116,6 +142,16 @@ void check_ascending_input(bool ascending, bool declared) {
   }
   DP_EXPECT_EQ(result.status, dp::StageStatus::kSucceeded);
   DP_EXPECT_TRUE(result.output_candidate.has_value());
+  DP_EXPECT_TRUE(!result.build_manifest_path.empty());
+  if (!result.build_manifest_path.empty()) {
+    const auto record = fixture::read_json(result.build_manifest_path);
+    const auto timing = record.at("metrics").at("global_graph_merge_time");
+    DP_EXPECT_EQ(timing.at("call_status"), "SUCCEEDED");
+    DP_EXPECT_EQ(timing.at("scope"), "diskann.merge_shards_call");
+    DP_EXPECT_EQ(timing.at("unit"), "us");
+    DP_EXPECT_TRUE(std::isfinite(timing.at("value").get<double>()));
+    DP_EXPECT_TRUE(timing.at("value").get<double>() >= 0);
+  }
   if (!result.output_candidate || !partition_result.valid() || !validated_local) return;
   const auto output_validation =
       dp::Validator(fixture::candidate_workspace(context.context)).validate(
@@ -138,6 +174,13 @@ void check_ascending_input(bool ascending, bool declared) {
 }  // namespace
 
 int main() {
+  dp::merge_record::CallTiming frozen("diskann.merge_shards_call");
+  DP_EXPECT_TRUE(frozen.metrics().empty());
+  frozen.start();
+  frozen.finish(dp::merge_record::CallTiming::Clock::now(), "SUCCEEDED");
+  const auto frozen_value = frozen.metrics();
+  frozen.finish(dp::merge_record::CallTiming::Clock::now() + std::chrono::seconds(10), "FAILED");
+  DP_EXPECT_EQ(frozen.metrics(), frozen_value);  // post-call work cannot retime it
   for (bool ascending : {false, true}) {
     for (bool declared : {false, true}) check_ascending_input(ascending, declared);
   }
@@ -354,5 +397,49 @@ int main() {
       partition, {local0, local1}, cancelled_parameters, cancelled.context);
   DP_EXPECT_EQ(cancelled_result.status, dp::StageStatus::kCancelled);
   DP_EXPECT_TRUE(!cancelled_result.output_candidate.has_value());
+  DP_EXPECT_TRUE(!fixture::read_json(cancelled_result.build_manifest_path).at("metrics").contains("global_graph_merge_time"));
+  fixture::TestContext after_call(workspace, "m0-cancel-after-call");
+  CancelAfterCall cancel_after;
+  after_call.context.cancellation_token = &cancel_after;
+  const auto after_parameters = fixture::write_parameters(after_call.context.temporary_storage, R"({"R":16,"use_filters":false})");
+  const auto after = native::make_m0_merge()->merge(partition, {local0, local1}, after_parameters, after_call.context);
+  DP_EXPECT_EQ(after.status, dp::StageStatus::kCancelled);
+  DP_EXPECT_TRUE(!after.output_candidate.has_value());
+  const auto after_record = fixture::read_json(after.build_manifest_path);
+  DP_EXPECT_EQ(after_record.at("metrics").at("global_graph_merge_time").at("call_status"), "SUCCEEDED");
+  fixture::TestContext call_failure(workspace, "m0-native-failure");
+  CorruptStagedMap corruption(call_failure.context.temporary_storage.stage_root / "native/shard-0.ids");
+  call_failure.context.metrics_sink = &corruption;
+  const auto failed_parameters = fixture::write_parameters(call_failure.context.temporary_storage, R"({"R":16,"use_filters":false})");
+  const auto failed_call = native::make_m0_merge()->merge(partition, {local0, local1}, failed_parameters, call_failure.context);
+  DP_EXPECT_EQ(failed_call.status, dp::StageStatus::kFailed);
+  DP_EXPECT_TRUE(!failed_call.output_candidate.has_value());
+  const auto failed_call_record = fixture::read_json(failed_call.build_manifest_path);
+  DP_EXPECT_EQ(failed_call_record.at("metrics").at("global_graph_merge_time").at("call_status"), "FAILED");
+  for (bool block_manifest : {false, true}) {
+    const std::string label = block_manifest ? "m0-audit-failure" : "m0-publish-failure";
+    fixture::TestContext failed(workspace, label);
+    const auto parameters = workspace.manifest_root / label / "parameters/merge.json";
+    dp::write_immutable_text(parameters, R"({"R":16,"use_filters":false})");
+    const auto occupied = failed.context.temporary_storage.stage_root / "candidate/global.index";
+    dp::write_immutable_text(occupied, "existing user content");
+    const auto audit = workspace.report_root / "cpp-main-m0" / label / "merge-execution.json";
+    if (block_manifest) dp::write_immutable_text(audit, "existing audit");
+    try {
+      const auto failed_result = native::make_m0_merge()->merge(partition, {local0, local1}, parameters, failed.context);
+      DP_EXPECT_TRUE(!block_manifest);
+      DP_EXPECT_EQ(failed_result.status, dp::StageStatus::kFailed);
+      DP_EXPECT_TRUE(!failed_result.output_candidate.has_value());
+      const auto record = fixture::read_json(failed_result.build_manifest_path);
+      DP_EXPECT_EQ(record.at("status"), "FAILED");
+      DP_EXPECT_EQ(record.at("metrics").at("global_graph_merge_time").at("call_status"), "SUCCEEDED");
+      DP_EXPECT_TRUE(record.at("failure").at("reason").get<std::string>().find("global.index") != std::string::npos);
+    } catch (const std::exception& error) {
+      DP_EXPECT_TRUE(block_manifest);
+      DP_EXPECT_TRUE(std::string(error.what()).find("global.index") != std::string::npos);
+    }
+    DP_EXPECT_EQ(dp::sha256_file(occupied), dp::sha256_bytes("existing user content"));
+    if (block_manifest) DP_EXPECT_EQ(dp::sha256_file(audit), dp::sha256_bytes("existing audit"));
+  }
   return dp::test::finish();
 }

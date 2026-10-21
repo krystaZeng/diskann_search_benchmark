@@ -850,3 +850,31 @@ Recall quality evidence is governed by its separate eligibility projection.
 | distance parity | exact IDs; `atol=1e-5`, `rtol=1e-6` | implementation-probe threshold |
 
 No item in this table authorizes a formal SIFT1M run.
+
+### Optional native n-hops observation and explicit evaluation
+
+At fixed commit `78256bbab4685e1774e78d331e081a153be26823`,
+`src/pq_flash_index.cpp:1454` increments `QueryStats.n_hops` once when the
+non-cached frontier is nonempty and disk reads are issued. It counts such search
+expansion rounds, not shortest-path length, visited nodes or I/O requests.
+The production runner copies the actual counter; it never derives it from
+`n_ios` or beamwidth. SearchObservation/v1 already permits this optional integer.
+JSON persistence remains after batch timing. SearchOne's signature is unchanged;
+its auxiliary capture does not collect this counter and omits it rather than
+writing zero or null.
+
+Protocol 1.0.0 / report v1 remain frozen. Protocol 1.1.0 accepts exactly the
+original six metrics, or those same six in order followed by
+`mean_n_hops_k100`. Only the latter selection emits the optional nonnegative v2
+performance metric, even if a six-metric run's raw observation contains counters.
+All queries must provide valid counters for the arithmetic mean; a genuine zero
+is included. Missing any query makes only n-hops unavailable, explained via the
+existing performance reason. Invalid present fields follow ordinary contract
+rejection. The existing performance aggregation member set is unchanged; all
+members must have complete means for their median to be emitted. Otherwise the
+optional value is omitted with a scope limitation, never computed on a smaller
+subset. The four original performance metrics are aggregated independently by
+explicit keys. Recall, QPS, latency, I/O, Parity and certification rules are
+unchanged. Historical files are neither rewritten nor backfilled; new capture
+requires a newly identified runner/search invocation, while validated graph,
+PQ and Layout inputs may be reused.

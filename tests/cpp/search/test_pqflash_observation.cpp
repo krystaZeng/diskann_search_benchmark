@@ -104,6 +104,10 @@ int main() {
   point.batch_wall_clock_us = 1000;
   point.status = diskann_pipeline::StageStatus::kSucceeded;
   ds::PerQueryObservation query;
+  DP_EXPECT_TRUE(!query.n_hops.has_value());
+  query.n_hops = 0;
+  DP_EXPECT_TRUE(query.n_hops.has_value());
+  DP_EXPECT_EQ(*query.n_hops, std::uint32_t{0});
   query.query_row_index = 0;
   query.source_query_id = "opaque-0042";
   query.result_ids.resize(100);
@@ -134,6 +138,7 @@ int main() {
       });
   DP_EXPECT_EQ(invocations, 1);
   DP_EXPECT_TRUE(ds::validate_complete_raw_search_point(observed, 1000000));
+  DP_EXPECT_TRUE(!observed.per_query[0].n_hops.has_value());
   native_alias_staging_is_non_mutating();
   return diskann_pipeline::test::finish();
 }

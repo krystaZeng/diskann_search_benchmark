@@ -393,6 +393,7 @@ def evaluate_raw_point(
     observation: dict[str, Any], *, ground_truth: list[list[int]],
     quality_compatible: bool, performance_admitted: bool,
     ground_truth_distances: list[list[float]] | None = None,
+    include_n_hops: bool = False,
 ) -> dict[str, Any]:
     queries = observation.get("per_query", [])
     alignment_reason = _query_alignment_exclusion_reason(observation, queries, len(ground_truth))
@@ -426,6 +427,10 @@ def evaluate_raw_point(
         "p99_9_latency_us_k100": _percentile_999([item["total_us"] for item in queries]),
         "mean_ios_k100": sum(item["n_ios"] for item in queries) / len(queries),
     }
+    # Admission validates any present counter before evaluation. Absence is not
+    # zero: this optional metric requires every query in the observation.
+    if include_n_hops and all("n_hops" in item for item in queries):
+        display["mean_n_hops_k100"] = sum(item["n_hops"] for item in queries) / len(queries)
     result = {
         "quality_eligible": bool(quality_compatible),
         "quality_eligibility_reason": "compatible" if quality_compatible else "quality identity mismatch",
@@ -1529,6 +1534,7 @@ def _evaluate_observation_directory(
         raise SearchEvaluationError("frozen SearchProtocol checksum/identity mismatch")
     execution = protocol["search_execution"]
     v2 = protocol["protocol_version"] == "1.1.0"
+    include_n_hops = v2 and "mean_n_hops_k100" in protocol["evaluation"]["metrics"]
     truth_ref = protocol["evaluation"]["ground_truth"]
     ground_truth, ground_truth_distances = _load_evaluation_ground_truth(root, protocol)
     observation_dir = Path(observations_path).resolve()
@@ -1607,6 +1613,7 @@ def _evaluate_observation_directory(
             ground_truth_distances=ground_truth_distances,
             quality_compatible=True,
             performance_admitted=performance_admitted,
+            include_n_hops=include_n_hops,
         )
         if truth_ref["reference_version"] == "1.1.0" and "rank_100_tie_group_closed" not in truth_ref:
             evaluated["quality_eligibility_reason"] = (
@@ -1639,12 +1646,16 @@ def _evaluate_observation_directory(
                 original_protocol=document["protocol"], parity=parity,
             )
             environments[relative] = actual_environment
+            if include_n_hops and "mean_n_hops_k100" not in evaluated["display_metrics"]:
+                result["performance_validity_reason"] += "; n-hops unavailable: at least one query has no collected counter"
         quality_groups.setdefault((cache_mode, l_search), []).append(
             evaluated["quality_metrics"]
         )
         displayed = {"observation_id": document["observation_id"], **evaluated["display_metrics"]}
         if v2:
             displayed["performance_valid"] = True
+            if include_n_hops and "mean_n_hops_k100" not in evaluated["display_metrics"]:
+                displayed["performance_validity_reason"] = result["performance_validity_reason"]
         else:
             displayed["classification"] = "formal" if performance_admitted else "informational_non_formal"
         display.append(displayed)
@@ -1682,11 +1693,21 @@ def _evaluate_observation_directory(
                 if any(r["parity"]["assessment"] == "UNRESOLVED" for r in members):
                     aggregation_reason = "unresolved Parity evidence prevents affected performance aggregation; see per-observation reasons"
                     continue
+                median_metrics = {
+                    key: _median([r["performance_metrics"][key] for r in members])
+                    for key in ("qps_k100", "mean_latency_us_k100", "p99_9_latency_us_k100", "mean_ios_k100")
+                }
+                group_limits = list(limits)
+                if include_n_hops:
+                    if all("mean_n_hops_k100" in r["performance_metrics"] for r in members):
+                        median_metrics["mean_n_hops_k100"] = _median([r["performance_metrics"]["mean_n_hops_k100"] for r in members])
+                    else:
+                        group_limits.append("n-hops unavailable: at least one existing performance member lacks complete query counters; no subset aggregation")
                 performance_aggregates.append({
                     "cache_mode": cache_mode, "L_search": l_search, "eligible_count": len(members), "aggregation": "median_eligible",
-                    "median_performance_metrics": {k: _median([r["performance_metrics"][k] for r in members]) for k in members[0]["performance_metrics"]},
+                    "median_performance_metrics": median_metrics,
                     "scope": {**invocation, "members": [{k: r[k] for k in ("observation_id", "path", "sha256")} for r in members],
-                              "environments": list({json.dumps(r["environment"], sort_keys=True): r["environment"] for r in members}.values()), "limitations": limits},
+                              "environments": list({json.dumps(r["environment"], sort_keys=True): r["environment"] for r in members}.values()), "limitations": group_limits},
                 })
     if environment_path is None or environment_sha is None:
         raise SearchEvaluationError("no complete valid observation is eligible for a report")

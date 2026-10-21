@@ -1227,6 +1227,126 @@ def _search_manifest(root: Path, protocol_path: Path, observations: Path) -> Pat
     return path
 
 
+@pytest.mark.parametrize("missing", [None, "first", "last", "all"])
+@pytest.mark.parametrize("selected", [False, True])
+def test_n_hops_protocol_selection_and_complete_members(tmp_path: Path, offline_only, missing, selected) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    paths = sorted(observations.glob("*.json"))
+    for index, path in enumerate(paths):
+        value = json.loads(path.read_text())
+        for row, query in enumerate(value["per_query"]):
+            query["n_hops"] = index * 2 + row * 2  # includes a real zero
+        if missing == "all" or (missing == "first" and index == 0) or (missing == "last" and index == len(paths) - 1):
+            del value["per_query"][0]["n_hops"]
+        _save_observation(path, value)
+    _search_manifest(tmp_path, original, observations)
+    protocol = _v2_protocol(tmp_path, original)
+    if selected:
+        document = json.loads(protocol.read_text())
+        document["evaluation"]["metrics"].append("mean_n_hops_k100")
+        protocol.write_text(json.dumps(search.normalize_search_protocol(document)))
+    before = {p: p.read_bytes() for p in [original, *paths]}
+    output = search.evaluate_observation_directory(protocol_path=protocol, observations_path=observations, workspace=tmp_path)
+    report = output["report"]
+    base = {"qps_k100": 1000.0, "mean_latency_us_k100": 20.0, "p99_9_latency_us_k100": 30.0, "mean_ios_k100": 3.0}
+    for index, (result, display) in enumerate(zip(report["observation_results"], output["display"])):
+        complete = missing != "all" and not (missing == "first" and index == 0) and not (missing == "last" and index == len(paths) - 1)
+        expected = {**base, **({"mean_n_hops_k100": index * 2 + 1.0} if selected and complete else {})}
+        assert result["performance_metrics"] == expected
+        assert result["performance_valid"] is True
+        assert result["quality_metrics"] == {"recall_at_10": 100.0, "recall_at_100": 100.0}
+        assert ("mean_n_hops_k100" in display) == (selected and complete)
+        if selected and not complete:
+            assert "n-hops unavailable" in result["performance_validity_reason"]
+    aggregate = report["aggregates"]["performance"][0]
+    assert aggregate["eligible_count"] == len(paths)
+    assert len(aggregate["scope"]["members"]) == len(paths)
+    assert aggregate["median_performance_metrics"] == {**base, **({"mean_n_hops_k100": 3.0} if selected and missing is None else {})}
+    if selected and missing is not None:
+        assert any("n-hops unavailable" in x for x in aggregate["scope"]["limitations"])
+    assert all(path.read_bytes() == data for path, data in before.items())
+
+
+@pytest.mark.parametrize("value", [None, False, -1, 1.5, "2"])
+def test_n_hops_illegal_values_are_rejected_not_missing(tmp_path: Path, offline_only, value) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    path = sorted(observations.glob("*.json"))[0]
+    document = json.loads(path.read_text())
+    document["per_query"][0]["n_hops"] = value
+    # Invalid null cannot pass canonicalization; validate the exact observation
+    # contract before checksum admission, without weakening the canonicalizer.
+    assert list(search._feature_validator("search-observation.schema.json").iter_errors(document))
+
+
+def test_n_hops_tampering_is_checksum_protected(tmp_path: Path, offline_only) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    path = sorted(observations.glob("*.json"))[0]
+    document = json.loads(path.read_text())
+    document["per_query"][0]["n_hops"] = 4
+    path.write_text(json.dumps(document))  # intentionally leave checksum unchanged
+    protocol = _v2_protocol(tmp_path, original)
+    with pytest.raises(search.SearchEvaluationError, match="checksum"):
+        search.evaluate_observation_directory(protocol_path=protocol, observations_path=observations, workspace=tmp_path)
+
+
+@pytest.mark.parametrize("version,metrics", [("1.0.0", "seven"), ("1.1.0", "only_hops"), ("1.1.0", "reordered"), ("1.1.0", "extra")])
+def test_n_hops_protocol_rejects_unapproved_metric_sets(tmp_path: Path, version, metrics) -> None:
+    original, _ = _offline_fixture(tmp_path, lengths=(100,))
+    path = _v2_protocol(tmp_path, original) if version == "1.1.0" else original
+    document = json.loads(path.read_text())
+    selected = document["evaluation"]["metrics"] + ["mean_n_hops_k100"]
+    if metrics == "only_hops": selected = selected[-1:]
+    if metrics == "reordered": selected = selected[::-1]
+    if metrics == "extra": selected += ["other"]
+    document["evaluation"]["metrics"] = selected
+    with pytest.raises(search.SearchEvaluationError, match="invalid"):
+        search.normalize_search_protocol(document)
+
+
+def test_n_hops_zero_and_same_observation_original_metrics(tmp_path: Path, offline_only) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    for path in observations.glob("*.json"):
+        document = json.loads(path.read_text())
+        for query in document["per_query"]: query["n_hops"] = 0
+        _save_observation(path, document)
+    _search_manifest(tmp_path, original, observations)
+    six = _v2_protocol(tmp_path, original)
+    document = json.loads(six.read_text())
+    document["protocol_id"] += "-hops"
+    document["evaluation"]["metrics"].append("mean_n_hops_k100")
+    seven = six.with_name("seven.json")
+    seven.write_text(json.dumps(search.normalize_search_protocol(document)))
+    outputs = [search.evaluate_observation_directory(protocol_path=p, observations_path=observations, workspace=tmp_path) for p in (six, seven)]
+    for old, new in zip(*(o["report"]["observation_results"] for o in outputs)):
+        assert old["quality_metrics"] == new["quality_metrics"]
+        assert new["performance_metrics"] == {**old["performance_metrics"], "mean_n_hops_k100": 0.0}
+    old, new = (o["report"]["aggregates"]["performance"][0] for o in outputs)
+    assert new["median_performance_metrics"] == {**old["median_performance_metrics"], "mean_n_hops_k100": 0.0}
+    assert old["scope"]["members"] == new["scope"]["members"]
+
+
+def test_n_hops_invalid_present_value_uses_existing_exclusion(tmp_path: Path, offline_only) -> None:
+    original, observations = _offline_fixture(tmp_path, lengths=(100,))
+    for index, path in enumerate(sorted(observations.glob("*.json"))):
+        document = json.loads(path.read_text())
+        for query in document["per_query"]: query["n_hops"] = -1 if index == 0 else index
+        _save_observation(path, document)
+    _search_manifest(tmp_path, original, observations)
+    protocol = _v2_protocol(tmp_path, original)
+    document = json.loads(protocol.read_text())
+    document["evaluation"]["metrics"].append("mean_n_hops_k100")
+    protocol.write_text(json.dumps(search.normalize_search_protocol(document)))
+    report = search.evaluate_observation_directory(protocol_path=protocol, observations_path=observations, workspace=tmp_path)["report"]
+    invalid, *valid = report["observation_results"]
+    assert invalid["performance_valid"] is False
+    assert "performance_metrics" not in invalid
+    assert "n-hops unavailable" not in invalid["performance_validity_reason"]
+    assert all(r["performance_valid"] for r in valid)
+    aggregate = report["aggregates"]["performance"][0]
+    assert aggregate["eligible_count"] == 2  # existing exclusion; no new member rule
+    assert aggregate["median_performance_metrics"]["mean_n_hops_k100"] == 1.5
+
+
 @pytest.mark.parametrize("os_name", ["Darwin", "Linux", "Linux-container"])
 def test_v2_persists_measurements_and_single_invocation(tmp_path: Path, offline_only, os_name: str) -> None:
     original, observations = _offline_fixture(tmp_path, lengths=(100,))
@@ -2794,6 +2914,12 @@ def test_small_real_linux_ground_truth_search_evaluate_and_parity(
             search._sha256(workspace / reference["path"]) == reference["sha256"]
             for reference in observation_references
         )
+        for reference in observation_references:
+            observed = json.loads((workspace / reference["path"]).read_text())
+            assert all(type(query.get("n_hops")) is int and query["n_hops"] >= 0
+                       for query in observed["per_query"])
+        # The raw counter does not opt a frozen six-metric protocol into display.
+        assert all("mean_n_hops_k100" not in row for row in evaluation["display"])
 
 
 def _import_dataset(root: Path) -> tuple[dict, dict]:
