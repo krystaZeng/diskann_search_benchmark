@@ -132,3 +132,31 @@ values “upstream default R/L” does not mean all upstream defaults: the wrapp
 0.6 GiB, T=6 and the existing PQ/OPQ/saturation rules. Random sampling, Lloyd iteration behavior,
 budget-driven shard count and M0 semantics remain those mapped above. This is a source mapping,
 not evidence of parity, SIFT1M/SIFT10M execution, quality or performance.
+
+## Independent fixed-K P0 experimental binding
+
+`cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_fixed_k_v1@1.0.0`
+is an additional composition binding, not a revision or certification of the budget P0.
+The frozen registration function and both budget-driven factories are unchanged.
+
+| Fixed source | New binding |
+|---|---|
+| `src/partition.cpp:95-142`, SM-015 | One native random training sample with `min(1,256000/N)` from the validated Dataset. Check actual `K <= S <= 8388608` before pivot allocation/initialization; no resampling. |
+| `src/math_utils.cpp:380-456`, SM-016 | Native k-means++ with `random_device`; the sample bound prevents entering its alternative random-pivot branch. |
+| `src/math_utils.cpp:312-354`, SM-016 | Native single-nearest-center Lloyd updates, maximum 10 iterations with native early stopping. |
+| `src/partition.cpp:325-407`, SM-017 | Native ID-only assignment with `k_base=2`; no shard vector copies. `math_utils.cpp:113-130` pops distinct center IDs, including when distances tie. |
+| `src/partition.cpp:482-519` | The complete fixed-K `partition()` is deliberately not called: it returns status 0 and writes both vectors and IDs; it does not expose the sample-count validation boundary. |
+| `src/partition.cpp:523-604`, SM-014 | The budget-search loop and independent estimation sample are not executed. No R or partition RAM budget is accepted by the new binding. |
+
+Project `src/baseline/cpp_main/p0_fixed_k_partition.cpp` owns its parameter,
+nonempty-block, exact-double-membership and provenance checks. Existing native format
+checks and PartitionArtifact/v1 validation remain mandatory. Invalid output is rejected,
+not repaired. The existing `src/partition/diskann_kmeans/native_partition.cpp` source is
+compiled once into a shared lower-level archive with the upstream options/definitions;
+ordinary KMeans retains its identity, single assignment and default 15-iteration policy.
+The fixed-K binding is available without enabling that optional implementation.
+
+This is a faithful use of the listed native primitives with an independent experimental
+policy; it makes no frozen-budget parity, memory-sufficiency, scale or quality claim.
+Source, actual library/binary hashes and compiler/link commands are recorded in the new
+stage Manifest; requested/effective parameters and observed counts are not Artifact fields.

@@ -15,6 +15,7 @@ namespace fs = std::filesystem;
 using Json = nlohmann::json;
 namespace {
 constexpr const char* kKmeans = "diskann_78256bbab4685e1774e78d331e081a153be26823_kmeans_configurable_k_v1";
+constexpr const char* kFixedK = "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_fixed_k_v1";
 constexpr const char* kOgp = "gp_ann_ogp_partition_v1";
 constexpr const char* kB1 = "xn_graph_xn_descent_local_build_v1";
 constexpr const char* kM1 = "hnsw_merger_vamana_merge_v1";
@@ -403,6 +404,95 @@ void native_runs(const fs::path& base) {
   DP_EXPECT_TRUE(!failed.contains("global_graph"));
 #endif
 }
+void fixed_k_runs(const fs::path& base) {
+  const auto root = base / "fixed-k4-b0-v1-1-m0";
+  auto config = prepare(root);
+  config["partition"] = selected(kFixedK, {{"K", 4}});
+  config["local_build"]["implementation_version"] = "1.1.0";
+  config["local_build"]["parameters"]["R"] = 64;
+  config["local_build"]["parameters"]["L"] = 100;
+  config["merge"]["parameters"]["R"] = 64;
+  const auto status = invoke(root, config);
+  std::cout << "fixed-k4-b0-v1-1-m0 exit=" << status << " evidence=" << root << '\n';
+  DP_EXPECT_EQ(status, 0);
+  if (status != 0) return;
+  inspect(root, config);  // Existing degree, provenance, checksum and evidence assertions.
+  const auto result = f::read_json(root / "workspace/reports/result.json");
+  DP_EXPECT_EQ(result.at("stage_invocations"), Json({{"partition", 1}, {"local_build", 4}, {"merge", 1}}));
+  const auto workspace = dp::create_workspace(root / "workspace");
+  const auto partition_path = workspace.normal_root / result.at("partition").at("metadata_path").get<std::string>();
+  const auto meta = f::read_json(partition_path);
+  DP_EXPECT_EQ(meta.at("structural").at("partition_count"), 4);
+  std::vector<unsigned> owners(96, 0);
+  std::uint64_t members = 0;
+  for (const auto& record : meta.at("structural").at("partitions")) {
+    const auto count = record.at("local_node_count").get<dp::NodeCount>();
+    DP_EXPECT_TRUE(count > 0);
+    DP_EXPECT_TRUE(!record.contains("shard_vectors_role"));
+    const auto map = native::validate_partition_id_map(partition_path.parent_path() /
+        ("partition-" + std::to_string(record.at("partition_id").get<unsigned>()) + "-map.bin"), count, 96);
+    DP_EXPECT_TRUE(std::is_sorted(map.begin(), map.end()));
+    for (auto id : map) ++owners[id];
+    members += count;
+  }
+  DP_EXPECT_EQ(members, std::uint64_t{192});
+  DP_EXPECT_TRUE(std::all_of(owners.begin(), owners.end(), [](unsigned count) { return count == 2; }));
+  const auto manifest = f::read_json(workspace.manifest_root / "small/stage-execution/partition.json");
+  DP_EXPECT_EQ(manifest.at("implementation").at("implementation_id"), kFixedK);
+  const auto& parameters = manifest.at("parameters");
+  DP_EXPECT_EQ(parameters.at("requested_parameters"), Json({{"K", 4}}));
+  DP_EXPECT_EQ(parameters.at("actual_training_sample_count"), 96);
+  DP_EXPECT_EQ(parameters.at("actual_partition_count"), 4);
+  DP_EXPECT_EQ(parameters.at("total_memberships"), members);
+  DP_EXPECT_EQ(parameters.at("effective_parameters").at("k_base"), 2);
+  DP_EXPECT_EQ(parameters.at("effective_parameters").at("max_k_means_reps"), 10);
+  DP_EXPECT_EQ(parameters.at("effective_parameters").at("sample_probability"), 1.0);
+  DP_EXPECT_EQ(parameters.at("dataset_node_count"), 96);
+  DP_EXPECT_EQ(parameters.at("vector_dimension"), 4);
+  DP_EXPECT_TRUE(!manifest.at("toolchain").at("compile_commands").empty());
+  DP_EXPECT_TRUE(!manifest.at("toolchain").at("link_commands").empty());
+  const auto original = dp::sha256_file(root / "workspace/reports/result.json");
+  DP_EXPECT_EQ(invoke(root, config), 2);
+  DP_EXPECT_EQ(dp::sha256_file(root / "workspace/reports/result.json"), original);
+
+  unsigned index = 0;
+  for (const auto& bad : std::vector<Json>{Json::object(), {{"K", 0}}, {{"K", 1}}, {{"K", -1}},
+      {{"K", 97}}, {{"K", 4.0}}, {{"K", true}}, {{"K", "4"}}, {{"K", nullptr}},
+      {{"K", 4294967296ULL}}, {{"K", 4}, {"R", 64}}, {{"K", 4}, {"seed", 1}}}) {
+    const auto negative = base / ("fixed-k-invalid-" + std::to_string(index++));
+    auto request = prepare(negative);
+    request["partition"] = selected(kFixedK, bad);
+    rejected(negative, request, "partition");
+  }
+  for (const auto& version : {"1.1.0", "", "unknown"}) {
+    const auto negative = base / ("fixed-k-version-" + std::to_string(index++));
+    auto request = prepare(negative);
+    request["partition"] = selected(kFixedK, {{"K", 4}});
+    request["partition"]["implementation_version"] = version;
+    rejected(negative, request, "identity");
+  }
+  const auto empty = base / "fixed-k-empty-shard";
+  auto request = prepare(empty);
+  request["partition"] = selected(kFixedK, {{"K", 4}});
+  const auto dataset_path = empty / "workspace/normal/dataset/artifact.json";
+  auto dataset = f::read_json(dataset_path);
+  const auto vectors = dataset_path.parent_path() / "vectors.bin";
+  f::write_bytes(vectors, f::float_matrix(96, 4, std::vector<float>(384, 0)));
+  dataset["dataset"]["dataset_checksum"] = dp::sha256_file(vectors);
+  dataset["payloads"][0] = f::payload("vectors", "vectors.bin", native::kFloat32DatasetMediaType, vectors);
+  dataset["aggregate_checksum"] = f::aggregate_for(dataset);
+  f::write_text(dataset_path, dataset.dump());
+  request["dataset"]["aggregate_checksum"] = dataset.at("aggregate_checksum");
+  DP_EXPECT_EQ(invoke(empty, request), 4);
+  const auto failure = f::read_json(empty / "workspace/reports/result.json");
+  DP_EXPECT_EQ(failure.at("outcome"), "FAILED");
+  DP_EXPECT_EQ(failure.at("stage_invocations"), Json({{"partition", 1}, {"local_build", 0}, {"merge", 0}}));
+  DP_EXPECT_TRUE(!failure.contains("partition") && !failure.contains("global_graph"));
+  const auto failed_manifest = f::read_json(empty / "workspace/manifests/small/stage-execution/partition.json");
+  DP_EXPECT_EQ(failed_manifest.at("status"), "FAILED");
+  DP_EXPECT_TRUE(failed_manifest.at("failure").at("reason").get<std::string>().find("empty") != std::string::npos);
+  DP_EXPECT_EQ(failed_manifest.at("parameters").at("actual_training_sample_count"), 96);
+}
 }  // namespace
 int main(int argc, char** argv) {
   try {
@@ -411,6 +501,7 @@ int main(int argc, char** argv) {
     const auto base = fs::path(std::getenv("COMPOSITION_TEST_OUTPUT_ROOT") ? std::getenv("COMPOSITION_TEST_OUTPUT_ROOT") : "/tmp/module-composition") / nonce;
     if (std::string(argv[1]) == "requests") requests(base);
     else if (std::string(argv[1]) == "native") native_runs(base);
+    else if (std::string(argv[1]) == "fixed_k") fixed_k_runs(base);
     else return 2;
     std::cout << "COMPOSITION_VALIDATION_OUTPUT=" << base << '\n';
   } catch (const std::exception& error) {

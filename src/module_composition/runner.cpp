@@ -1,4 +1,5 @@
 #include "baseline/cpp_main/stage_bindings.hpp"
+#include "baseline/cpp_main/p0_fixed_k_partition.hpp"
 #include "baseline/cpp_main/source_build_identity.hpp"
 #include "core/json_codec.hpp"
 #include "diskann_pipeline/checksum.hpp"
@@ -101,6 +102,9 @@ void register_modules(dp::ImplementationRegistry& registry, const std::string& p
                       const native::SourceBuildEvidence& native_evidence,
                       dp::SourceIdentity& partition_source) {
   native::register_cpp_main_stage_bindings(registry);
+  registry.register_partition(native::fixed_k::descriptor(), [native_evidence] {
+    return native::fixed_k::make_partition(native_evidence);
+  });
   registry.register_partition(native::p0_descriptor_v1_1(), native::make_p0_partition_v1_1);
   registry.register_local_build(native::b0_descriptor_v1_1(), native::make_b0_local_build_v1_1,
                                 native::b0_input_admission);
@@ -143,6 +147,8 @@ void validate_parameters(const dp::ImplementationDescriptor& descriptor, Json& p
   const auto& id = descriptor.implementation_id;
   if (id == native::kP0ImplementationId)
     static_cast<void>(native::parse_p0_parameters(parameters.dump(), count, descriptor.implementation_version));
+  else if (id == native::fixed_k::kImplementationId)
+    static_cast<void>(native::fixed_k::parse_parameters(parameters.dump(), count, descriptor.implementation_version));
   else if (id == native::kB0ImplementationId) {
     static_cast<void>(native::parse_b0_parameters(parameters.dump(), descriptor.implementation_version));
     if (threads != parameters.at("num_threads")) reject("B0 requires thread_budget equal to frozen num_threads=6");
@@ -222,6 +228,10 @@ dp::BuildManifest entry_manifest(const native::SourceBuildEvidence& evidence, co
   if (build.toolchain.compile_commands.empty()) reject("entry compile commands missing");
   build.toolchain.link_commands = {read(executable.parent_path() / "CMakeFiles/module_composition_runner.dir/link.txt")};
   Json libraries = Json::array({file_identity(COMPOSITION_BASELINE_LIBRARY)});
+  if (config.at("partition").at("implementation_id") == native::fixed_k::kImplementationId) {
+    libraries.push_back(file_identity(COMPOSITION_FIXED_K_LIBRARY));
+    libraries.push_back(file_identity(COMPOSITION_NATIVE_PARTITION_LIBRARY));
+  }
 #ifdef DISKANN_KMEANS_PARTITION
   if (config.at("partition").at("implementation_id") == dp::diskann_kmeans::kImplementationId)
     libraries.push_back(file_identity(DISKANN_KMEANS_PARTITION_LIBRARY));

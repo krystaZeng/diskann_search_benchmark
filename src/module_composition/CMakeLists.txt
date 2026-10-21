@@ -1,9 +1,11 @@
 add_executable(module_composition_runner runner.cpp)
 target_include_directories(module_composition_runner PRIVATE "${PROJECT_SOURCE_DIR}/src")
 target_link_libraries(module_composition_runner PRIVATE
-  diskann_cpp_main_stages nlohmann_json::nlohmann_json)
+  diskann_cpp_main_stages diskann_cpp_main_fixed_k nlohmann_json::nlohmann_json)
 target_compile_definitions(module_composition_runner PRIVATE
-  COMPOSITION_BASELINE_LIBRARY="$<TARGET_FILE:diskann_cpp_main_stages>")
+  COMPOSITION_BASELINE_LIBRARY="$<TARGET_FILE:diskann_cpp_main_stages>"
+  COMPOSITION_FIXED_K_LIBRARY="$<TARGET_FILE:diskann_cpp_main_fixed_k>"
+  COMPOSITION_NATIVE_PARTITION_LIBRARY="$<TARGET_FILE:diskann_native_partition>")
 foreach(pair IN ITEMS
     "DISKANN_KMEANS_PARTITION|diskann_kmeans_partition"
     "DISKANN_GP_ANN_OGP|diskann_gp_ann_ogp_stage"

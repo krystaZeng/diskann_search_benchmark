@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diskann-repro.local/contracts/partition/cpp-main-p0-fixed-k-v1/parameters.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["K"],
+  "properties": {
+    "K": {"type": "integer", "minimum": 2, "maximum": 4294967295}
+  },
+  "$comment": "Runtime requires actual integer K <= validated Dataset N; p=min(1,256000/N), max_k_means_reps=10, k_base=2. Actual training sample count K <= S <= 8388608 is checked before initialization. No seed, budget search, resampling or empty-block repair."
+}

@@ -222,3 +222,78 @@ alpha=1.2、seed=42、iteration_cap=100，完整策略字符串保存在各次�
 混合组合以及新入口下的 P0+B0+M0 都不自动继承 Baseline 的 CERTIFIED。
 结构验证不代表 Recall/QPS、性能或论文效果验证；未自动运行 SIFT1M/SIFT10M。
 紧凑性仍须按其独立说明显式调用。
+
+## 固定 K 的 P0 实验变体
+
+组合入口另行注册
+`cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_fixed_k_v1@1.0.0`。
+唯一请求参数为 `K`：实际 JSON 整数，`2 <= K <=` 校验后的 Dataset N，且须符合原生整数范围。
+缺失项、额外字段、布尔、浮点、字符串及未知实现版本均拒绝。旧预算 P0 两版、
+旧冻结三项注册集合和普通 KMeans 的单分配、默认 15 轮上限保持不变。
+
+新实现从实际 N 推导 `sample_probability=min(1,256000/N)`，调用固定原生抽样、
+k-means++、最多 10 轮 Lloyd，再用 ID-only 分配将每点分到两个不同的最近中心。
+Lloyd 训练仍按单最近中心更新；双副本仅用于最终分配。抽样是原生随机过程，
+256000 是期望目标。实际样本数必须满足 `K <= S <= 8388608`，检查在 pivot 分配和
+初始化之前；该上限不是 Dataset N 上限。不固定 seed，不重抽样、减 K、补点或合并空块。
+成功产物必须有 K 个非空块、升序唯一且无越界的映射、每点两次归属和总成员数 2N。
+不输出分块向量副本；B0 继续按 Dataset 与 ID map 重建其临时输入。
+
+以下为小数据完整配置的阶段选择，保留现有 `module-composition-run/v1` 顶层
+`run_id`、`workspace` 和经真实小数据准备得到的 `dataset` 引用，不填写虚构 checksum：
+
+```json
+{
+  "partition": {
+    "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_p0_fixed_k_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {"K": 4}
+  },
+  "local_build": {
+    "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_b0_callable_v1",
+    "implementation_version": "1.1.0",
+    "parameters": {
+      "R": 64, "L": 100, "alpha": 1.2, "build_pq_bytes": 0,
+      "max_occlusion_size": 750, "num_threads": 6,
+      "saturation": false, "use_opq": false
+    }
+  },
+  "merge": {
+    "implementation_id": "cpp_main_78256bbab4685e1774e78d331e081a153be26823_m0_callable_v1",
+    "implementation_version": "1.0.0",
+    "parameters": {"R": 64, "use_filters": false}
+  }
+}
+```
+
+`workspace.thread_budget` 为 6，内存声明按运行环境填写。上述 B0 的有效局部度数上限
+为 42，M0 全局声明上限为 64，不要求实际度数达到上限。
+`module_composition_fixed_k` 测试通过真实入口准备并执行完整的 96×4 离线小数据配置，
+保留请求和独立验证证据；可通过 `COMPOSITION_TEST_OUTPUT_ROOT` 指定新的证据目录。
+`p0_fixed_k_parameters_contract`、`p0_fixed_k_native` 分别覆盖参数/输出契约和原生
+K=2/K=4 性质。它们仅在启用现有 `DISKANN_MODULE_COMPOSITION` 的 Linux 构建中提供。
+
+```sh
+# 在依赖已就绪、路径匹配的 Linux 环境中使用独立构建目录。
+cmake -S . -B "$task_build" -G 'Unix Makefiles' \
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+  -DDISKANN_CPP_MAIN_BASELINE=ON -DDISKANN_MODULE_COMPOSITION=ON \
+  -DDISKANN_KMEANS_PARTITION=OFF
+cmake --build "$task_build" --target p0_fixed_k_tests module_composition_tests --parallel 4
+ctest --test-dir "$task_build" --output-on-failure -R '^(p0_fixed_k_(parameters_contract|native)|module_composition_fixed_k)$'
+```
+
+固定 K 不依赖启用普通 KMeans。两者共享一个底层原生模板桥接 archive；桥接源文件
+仍在原位置，只包含未修改的固定 `partition.cpp` 并实例化 ID-only float 模板。
+不重复嵌入对象，不修改固定上游或增加新的顶层 CLI。
+
+阶段 Manifest 记录请求 K、实际 N/维度、有效抽样率、样本数、迭代上限、复制因子、
+实际块数、各块与总成员数，并绑定固定源码、封装源码、实际原生/桥接/适配库、
+二进制和工具链。父 Manifest 通过路径与 SHA 绑定阶段 Manifest；发布后引用以父
+Manifest 为准。生成过程信息不加入 PartitionArtifact。
+
+固定 K 不运行预算搜索，不能声称每块满足预算 P0 的 0.6 GiB 估算预算。
+工作区资源声明不是实际峰值或原生分配器硬上限。它是独立实验能力，不继承冻结预算
+P0 的认证。同实际 K 只控制块数：P0 的 2N 成员与 OGP 重叠规则仍不同，比较时必须
+记录实际块数、各块大小和总成员数。小数据验证不能替代 Linux SIFT1M 验证；
+SIFT10M 仍需单独明确批准。历史产物和报告保持不变。
